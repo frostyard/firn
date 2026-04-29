@@ -25,9 +25,9 @@ import (
 )
 
 // ErrNoBackend is returned when no LLM backend can be detected from the
-// environment (no ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_HOST /
-// OLLAMA_BASE_URL set).
-var ErrNoBackend = errors.New("no LLM backend configured: set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_HOST")
+// environment (no ANTHROPIC_API_KEY, GH_COPILOT_TOKEN, OPENAI_API_KEY,
+// OLLAMA_HOST / OLLAMA_BASE_URL set, and `pi` is not in PATH).
+var ErrNoBackend = errors.New("no LLM backend configured: set ANTHROPIC_API_KEY, GH_COPILOT_TOKEN, OPENAI_API_KEY, or OLLAMA_HOST (or install pi)")
 
 // productTemplate is embedded verbatim in the product.md prompt so the LLM
 // mirrors the exact structure expected downstream.
@@ -123,12 +123,17 @@ type Config struct {
 
 // DefaultConfig detects the LLM backend from environment variables:
 //  1. ANTHROPIC_API_KEY → "claude"
-//  2. OPENAI_API_KEY → "openai"
-//  3. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
+//  2. GH_COPILOT_TOKEN set, or `pi` found in PATH → "copilot"
+//  3. OPENAI_API_KEY → "openai"
+//  4. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
 func DefaultConfig() Config {
 	switch {
 	case os.Getenv("ANTHROPIC_API_KEY") != "":
 		return Config{Backend: "claude"}
+	case os.Getenv("GH_COPILOT_TOKEN") != "":
+		return Config{Backend: "copilot"}
+	case piInPath():
+		return Config{Backend: "copilot"}
 	case os.Getenv("OPENAI_API_KEY") != "":
 		return Config{Backend: "openai"}
 	case os.Getenv("OLLAMA_HOST") != "" || os.Getenv("OLLAMA_BASE_URL") != "":
@@ -140,6 +145,12 @@ func DefaultConfig() Config {
 	default:
 		return Config{}
 	}
+}
+
+// piInPath reports whether the `pi` binary is available in PATH.
+func piInPath() bool {
+	_, err := exec.LookPath("pi")
+	return err == nil
 }
 
 // SpecResult describes the output of a successful GenerateSpec call.
