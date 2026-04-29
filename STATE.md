@@ -9,7 +9,7 @@ Wave 1 — Foundation
 tasks:
   - id: mentat-go-module
     description: Initialize Go module for mentat, basic CLI scaffold (cobra), build+test passing
-    status: pending
+    status: done
     depends_on: []
     parallel: true
 
@@ -45,7 +45,7 @@ tasks:
 
   - id: pipeline-go-module
     description: Initialize Go module for pipeline, basic CLI scaffold
-    status: pending
+    status: done
     depends_on: []
     parallel: true
 
@@ -84,6 +84,8 @@ tasks:
 
 - `docs-agents-md` — AGENTS.md + CLAUDE.md written in initial scaffold
 - `spec-templates` — specs/template/product.md + tech.md written in initial scaffold
+- `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
+- `mentat-go-module` — clix+cobra CLI scaffold (sync/status/init stubs), version ldflags, tests passing
 
 ## Decisions
 
