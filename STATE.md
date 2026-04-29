@@ -45,7 +45,7 @@ tasks:
 
   - id: pipeline-go-module
     description: Initialize Go module for pipeline, basic CLI scaffold
-    status: done
+    status: pending
     depends_on: []
     parallel: true
 
