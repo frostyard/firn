@@ -6,6 +6,7 @@ import (
 
 	"github.com/frostyard/clix"
 	"github.com/frostyard/firn/mentat/internal/classifier"
+	"github.com/frostyard/firn/mentat/internal/generator"
 	"github.com/frostyard/firn/mentat/internal/scanner"
 	"github.com/spf13/cobra"
 )
@@ -31,15 +32,11 @@ func syncCmd() *cobra.Command {
 
 			// Classify candidates into logical domains.
 			r.Message("classifying domains")
-			cfg := classifier.DefaultConfig()
-			cfg.Logger = slog.Default()
-			domains, err := classifier.Classify(cmd.Context(), candidates, cfg)
+			classCfg := classifier.DefaultConfig()
+			classCfg.Logger = slog.Default()
+			domains, err := classifier.Classify(cmd.Context(), candidates, classCfg)
 			if err != nil {
 				return fmt.Errorf("classify: %w", err)
-			}
-
-			if ok, err := clix.OutputJSON(domains); ok {
-				return err
 			}
 
 			// Text output: one domain per line.
@@ -47,12 +44,33 @@ func syncCmd() *cobra.Command {
 				r.Message("  [%s] %s — %s (%d files, %v)", d.Name, d.Path, d.Description, d.FileCount, d.Languages)
 			}
 
-			if clix.DryRun {
-				r.Message("dry-run: stopping after classification")
-				return nil
+			// Generate SKILL.md files for each domain.
+			// dry-run is handled inside GenerateAll via clix.DryRun.
+			r.Message("generating skill docs")
+			genCfg := generator.Config{
+				Backend:   classCfg.Backend,
+				Model:     classCfg.Model,
+				Overwrite: false,
+				Logger:    slog.Default(),
 			}
 
-			// TODO: generator
+			genResults, err := generator.GenerateAll(cmd.Context(), domains, repoPath, genCfg)
+			if err != nil {
+				return fmt.Errorf("generate: %w", err)
+			}
+
+			if ok, err := clix.OutputJSON(genResults); ok {
+				return err
+			}
+
+			for _, res := range genResults {
+				if res.Skipped {
+					r.Message("  skipped %s", res.Domain)
+				} else {
+					r.Message("  generated %s → %s", res.Domain, res.Path)
+				}
+			}
+
 			return nil
 		},
 	}
