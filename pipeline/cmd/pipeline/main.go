@@ -9,6 +9,7 @@ import (
 	"github.com/frostyard/clix"
 	"github.com/frostyard/firn/pipeline/internal/config"
 	"github.com/frostyard/firn/pipeline/internal/version"
+	"github.com/frostyard/firn/pipeline/internal/watcher"
 	"github.com/spf13/cobra"
 )
 
@@ -64,6 +65,13 @@ func runCmd() *cobra.Command {
 				)
 			}
 
+			watchCfg := watcher.Config{
+				Repo:     repo,
+				Label:    "needs-spec",
+				Interval: interval,
+				Log:      log,
+			}
+
 			if clix.DryRun {
 				log.Info("dry-run: pipeline daemon would start",
 					"repo", repo,
@@ -72,14 +80,39 @@ func runCmd() *cobra.Command {
 					"ci_fixer_max_attempts", cfg.Pipeline.CIFixerMaxAttempts,
 					"draft_first", cfg.Pipeline.DraftFirst,
 				)
+				// In dry-run mode spin up the watcher but only log what would happen.
+				ch, err := watcher.Watch(cmd.Context(), watchCfg)
+				if err != nil {
+					return fmt.Errorf("starting watcher: %w", err)
+				}
+				for issue := range ch {
+					log.Info("dry-run: would process issue",
+						"number", issue.Number,
+						"title", issue.Title,
+					)
+				}
 				return nil
 			}
 
-			log.Info("pipeline daemon not yet implemented",
+			log.Info("pipeline daemon starting",
 				"repo", repo,
 				"interval", interval,
 				"pr_throttle", cfg.Pipeline.PRThrottle,
 			)
+
+			ch, err := watcher.Watch(cmd.Context(), watchCfg)
+			if err != nil {
+				return fmt.Errorf("starting watcher: %w", err)
+			}
+
+			for issue := range ch {
+				log.Info("discovered issue",
+					"number", issue.Number,
+					"title", issue.Title,
+					"url", issue.URL,
+				)
+			}
+
 			return nil
 		},
 	}

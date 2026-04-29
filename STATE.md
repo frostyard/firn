@@ -51,7 +51,7 @@ tasks:
 
   - id: pipeline-issue-watcher
     description: GitHub issue poller — labeled issues trigger spec generation
-    status: pending
+    status: done
     depends_on: [pipeline-go-module, spec-templates]
     parallel: false
 
@@ -100,6 +100,7 @@ tasks:
 - `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
 - `mentat-llm-domain-classifier` — LLMCaller interface, claude/openai/ollama backends, env-based detection; 14 tests
 - `mentat-scanner` — scanner.Scan() with SkipDirs/ContainerDirs/MinFiles/MaxDepth; 12 tests; wired into syncCmd
+- `pipeline-issue-watcher` — GHRunner interface, Watch() with dedup/error-recovery, 7 tests
 - `pipeline-config` — TOML config via viper; `pipeline/internal/config` package; `--config` flag wired into runCmd; 8 tests
 - `ci-doc-validation` — GitHub Actions doc ceremony validation (exec plan gate, ADR warning, STATE.md YAML check)
 - `goreleaser-setup` — `.goreleaser.yml` (GoReleaser Pro, two binaries), `.github/workflows/release.yml` + `snapshot.yml`, Justfile `snapshot`/`release` targets, `dist/` in `.gitignore`
