@@ -79,6 +79,12 @@ tasks:
     depends_on: [mentat-go-module, pipeline-go-module]
     parallel: true
 
+  - id: ci-doc-validation
+    description: GitHub Actions workflow validating ceremony — exec plan required for 3+ file PRs, ADR required for architectural decisions, STATE.md task status must be consistent with merged work
+    status: pending
+    depends_on: [goreleaser-setup]
+    parallel: true
+
   - id: docs-agents-md
     description: Write AGENTS.md and CLAUDE.md with harness rules for this repo
     status: done
