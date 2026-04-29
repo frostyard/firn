@@ -33,6 +33,8 @@ func newLLMCaller(cfg Config) (LLMCaller, error) {
 	switch backend {
 	case "claude":
 		return &claudeBackend{model: cfg.Model}, nil
+	case "copilot":
+		return &copilotBackend{model: cfg.Model}, nil
 	case "openai":
 		return newOpenAIBackend(cfg), nil
 	case "ollama":
@@ -44,7 +46,7 @@ func newLLMCaller(cfg Config) (LLMCaller, error) {
 	case "":
 		return nil, ErrNoBackend
 	default:
-		return nil, fmt.Errorf("unknown LLM backend %q: use claude, openai, or ollama", backend)
+		return nil, fmt.Errorf("unknown LLM backend %q: use claude, copilot, openai, or ollama", backend)
 	}
 }
 
@@ -71,6 +73,44 @@ func (b *claudeBackend) Call(ctx context.Context, prompt string) (string, error)
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("claude CLI: %w: %s", err, strings.TrimSpace(errOut.String()))
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+// ---------------------------------------------------------------------------
+// Copilot backend — invokes the `pi` CLI
+//
+// Flags used:
+//
+//	--print            non-interactive mode: process prompt and exit
+//	--no-session       ephemeral — do not save session state
+//	--no-context-files skip AGENTS.md / CLAUDE.md discovery
+//	--no-tools         pure text generation, no filesystem/bash tools
+//
+// The prompt is passed via stdin so that arbitrarily long prompts are handled
+// safely without hitting OS argument-length limits.
+// ---------------------------------------------------------------------------
+
+type copilotBackend struct {
+	model string
+}
+
+func (b *copilotBackend) Call(ctx context.Context, prompt string) (string, error) {
+	args := []string{"--print", "--no-session", "--no-context-files", "--no-tools"}
+	if b.model != "" {
+		args = append(args, "--model", b.model)
+	}
+
+	cmd := exec.CommandContext(ctx, "copilot", args...)
+	cmd.Stdin = strings.NewReader(prompt)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("copilot CLI: %w: %s", err, strings.TrimSpace(errOut.String()))
 	}
 	return strings.TrimSpace(out.String()), nil
 }

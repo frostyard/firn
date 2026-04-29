@@ -94,7 +94,7 @@ tasks:
 
   - id: llm-backend-copilot
     description: Add GitHub Copilot CLI (pi) backend to mentat/classifier and pipeline/specgen; detect via which pi or GH_COPILOT_TOKEN env var
-    status: pending
+    status: done
     depends_on: [mentat-llm-domain-classifier, pipeline-spec-generator]
     parallel: true
 
