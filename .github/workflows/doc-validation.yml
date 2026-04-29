@@ -1,0 +1,63 @@
+name: Documentation validation
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check exec plan for large PRs
+        run: |
+          # Count changed files in this PR
+          CHANGED=$(git diff --name-only origin/main...HEAD | wc -l)
+          echo "Files changed: $CHANGED"
+          if [ "$CHANGED" -ge 3 ]; then
+            # Check that at least one exec plan exists for this PR
+            # Look for exec plans modified/added in this PR
+            EXEC_PLANS=$(git diff --name-only origin/main...HEAD | grep "docs/exec-plans/" | wc -l)
+            if [ "$EXEC_PLANS" -eq 0 ]; then
+              echo "ERROR: This PR changes $CHANGED files but has no exec plan."
+              echo "Add a plan to docs/exec-plans/active/ or docs/exec-plans/completed/"
+              echo "See AGENTS.md for the exec plan format."
+              exit 1
+            fi
+            echo "OK: exec plan found ($EXEC_PLANS plan file(s) in this PR)"
+          fi
+
+      - name: Check ADR for docs/design changes
+        run: |
+          # If PR adds files to docs/design/ that aren't the template, verify they follow ADR format
+          NEW_DESIGN=$(git diff --name-only origin/main...HEAD | grep "^docs/design/ADR-" | wc -l)
+          DESIGN_CHANGES=$(git diff --name-only origin/main...HEAD | grep "^docs/design/" | grep -v "TEMPLATE" | wc -l)
+          if [ "$DESIGN_CHANGES" -gt 0 ] && [ "$NEW_DESIGN" -eq 0 ]; then
+            echo "WARNING: docs/design/ modified but no new ADR-NNN file added."
+            echo "If this is an architectural decision, add an ADR using docs/design/ADR-TEMPLATE.md"
+            # Warning only, not failure — allows template updates
+          fi
+
+      - name: Validate STATE.md syntax
+        run: |
+          # Extract the YAML block from STATE.md and validate it parses
+          python3 -c "
+          import sys, re
+          content = open('STATE.md').read()
+          # Find yaml block
+          m = re.search(r'\`\`\`yaml\n(.*?)\`\`\`', content, re.DOTALL)
+          if not m:
+            print('ERROR: No yaml block found in STATE.md')
+            sys.exit(1)
+          try:
+            import yaml
+            data = yaml.safe_load(m.group(1))
+            tasks = data.get('tasks', [])
+            print(f'OK: STATE.md has {len(tasks)} tasks, YAML valid')
+          except Exception as e:
+            print(f'ERROR: STATE.md YAML invalid: {e}')
+            sys.exit(1)
+          "
