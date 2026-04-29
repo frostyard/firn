@@ -132,3 +132,41 @@ It is not finished. Wave 1 is scaffolding. The pipeline is stubs. Mentat is a sc
 Firn is the compacted granular snow at the head of a glacier. It is the intermediate stage between a loose snowflake and glacier ice — the layer where raw material consolidates into something durable.
 
 This project takes loose ideas (agentic development, documentation generation, structured specs) and tries to compact them into something that works consistently. The name is a reminder that this is not the end state. It is the stage where things solidify.
+
+---
+
+## References and Provenance
+
+### Prior work by Brian Ketelsen
+
+- **Yeti** — `github.com/frostyard/yeti` (private) — production GitHub automation daemon; the direct predecessor to the pipeline component. 10-job system with issue-refiner, issue-worker, ci-fixer, auto-merger, and 5 others. Ran against live frostyard repos.
+- **Rime** — `github.com/frostyard/rime` (private) — next-generation orchestrator built on Yeti lessons. Introduced structured exec plans, 9-dimension plan validation, and the Agent Readiness Score concept.
+- **mentat-go** — `github.com/frostyard/mentat-go` (private) — Go port of the Aspenkit documentation generator. The doc-maintainer pattern (snosi/yeti/) is its proven output.
+
+### External frameworks studied
+
+- **GSD (Get Shit Done)** — [`github.com/gsd-build/get-shit-done`](https://github.com/gsd-build/get-shit-done) — 18-agent meta-prompting system; source of the wave-based parallel execution model and the `STATE.md` living-document pattern.
+- **Superpowers** — [`github.com/obra/superpowers`](https://github.com/obra/superpowers) — lightweight agent harness for repository-level behavioral conventions.
+- **CCPM (Critical Chain Project Management)** — [`github.com/automazeio/ccpm`](https://github.com/automazeio/ccpm) — epics and PRDs as pre-GitHub planning artifacts; directly informed the Layer 1 planning concept.
+- **BMAD Method** — [`github.com/bmad-code-org/BMAD-METHOD`](https://github.com/bmad-code-org/BMAD-METHOD) — structured agentic workflow with roles and handoffs.
+- **Symphony** — [`github.com/openai/symphony`](https://github.com/openai/symphony) — OpenAI's multi-agent orchestration reference.
+- **GAAI Framework** — [`github.com/Fr-e-d/GAAI-framework`](https://github.com/Fr-e-d/GAAI-framework) — generative AI agent interaction patterns.
+- **AI Coding Factory** — [`github.com/jaksa76/ai-coding-factory`](https://github.com/jaksa76/ai-coding-factory) — closest to what Yeti wanted to be; CCPM-adjacent.
+- **ORC** — [`github.com/PietroPasotti/orc`](https://github.com/PietroPasotti/orc) — orchestration patterns for parallel agent dispatch.
+
+### Warp agentic workflow
+
+- **oz-for-oss** — [`github.com/warpdotdev/oz-for-oss`](https://github.com/warpdotdev/oz-for-oss) — the source of the spec format (product.md + tech.md) and the spec-as-PR workflow. Warp's CONTRIBUTING.md documents the end-to-end pipeline.
+- **Warp terminal** — [`github.com/warpdotdev/warp`](https://github.com/warpdotdev/warp) — the open-source project that ships oz-for-oss as its development workflow.
+- Real spec example: [`specs/GH157/`](https://github.com/warpdotdev/oz-for-oss/tree/main/specs) in the oz-for-oss repository.
+
+### Documentation on agentic patterns
+
+- [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing) — basis for the humanizer skill; informs how agents should be prompted to produce human-readable output.
+- [Rime Vision document](docs/design/) — Brian's own March 2026 architecture document; the most complete prior statement of the layered architecture.
+
+### Tooling
+
+- **GoReleaser Pro** — [`goreleaser.com`](https://goreleaser.com/pro/) — release automation; monorepo support is the key Pro feature used here.
+- **clix** — `github.com/frostyard/clix` — frostyard's own CLI convenience library wrapping cobra + charmbracelet/fang.
+- **Aspenkit** — [`aspenkit.dev`](https://aspenkit.dev) — the TypeScript documentation generation tool that mentat-go was porting from; mentat v2 is a clean-room reimplementation of the core concept.
