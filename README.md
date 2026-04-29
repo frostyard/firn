@@ -19,12 +19,12 @@ Wave 1 in progress. See [STATE.md](STATE.md) for the current task graph.
 |---|---|
 | mentat CLI scaffold | ✅ |
 | mentat repo scanner | ✅ |
-| mentat LLM classifier | 🔄 in progress |
-| mentat SKILL.md generator | ⏳ pending |
+| mentat LLM classifier | ✅ |
+| mentat SKILL.md generator | ✅ |
 | pipeline CLI scaffold | ✅ |
 | pipeline config | ✅ |
-| pipeline issue watcher | 🔄 in progress |
-| pipeline spec generator | ⏳ pending |
+| pipeline issue watcher | ✅ |
+| pipeline spec generator | ✅ |
 | GoReleaser Pro release pipeline | ✅ |
 | CI documentation validation | ✅ |
 

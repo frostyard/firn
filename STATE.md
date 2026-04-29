@@ -1,7 +1,8 @@
 # Firn — Project State
 
 ## Current Phase
-Wave 1 — Foundation
+Wave 1 — Complete ✅
+Wave 2 — Pending (LLM backends, integration testing, first real run)
 
 ## Task Graph
 
