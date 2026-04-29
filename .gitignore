@@ -1,0 +1,18 @@
+# Go
+*/bin/
+*/dist/
+*/.tmp/
+
+# OS
+.DS_Store
+.env
+*.env.local
+
+# Editor
+.vscode/
+.idea/
+
+# Build outputs
+firn
+mentat/mentat
+pipeline/pipeline
