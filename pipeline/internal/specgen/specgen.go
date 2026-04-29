@@ -123,12 +123,16 @@ type Config struct {
 
 // DefaultConfig detects the LLM backend from environment variables:
 //  1. ANTHROPIC_API_KEY → "claude"
-//  2. OPENAI_API_KEY → "openai"
-//  3. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
+//  2. CODEX_MODEL env var → "codex"
+//  3. OPENAI_API_KEY → "openai"
+//  4. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
+//  5. `codex` binary on PATH → "codex" (last resort)
 func DefaultConfig() Config {
 	switch {
 	case os.Getenv("ANTHROPIC_API_KEY") != "":
 		return Config{Backend: "claude"}
+	case os.Getenv("CODEX_MODEL") != "":
+		return Config{Backend: "codex", Model: os.Getenv("CODEX_MODEL")}
 	case os.Getenv("OPENAI_API_KEY") != "":
 		return Config{Backend: "openai"}
 	case os.Getenv("OLLAMA_HOST") != "" || os.Getenv("OLLAMA_BASE_URL") != "":
@@ -138,6 +142,10 @@ func DefaultConfig() Config {
 		}
 		return Config{Backend: "ollama", OllamaBaseURL: base}
 	default:
+		// Fall back to codex if the binary is available on PATH.
+		if _, err := exec.LookPath("codex"); err == nil {
+			return Config{Backend: "codex"}
+		}
 		return Config{}
 	}
 }

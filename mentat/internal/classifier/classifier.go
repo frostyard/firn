@@ -66,8 +66,10 @@ type Config struct {
 
 // DefaultConfig detects the backend from environment variables in order:
 //  1. ANTHROPIC_API_KEY → "claude"
-//  2. OPENAI_API_KEY → "openai"
-//  3. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
+//  2. CODEX_MODEL env var → "codex"
+//  3. OPENAI_API_KEY → "openai"
+//  4. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
+//  5. `codex` binary on PATH → "codex" (last resort)
 //
 // Returns a Config with Backend="" if no relevant env var is set; Classify()
 // will return ErrNoBackend in that case.
@@ -75,6 +77,8 @@ func DefaultConfig() Config {
 	switch {
 	case os.Getenv("ANTHROPIC_API_KEY") != "":
 		return Config{Backend: "claude"}
+	case os.Getenv("CODEX_MODEL") != "":
+		return Config{Backend: "codex", Model: os.Getenv("CODEX_MODEL")}
 	case os.Getenv("OPENAI_API_KEY") != "":
 		return Config{Backend: "openai"}
 	case os.Getenv("OLLAMA_HOST") != "" || os.Getenv("OLLAMA_BASE_URL") != "":
@@ -84,6 +88,10 @@ func DefaultConfig() Config {
 		}
 		return Config{Backend: "ollama", OllamaBaseURL: base}
 	default:
+		// Fall back to codex if the binary is available on PATH.
+		if _, err := exec.LookPath("codex"); err == nil {
+			return Config{Backend: "codex"}
+		}
 		return Config{}
 	}
 }
@@ -228,6 +236,8 @@ func newCaller(cfg Config) (LLMCaller, error) {
 	switch cfg.Backend {
 	case "claude":
 		return &claudeBackend{model: cfg.Model}, nil
+	case "codex":
+		return &codexBackend{model: cfg.Model}, nil
 	case "openai":
 		return newOpenAIBackend(cfg), nil
 	case "ollama":
@@ -239,7 +249,7 @@ func newCaller(cfg Config) (LLMCaller, error) {
 	case "":
 		return nil, ErrNoBackend
 	default:
-		return nil, fmt.Errorf("unknown LLM backend %q: use claude, openai, or ollama", cfg.Backend)
+		return nil, fmt.Errorf("unknown LLM backend %q: use claude, codex, openai, or ollama", cfg.Backend)
 	}
 }
 
@@ -269,3 +279,25 @@ func (b *claudeBackend) Call(ctx context.Context, prompt string) (string, error)
 	}
 	return strings.TrimSpace(out.String()), nil
 }
+
+// ---------------------------------------------------------------------------
+// Codex backend — invokes the `codex` CLI with prompt as a positional arg
+// ---------------------------------------------------------------------------
+
+type codexBackend struct {
+	model string // stored for forward compatibility; codex CLI doesn't expose --model
+}
+
+func (b *codexBackend) Call(ctx context.Context, prompt string) (string, error) {
+	cmd := exec.CommandContext(ctx, "codex", prompt)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("codex CLI: %w: %s", err, strings.TrimSpace(errOut.String()))
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+

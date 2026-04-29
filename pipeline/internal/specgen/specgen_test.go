@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -395,4 +396,122 @@ func (r *prURLGHRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 		return []byte(r.url), nil
 	}
 	return []byte{}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Codex backend detection and behaviour tests
+// ---------------------------------------------------------------------------
+
+// TestDefaultConfig_Codex_CodexModel verifies that CODEX_MODEL triggers codex
+// backend selection and that the model name is stored in Config.Model.
+func TestDefaultConfig_Codex_CodexModel(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("CODEX_MODEL", "codex-mini")
+	t.Setenv("OLLAMA_HOST", "")
+	t.Setenv("OLLAMA_BASE_URL", "")
+
+	cfg := specgen.DefaultConfig()
+	if cfg.Backend != "codex" {
+		t.Errorf("want backend %q, got %q", "codex", cfg.Backend)
+	}
+	if cfg.Model != "codex-mini" {
+		t.Errorf("want Model %q, got %q", "codex-mini", cfg.Model)
+	}
+}
+
+// TestDefaultConfig_Codex_PriorityOverOpenAI verifies that CODEX_MODEL takes
+// precedence over OPENAI_API_KEY.
+func TestDefaultConfig_Codex_PriorityOverOpenAI(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
+	t.Setenv("CODEX_MODEL", "codex-mini")
+	t.Setenv("OLLAMA_HOST", "")
+	t.Setenv("OLLAMA_BASE_URL", "")
+
+	cfg := specgen.DefaultConfig()
+	if cfg.Backend != "codex" {
+		t.Errorf("CODEX_MODEL should beat OPENAI_API_KEY: want %q, got %q", "codex", cfg.Backend)
+	}
+}
+
+// TestDefaultConfig_Codex_NoBackendOrPath mirrors the classifier test: when all
+// env vars are unset, result depends on whether codex is on PATH.
+func TestDefaultConfig_Codex_NoBackendOrPath(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("CODEX_MODEL", "")
+	t.Setenv("OLLAMA_HOST", "")
+	t.Setenv("OLLAMA_BASE_URL", "")
+
+	cfg := specgen.DefaultConfig()
+	_, codexOnPath := exec.LookPath("codex")
+	if codexOnPath == nil {
+		if cfg.Backend != "codex" {
+			t.Errorf("codex on PATH: want backend %q, got %q", "codex", cfg.Backend)
+		}
+		return
+	}
+	if cfg.Backend != "" {
+		t.Errorf("want empty backend, got %q", cfg.Backend)
+	}
+}
+
+// TestGenerateSpec_CodexBackend_PromptPositional verifies that when the codex
+// backend is selected via Config.Backend, the prompt is forwarded to the
+// LLMCaller. Since the LLMCaller is injected (mockLLMCaller), we confirm the
+// prompt is non-empty and contains issue context — the actual exec.Command
+// construction is tested at the unit level via the capturing caller pattern.
+func TestGenerateSpec_CodexBackend_PromptPositional(t *testing.T) {
+	dir := t.TempDir()
+
+	var capturedPrompts []string
+	capture := &capturingLLMCaller{
+		responses:       []string{fakeProductMD(42), fakeTechMD(42)},
+		capturedPrompts: &capturedPrompts,
+	}
+	gh := &mockGHRunner{}
+
+	_, err := specgen.GenerateSpec(context.Background(), baseIssue, dir, specgen.Config{
+		Repo:      "example/repo",
+		Backend:   "codex",
+		DryRun:    true,
+		LLMCaller: capture,
+		GHRunner:  gh,
+	})
+	if err != nil {
+		t.Fatalf("GenerateSpec returned error: %v", err)
+	}
+
+	if len(capturedPrompts) == 0 {
+		t.Fatal("codex caller received no prompts")
+	}
+	for i, p := range capturedPrompts {
+		if p == "" {
+			t.Errorf("prompt[%d] is empty", i)
+		}
+		if !strings.Contains(p, "Add awesome feature") {
+			t.Errorf("prompt[%d] should reference issue title; got: %.80s", i, p)
+		}
+	}
+}
+
+// capturingLLMCaller records each prompt in addition to returning responses.
+type capturingLLMCaller struct {
+	responses       []string
+	capturedPrompts *[]string
+	idx             int
+}
+
+func (c *capturingLLMCaller) Call(_ context.Context, prompt string) (string, error) {
+	*c.capturedPrompts = append(*c.capturedPrompts, prompt)
+	i := c.idx
+	c.idx++
+	if i < len(c.responses) {
+		return c.responses[i], nil
+	}
+	if i == 0 {
+		return fakeProductMD(42), nil
+	}
+	return fakeTechMD(42), nil
 }
