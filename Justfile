@@ -30,3 +30,11 @@ test: test-mentat test-pipeline
 lint:
     cd mentat && go vet ./...
     cd pipeline && go vet ./...
+
+# Build snapshot (local, no publish)
+snapshot:
+    goreleaser release --snapshot --clean
+
+# Release (requires GORELEASER_KEY and GITHUB_TOKEN)
+release:
+    goreleaser release --clean

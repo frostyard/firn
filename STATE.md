@@ -75,7 +75,7 @@ tasks:
 
   - id: goreleaser-setup
     description: GoReleaser Pro config + GitHub Actions release workflow + Justfile snapshot/release targets for both mentat and pipeline binaries
-    status: pending
+    status: done
     depends_on: [mentat-go-module, pipeline-go-module]
     parallel: true
 
@@ -92,6 +92,7 @@ tasks:
 - `spec-templates` — specs/template/product.md + tech.md written in initial scaffold
 - `mentat-go-module` — clix+cobra CLI scaffold (sync/status/init stubs), version ldflags, tests passing
 - `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
+- `goreleaser-setup` — `.goreleaser.yml` (GoReleaser Pro, two binaries), `.github/workflows/release.yml` + `snapshot.yml`, Justfile `snapshot`/`release` targets, `dist/` in `.gitignore`
 
 ## Decisions
 

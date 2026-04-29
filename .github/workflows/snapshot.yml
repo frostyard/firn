@@ -1,0 +1,26 @@
+name: Snapshot build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mentat/go.mod
+          cache: true
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser-pro
+          version: latest
+          args: release --snapshot --clean
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

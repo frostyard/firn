@@ -1,0 +1,58 @@
+version: 2
+
+project_name: firn
+
+before:
+  hooks:
+    - go mod tidy -C mentat
+    - go mod tidy -C pipeline
+
+builds:
+  - id: mentat
+    main: ./cmd/mentat/
+    dir: mentat
+    binary: mentat
+    ldflags:
+      - -X github.com/frostyard/firn/mentat/internal/version.Version={{.Version}}
+      - -X github.com/frostyard/firn/mentat/internal/version.Commit={{.Commit}}
+      - -X github.com/frostyard/firn/mentat/internal/version.Date={{.Date}}
+      - -X github.com/frostyard/firn/mentat/internal/version.BuiltBy=goreleaser
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+  - id: pipeline
+    main: ./cmd/pipeline/
+    dir: pipeline
+    binary: pipeline
+    ldflags:
+      - -X github.com/frostyard/firn/pipeline/internal/version.Version={{.Version}}
+      - -X github.com/frostyard/firn/pipeline/internal/version.Commit={{.Commit}}
+      - -X github.com/frostyard/firn/pipeline/internal/version.Date={{.Date}}
+      - -X github.com/frostyard/firn/pipeline/internal/version.BuiltBy=goreleaser
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: mentat
+    ids: [mentat]
+    name_template: "mentat_{{.Version}}_{{.Os}}_{{.Arch}}"
+  - id: pipeline
+    ids: [pipeline]
+    name_template: "pipeline_{{.Version}}_{{.Os}}_{{.Arch}}"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: frostyard
+    name: firn
+  draft: false
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
