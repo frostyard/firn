@@ -51,7 +51,7 @@ tasks:
 
   - id: pipeline-issue-watcher
     description: GitHub issue poller — labeled issues trigger spec generation
-    status: pending
+    status: done
     depends_on: [pipeline-go-module, spec-templates]
     parallel: false
 
@@ -103,6 +103,7 @@ tasks:
 - `pipeline-config` — TOML config via viper; `pipeline/internal/config` package; `--config` flag wired into runCmd; 8 tests
 - `ci-doc-validation` — GitHub Actions doc ceremony validation (exec plan gate, ADR warning, STATE.md YAML check)
 - `goreleaser-setup` — `.goreleaser.yml` (GoReleaser Pro, two binaries), `.github/workflows/release.yml` + `snapshot.yml`, Justfile `snapshot`/`release` targets, `dist/` in `.gitignore`
+- `pipeline-issue-watcher` — `pipeline/internal/watcher` package: GHRunner interface, ExecRunner, Config, Issue, Watch, fetchIssues; wired into runCmd with dry-run support; 7 tests (parse, cancel, dedup, error-recovery, default-label, invalid-JSON, empty-repo)
 
 ## Decisions
 
