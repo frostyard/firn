@@ -81,7 +81,7 @@ tasks:
 
   - id: ci-doc-validation
     description: GitHub Actions workflow validating ceremony — exec plan required for 3+ file PRs, ADR required for architectural decisions, STATE.md task status must be consistent with merged work
-    status: pending
+    status: done
     depends_on: [goreleaser-setup]
     parallel: true
 
@@ -100,6 +100,7 @@ tasks:
 - `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
 - `mentat-scanner` — scanner.Scan() with SkipDirs/ContainerDirs/MinFiles/MaxDepth; 12 tests; wired into syncCmd
 - `pipeline-config` — TOML config via viper; `pipeline/internal/config` package; `--config` flag wired into runCmd; 8 tests
+- `ci-doc-validation` — GitHub Actions doc ceremony validation (exec plan gate, ADR warning, STATE.md YAML check)
 - `goreleaser-setup` — `.goreleaser.yml` (GoReleaser Pro, two binaries), `.github/workflows/release.yml` + `snapshot.yml`, Justfile `snapshot`/`release` targets, `dist/` in `.gitignore`
 
 ## Decisions
