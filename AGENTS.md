@@ -258,7 +258,8 @@ Spec files live at `specs/GH{N}/product.md` and `specs/GH{N}/tech.md`. Never imp
 
 ## Architectural Decisions
 
-ADRs live in `docs/design/ADR-NNN-slug.md`. Check existing ADRs before re-litigating a settled decision.
+ADRs live in `docs/design/ADR-NNN-slug.md`. Use `docs/design/ADR-TEMPLATE.md` for new ones.
+Check existing ADRs before re-litigating a settled decision.
 
 Current decisions (see also STATE.md Decisions table):
 - Monorepo with two independent Go modules (`mentat/` + `pipeline/`)
