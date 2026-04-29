@@ -15,7 +15,7 @@ tasks:
 
   - id: mentat-scanner
     description: Repo scanner — directory walk, SKIP_DIR_NAMES, file count threshold, candidate list output
-    status: pending
+    status: done
     depends_on: [mentat-go-module]
     parallel: false
 
@@ -92,6 +92,7 @@ tasks:
 - `spec-templates` — specs/template/product.md + tech.md written in initial scaffold
 - `mentat-go-module` — clix+cobra CLI scaffold (sync/status/init stubs), version ldflags, tests passing
 - `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
+- `mentat-scanner` — `mentat/internal/scanner` package: Config, Candidate, Scan, DefaultConfig; wired into syncCmd with text + JSON output and --dry-run support; 12 table-driven tests all passing
 
 ## Decisions
 
