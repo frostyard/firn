@@ -125,6 +125,8 @@ It is not a replacement for human engineering judgment. The spec review step, th
 
 It is not finished. Wave 1 is scaffolding. The pipeline is stubs. Mentat is a scanner without a generator. The philosophy precedes the implementation.
 
+No flashy React website with moving gradients, no expensive domain name. Just rubber meets the road agentic development for small teams and OSS projects.
+
 ---
 
 ## Why "Firn"
