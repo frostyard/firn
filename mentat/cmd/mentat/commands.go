@@ -8,11 +8,13 @@ import (
 	"github.com/frostyard/firn/mentat/internal/classifier"
 	"github.com/frostyard/firn/mentat/internal/generator"
 	"github.com/frostyard/firn/mentat/internal/scanner"
+	"github.com/frostyard/firn/mentat/internal/tracker"
 	"github.com/spf13/cobra"
 )
 
 func syncCmd() *cobra.Command {
 	var repoPath string
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "sync [path]",
 		Short: "Scan repo and generate/update SKILL.md files",
@@ -44,19 +46,59 @@ func syncCmd() *cobra.Command {
 				r.Message("  [%s] %s — %s (%d files, %v)", d.Name, d.Path, d.Description, d.FileCount, d.Languages)
 			}
 
-			// Generate SKILL.md files for each domain.
+			// Load tracker state and filter to stale domains (unless --force).
+			tr := tracker.NewTracker(repoPath)
+			trState, err := tr.Load()
+			if err != nil {
+				return fmt.Errorf("tracker load: %w", err)
+			}
+
+			var staleDomains []classifier.DomainResult
+			if force {
+				r.Message("--force: regenerating all %d domains", len(domains))
+				staleDomains = domains
+			} else {
+				for _, d := range domains {
+					stale, err := tr.IsStale(repoPath, d, trState)
+					if err != nil {
+						return fmt.Errorf("tracker stale check for %q: %w", d.Name, err)
+					}
+					if stale {
+						staleDomains = append(staleDomains, d)
+					} else {
+						r.Message("  up-to-date %s (skipping)", d.Name)
+					}
+				}
+				r.Message("%d of %d domains are stale", len(staleDomains), len(domains))
+			}
+
+			// Generate SKILL.md files for stale domains only.
 			// dry-run is handled inside GenerateAll via clix.DryRun.
 			r.Message("generating skill docs")
 			genCfg := generator.Config{
 				Backend:   classCfg.Backend,
 				Model:     classCfg.Model,
-				Overwrite: false,
+				Overwrite: true, // staleness check already gates this; always write when selected
 				Logger:    slog.Default(),
 			}
 
-			genResults, err := generator.GenerateAll(cmd.Context(), domains, repoPath, genCfg)
+			genResults, err := generator.GenerateAll(cmd.Context(), staleDomains, repoPath, genCfg)
 			if err != nil {
 				return fmt.Errorf("generate: %w", err)
+			}
+
+			// Record generation for each domain that was written (not skipped).
+			if !clix.DryRun {
+				for i, res := range genResults {
+					if !res.Skipped {
+						if err := tr.RecordGeneration(repoPath, staleDomains[i], trState); err != nil {
+							return fmt.Errorf("tracker record for %q: %w", res.Domain, err)
+						}
+					}
+				}
+				if err := tr.Save(trState); err != nil {
+					return fmt.Errorf("tracker save: %w", err)
+				}
 			}
 
 			if ok, err := clix.OutputJSON(genResults); ok {
@@ -75,6 +117,7 @@ func syncCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&repoPath, "path", "p", ".", "repository path to scan")
+	cmd.Flags().BoolVar(&force, "force", false, "regenerate all domains, ignoring staleness check")
 	return cmd
 }
 
