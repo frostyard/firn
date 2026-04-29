@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
 
 	"github.com/frostyard/clix"
+	"github.com/frostyard/firn/pipeline/internal/config"
 	"github.com/frostyard/firn/pipeline/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -35,8 +37,9 @@ Use --json for structured output suitable for scripting.`,
 // runCmd starts the pipeline daemon that polls GitHub for labeled issues.
 func runCmd() *cobra.Command {
 	var (
-		repo     string
-		interval time.Duration
+		repo       string
+		interval   time.Duration
+		configPath string
 	)
 
 	cmd := &cobra.Command{
@@ -48,18 +51,42 @@ func runCmd() *cobra.Command {
 			rep := clix.NewReporter()
 			_ = rep // reporter available for future output
 
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+
+			if clix.Verbose {
+				log.Info("effective config",
+					"pr_throttle", cfg.Pipeline.PRThrottle,
+					"ci_fixer_max_attempts", cfg.Pipeline.CIFixerMaxAttempts,
+					"draft_first", cfg.Pipeline.DraftFirst,
+				)
+			}
+
 			if clix.DryRun {
-				log.Info("dry-run: pipeline daemon would start", "repo", repo, "interval", interval)
+				log.Info("dry-run: pipeline daemon would start",
+					"repo", repo,
+					"interval", interval,
+					"pr_throttle", cfg.Pipeline.PRThrottle,
+					"ci_fixer_max_attempts", cfg.Pipeline.CIFixerMaxAttempts,
+					"draft_first", cfg.Pipeline.DraftFirst,
+				)
 				return nil
 			}
 
-			log.Info("pipeline daemon not yet implemented", "repo", repo, "interval", interval)
+			log.Info("pipeline daemon not yet implemented",
+				"repo", repo,
+				"interval", interval,
+				"pr_throttle", cfg.Pipeline.PRThrottle,
+			)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&repo, "repo", "", "GitHub repository to watch (e.g. frostyard/snosi)")
 	cmd.Flags().DurationVar(&interval, "interval", 5*time.Minute, "poll interval")
+	cmd.Flags().StringVar(&configPath, "config", "", "path to config file (default: .firn/config.toml or ~/.config/firn/config.toml)")
 	_ = cmd.MarkFlagRequired("repo")
 
 	return cmd
