@@ -85,6 +85,18 @@ tasks:
     depends_on: [goreleaser-setup]
     parallel: true
 
+  - id: llm-backend-codex
+    description: Add OpenAI Codex CLI backend to mentat/classifier and pipeline/specgen; detect via which codex or CODEX_MODEL env var
+    status: pending
+    depends_on: [mentat-llm-domain-classifier, pipeline-spec-generator]
+    parallel: true
+
+  - id: llm-backend-copilot
+    description: Add GitHub Copilot CLI (pi) backend to mentat/classifier and pipeline/specgen; detect via which pi or GH_COPILOT_TOKEN env var
+    status: pending
+    depends_on: [mentat-llm-domain-classifier, pipeline-spec-generator]
+    parallel: true
+
   - id: docs-agents-md
     description: Write AGENTS.md and CLAUDE.md with harness rules for this repo
     status: done
