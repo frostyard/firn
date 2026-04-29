@@ -134,6 +134,8 @@ func DefaultConfig() Config {
 		return Config{Backend: "copilot"}
 	case copilotInPath():
 		return Config{Backend: "copilot"}
+	case os.Getenv("CODEX_MODEL") != "":
+		return Config{Backend: "codex", Model: os.Getenv("CODEX_MODEL")}
 	case os.Getenv("OPENAI_API_KEY") != "":
 		return Config{Backend: "openai"}
 	case os.Getenv("OLLAMA_HOST") != "" || os.Getenv("OLLAMA_BASE_URL") != "":

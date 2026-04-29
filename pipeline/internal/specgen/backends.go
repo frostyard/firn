@@ -35,6 +35,8 @@ func newLLMCaller(cfg Config) (LLMCaller, error) {
 		return &claudeBackend{model: cfg.Model}, nil
 	case "copilot":
 		return &copilotBackend{model: cfg.Model}, nil
+	case "codex":
+		return &codexBackend{model: cfg.Model}, nil
 	case "openai":
 		return newOpenAIBackend(cfg), nil
 	case "ollama":
@@ -46,7 +48,7 @@ func newLLMCaller(cfg Config) (LLMCaller, error) {
 	case "":
 		return nil, ErrNoBackend
 	default:
-		return nil, fmt.Errorf("unknown LLM backend %q: use claude, copilot, openai, or ollama", backend)
+		return nil, fmt.Errorf("unknown LLM backend %q: use claude, copilot, codex, openai, or ollama", backend)
 	}
 }
 
@@ -272,4 +274,22 @@ func (b *ollamaBackend) Call(ctx context.Context, prompt string) (string, error)
 		return "", fmt.Errorf("ollama API error: %s", rb.Error)
 	}
 	return strings.TrimSpace(rb.Response), nil
+}
+
+// codexBackend invokes the `codex` CLI with the prompt as a positional arg.
+type codexBackend struct {
+	model string
+}
+
+func (b *codexBackend) Call(ctx context.Context, prompt string) (string, error) {
+	cmd := exec.CommandContext(ctx, "codex", prompt)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("codex CLI: %w: %s", err, strings.TrimSpace(errOut.String()))
+	}
+	return strings.TrimSpace(out.String()), nil
 }

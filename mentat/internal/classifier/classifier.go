@@ -20,7 +20,7 @@ import (
 // ErrNoBackend is returned when no LLM backend can be detected from the
 // environment (no ANTHROPIC_API_KEY, GH_COPILOT_TOKEN, OPENAI_API_KEY,
 // OLLAMA_HOST / OLLAMA_BASE_URL set, and `copilot` is not in PATH).
-var ErrNoBackend = errors.New("no LLM backend configured: set ANTHROPIC_API_KEY, GH_COPILOT_TOKEN, OPENAI_API_KEY, or OLLAMA_HOST (or install pi)")
+var ErrNoBackend = errors.New("no LLM backend configured: set ANTHROPIC_API_KEY, GH_COPILOT_TOKEN, CODEX_MODEL, OPENAI_API_KEY, or OLLAMA_HOST (or install copilot or codex)")
 
 // DomainResult describes a single logical domain identified by the classifier.
 type DomainResult struct {
@@ -67,8 +67,10 @@ type Config struct {
 // DefaultConfig detects the backend from environment variables in order:
 //  1. ANTHROPIC_API_KEY → "claude"
 //  2. GH_COPILOT_TOKEN set, or `copilot` found in PATH → "copilot"
-//  3. OPENAI_API_KEY → "openai"
-//  4. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
+//  3. CODEX_MODEL env var → "codex"
+//  4. OPENAI_API_KEY → "openai"
+//  5. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
+//  6. `codex` binary on PATH → "codex" (last resort)
 //
 // Returns a Config with Backend="" if no relevant env var is set and `pi` is
 // not found; Classify() will return ErrNoBackend in that case.
@@ -80,6 +82,8 @@ func DefaultConfig() Config {
 		return Config{Backend: "copilot"}
 	case copilotInPath():
 		return Config{Backend: "copilot"}
+	case os.Getenv("CODEX_MODEL") != "":
+		return Config{Backend: "codex", Model: os.Getenv("CODEX_MODEL")}
 	case os.Getenv("OPENAI_API_KEY") != "":
 		return Config{Backend: "openai"}
 	case os.Getenv("OLLAMA_HOST") != "" || os.Getenv("OLLAMA_BASE_URL") != "":
@@ -89,8 +93,12 @@ func DefaultConfig() Config {
 		}
 		return Config{Backend: "ollama", OllamaBaseURL: base}
 	default:
-		return Config{}
+		// Fall back to codex if the binary is available on PATH.
+		if _, err := exec.LookPath("codex"); err == nil {
+			return Config{Backend: "codex"}
+		}
 	}
+	return Config{}
 }
 
 // copilotInPath reports whether the `copilot` binary is available in PATH.
@@ -241,6 +249,8 @@ func newCaller(cfg Config) (LLMCaller, error) {
 		return &claudeBackend{model: cfg.Model}, nil
 	case "copilot":
 		return &copilotBackend{model: cfg.Model}, nil
+	case "codex":
+		return &codexBackend{model: cfg.Model}, nil
 	case "openai":
 		return newOpenAIBackend(cfg), nil
 	case "ollama":

@@ -88,7 +88,7 @@ tasks:
 
   - id: llm-backend-codex
     description: Add OpenAI Codex CLI backend to mentat/classifier and pipeline/specgen; detect via which codex or CODEX_MODEL env var
-    status: pending
+    status: done
     depends_on: [mentat-llm-domain-classifier, pipeline-spec-generator]
     parallel: true
 
