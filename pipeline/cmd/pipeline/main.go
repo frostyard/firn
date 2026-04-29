@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"github.com/frostyard/firn/pipeline/internal/specgen"
 	"github.com/frostyard/firn/pipeline/internal/version"
 	"github.com/frostyard/firn/pipeline/internal/watcher"
+	"github.com/frostyard/firn/pipeline/internal/worker"
 	"github.com/spf13/cobra"
 )
 
@@ -134,7 +137,7 @@ func runCmd() *cobra.Command {
 					"title", issue.Title,
 					"url", issue.URL,
 				)
-				result, err := specgen.GenerateSpec(cmd.Context(), issue, "", sgCfg)
+				specResult, err := specgen.GenerateSpec(cmd.Context(), issue, "", sgCfg)
 				if err != nil {
 					log.Error("spec generation failed",
 						"issue", issue.Number,
@@ -144,9 +147,54 @@ func runCmd() *cobra.Command {
 				}
 				log.Info("spec generated",
 					"issue", issue.Number,
-					"spec_dir", result.SpecDir,
-					"pr_url", result.PRUrl,
-					"pr_number", result.PRNumber,
+					"spec_dir", specResult.SpecDir,
+					"pr_url", specResult.PRUrl,
+					"pr_number", specResult.PRNumber,
+				)
+
+				// Poll for the spec PR to merge (30s interval, 10min timeout).
+				log.Info("worker: waiting for spec PR merge",
+					"issue", issue.Number,
+					"pr_number", specResult.PRNumber,
+				)
+				merged, pollErr := pollSpecPRMerge(cmd.Context(), repo, specResult.PRNumber, log)
+				if pollErr != nil {
+					log.Warn("worker: spec PR merge poll error",
+						"issue", issue.Number,
+						"pr_number", specResult.PRNumber,
+						"err", pollErr,
+					)
+					continue
+				}
+				if !merged {
+					log.Warn("worker: spec PR did not merge within timeout — skipping implementation",
+						"issue", issue.Number,
+						"pr_number", specResult.PRNumber,
+					)
+					continue
+				}
+
+				// Spec PR merged — run the worker.
+				wCfg := worker.Config{
+					Repo:               repo,
+					MaxConcurrentPRs:   cfg.Pipeline.PRThrottle,
+					CIFixerMaxAttempts: cfg.Pipeline.CIFixerMaxAttempts,
+					DraftFirst:         cfg.Pipeline.DraftFirst,
+					Log:                log,
+				}
+				workResult, wErr := worker.Process(cmd.Context(), specResult, "", wCfg)
+				if wErr != nil {
+					log.Error("worker: process failed",
+						"issue", issue.Number,
+						"err", wErr,
+					)
+					continue
+				}
+				log.Info("worker: impl PR result",
+					"issue", issue.Number,
+					"status", workResult.Status,
+					"pr_number", workResult.PRNumber,
+					"pr_url", workResult.PRUrl,
 				)
 			}
 
@@ -214,4 +262,70 @@ func triggerCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+// pollSpecPRMerge polls GitHub every 30 seconds for up to 10 minutes to check
+// whether the given spec PR has been merged. It returns (true, nil) when the
+// PR state is "MERGED", (false, nil) when the timeout expires without a merge,
+// and (false, err) when a polling error occurs that cannot be recovered from.
+func pollSpecPRMerge(ctx context.Context, repo string, prNumber int, log *slog.Logger) (bool, error) {
+	if prNumber <= 0 {
+		// No PR number (dry-run spec, or PR creation was skipped). Nothing to poll.
+		return false, nil
+	}
+
+	tick := time.NewTicker(30 * time.Second)
+	defer tick.Stop()
+
+	timeout := time.NewTimer(10 * time.Minute)
+	defer timeout.Stop()
+
+	runner := specgen.ExecGHRunner{}
+
+	check := func() (bool, error) {
+		out, err := runner.Run(ctx, "pr", "view",
+			"--repo", repo,
+			fmt.Sprintf("%d", prNumber),
+			"--json", "state",
+		)
+		if err != nil {
+			return false, fmt.Errorf("gh pr view %d: %w", prNumber, err)
+		}
+		type prState struct {
+			State string `json:"state"`
+		}
+		var ps prState
+		if jsonErr := json.Unmarshal(out, &ps); jsonErr != nil {
+			return false, fmt.Errorf("parsing pr state: %w", jsonErr)
+		}
+		return ps.State == "MERGED", nil
+	}
+
+	// First check fires immediately.
+	merged, err := check()
+	if err != nil {
+		log.Warn("pollSpecPRMerge: initial check failed", "pr", prNumber, "err", err)
+	} else if merged {
+		return true, nil
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-timeout.C:
+			return false, nil
+		case <-tick.C:
+			merged, err := check()
+			if err != nil {
+				log.Warn("pollSpecPRMerge: poll check failed", "pr", prNumber, "err", err)
+				continue
+			}
+			if merged {
+				log.Info("pollSpecPRMerge: spec PR merged", "pr", prNumber)
+				return true, nil
+			}
+			log.Debug("pollSpecPRMerge: not merged yet", "pr", prNumber)
+		}
+	}
 }
