@@ -8,6 +8,7 @@ import (
 
 	"github.com/frostyard/clix"
 	"github.com/frostyard/firn/pipeline/internal/config"
+	"github.com/frostyard/firn/pipeline/internal/specgen"
 	"github.com/frostyard/firn/pipeline/internal/version"
 	"github.com/frostyard/firn/pipeline/internal/watcher"
 	"github.com/spf13/cobra"
@@ -80,7 +81,12 @@ func runCmd() *cobra.Command {
 					"ci_fixer_max_attempts", cfg.Pipeline.CIFixerMaxAttempts,
 					"draft_first", cfg.Pipeline.DraftFirst,
 				)
-				// In dry-run mode spin up the watcher but only log what would happen.
+				// In dry-run mode spin up the watcher but only generate specs locally.
+				sgCfg := specgen.DefaultConfig()
+				sgCfg.Repo = repo
+				sgCfg.DryRun = true
+				sgCfg.Log = log
+
 				ch, err := watcher.Watch(cmd.Context(), watchCfg)
 				if err != nil {
 					return fmt.Errorf("starting watcher: %w", err)
@@ -89,6 +95,19 @@ func runCmd() *cobra.Command {
 					log.Info("dry-run: would process issue",
 						"number", issue.Number,
 						"title", issue.Title,
+					)
+					result, err := specgen.GenerateSpec(cmd.Context(), issue, "", sgCfg)
+					if err != nil {
+						log.Error("dry-run: spec generation failed",
+							"issue", issue.Number,
+							"err", err,
+						)
+						continue
+					}
+					log.Info("dry-run: spec files written (no PR)",
+						"issue", issue.Number,
+						"product", result.ProductPath,
+						"tech", result.TechPath,
 					)
 				}
 				return nil
@@ -100,6 +119,10 @@ func runCmd() *cobra.Command {
 				"pr_throttle", cfg.Pipeline.PRThrottle,
 			)
 
+			sgCfg := specgen.DefaultConfig()
+			sgCfg.Repo = repo
+			sgCfg.Log = log
+
 			ch, err := watcher.Watch(cmd.Context(), watchCfg)
 			if err != nil {
 				return fmt.Errorf("starting watcher: %w", err)
@@ -110,6 +133,20 @@ func runCmd() *cobra.Command {
 					"number", issue.Number,
 					"title", issue.Title,
 					"url", issue.URL,
+				)
+				result, err := specgen.GenerateSpec(cmd.Context(), issue, "", sgCfg)
+				if err != nil {
+					log.Error("spec generation failed",
+						"issue", issue.Number,
+						"err", err,
+					)
+					continue
+				}
+				log.Info("spec generated",
+					"issue", issue.Number,
+					"spec_dir", result.SpecDir,
+					"pr_url", result.PRUrl,
+					"pr_number", result.PRNumber,
 				)
 			}
 

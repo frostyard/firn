@@ -57,7 +57,7 @@ tasks:
 
   - id: pipeline-spec-generator
     description: issue-refiner equivalent — generates product.md+tech.md spec PR from labeled issue
-    status: pending
+    status: done
     depends_on: [pipeline-issue-watcher]
     parallel: false
 
@@ -101,6 +101,7 @@ tasks:
 - `mentat-skill-generator` — generator.go with GenerateAll(), NewCaller export, full scan→classify→generate pipeline in syncCmd; 10 tests
 - `mentat-llm-domain-classifier` — LLMCaller interface, claude/openai/ollama backends, env-based detection; 14 tests
 - `mentat-scanner` — scanner.Scan() with SkipDirs/ContainerDirs/MinFiles/MaxDepth; 12 tests; wired into syncCmd
+- `pipeline-spec-generator` — LLMCaller+GHRunner interfaces, product.md+tech.md generation, draft PR via gh; 7 tests
 - `pipeline-issue-watcher` — GHRunner interface, Watch() with dedup/error-recovery, 7 tests
 - `pipeline-config` — TOML config via viper; `pipeline/internal/config` package; `--config` flag wired into runCmd; 8 tests
 - `ci-doc-validation` — GitHub Actions doc ceremony validation (exec plan gate, ADR warning, STATE.md YAML check)
