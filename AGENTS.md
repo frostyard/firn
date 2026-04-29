@@ -68,6 +68,26 @@ All builds must pass clean. All tests must pass. `go vet` must be clean. No exce
 
 ## Code Conventions
 
+### CLI framework — clix
+Both `mentat` and `pipeline` use `github.com/frostyard/clix` as the CLI foundation. Do not use raw cobra or a different CLI library.
+
+```go
+import "github.com/frostyard/clix"
+
+func main() {
+    app := clix.App{Version: version, Commit: commit, Date: date, BuiltBy: builtBy}
+    root := &cobra.Command{...}
+    // clix.Run registers --json, --verbose, --dry-run, --silent automatically
+    app.Run(root)
+}
+```
+
+Key clix features — use them:
+- `clix.DryRun` — check before any write operation; log what would happen and return
+- `clix.JSONOutput` / `clix.OutputJSON(v)` — structured output when `--json` is set
+- `clix.NewReporter()` — progress output respecting `--silent` and `--verbose`
+- All four flags are registered automatically via `app.Run()`
+
 ### Module paths
 - mentat: `github.com/frostyard/firn/mentat`
 - pipeline: `github.com/frostyard/firn/pipeline`
