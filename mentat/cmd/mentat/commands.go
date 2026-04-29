@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/frostyard/clix"
+	"github.com/frostyard/firn/mentat/internal/classifier"
 	"github.com/frostyard/firn/mentat/internal/scanner"
 	"github.com/spf13/cobra"
 )
@@ -27,21 +29,30 @@ func syncCmd() *cobra.Command {
 				return fmt.Errorf("scan: %w", err)
 			}
 
-			if ok, err := clix.OutputJSON(candidates); ok {
+			// Classify candidates into logical domains.
+			r.Message("classifying domains")
+			cfg := classifier.DefaultConfig()
+			cfg.Logger = slog.Default()
+			domains, err := classifier.Classify(cmd.Context(), candidates, cfg)
+			if err != nil {
+				return fmt.Errorf("classify: %w", err)
+			}
+
+			if ok, err := clix.OutputJSON(domains); ok {
 				return err
 			}
 
-			// Text output: one candidate per line.
-			for _, c := range candidates {
-				r.Message("  %s (%d files, %v)", c.Path, c.FileCount, c.Languages)
+			// Text output: one domain per line.
+			for _, d := range domains {
+				r.Message("  [%s] %s — %s (%d files, %v)", d.Name, d.Path, d.Description, d.FileCount, d.Languages)
 			}
 
 			if clix.DryRun {
-				r.Message("dry-run: no files will be written")
+				r.Message("dry-run: stopping after classification")
 				return nil
 			}
 
-			// TODO: classifier, generator
+			// TODO: generator
 			return nil
 		},
 	}

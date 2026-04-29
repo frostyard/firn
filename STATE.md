@@ -21,7 +21,7 @@ tasks:
 
   - id: mentat-llm-domain-classifier
     description: LLM call to classify scanner candidates into domains (single cheap call, not generation)
-    status: pending
+    status: done
     depends_on: [mentat-scanner]
     parallel: false
 
@@ -93,6 +93,7 @@ tasks:
 - `mentat-go-module` — clix+cobra CLI scaffold (sync/status/init stubs), version ldflags, tests passing
 - `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
 - `mentat-scanner` — `mentat/internal/scanner` package: Config, Candidate, Scan, DefaultConfig; wired into syncCmd with text + JSON output and --dry-run support; 12 table-driven tests all passing
+- `mentat-llm-domain-classifier` — `mentat/internal/classifier` package: DomainResult, Config, LLMCaller interface, DefaultConfig (env-based backend detection), Classify, ClassifyWith, ErrNoBackend; claude/openai/ollama backends; markdown-fence + leading-prose response normalisation; 14 tests all passing; wired into syncCmd with --dry-run support
 
 ## Decisions
 
