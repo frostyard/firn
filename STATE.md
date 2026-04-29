@@ -73,6 +73,12 @@ tasks:
     depends_on: [pipeline-go-module]
     parallel: true
 
+  - id: goreleaser-setup
+    description: GoReleaser Pro config + GitHub Actions release workflow + Justfile snapshot/release targets for both mentat and pipeline binaries
+    status: pending
+    depends_on: [mentat-go-module, pipeline-go-module]
+    parallel: true
+
   - id: docs-agents-md
     description: Write AGENTS.md and CLAUDE.md with harness rules for this repo
     status: done
