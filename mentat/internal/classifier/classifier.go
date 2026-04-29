@@ -216,6 +216,13 @@ func parseResponse(raw string) ([]DomainResult, error) {
 	return results, nil
 }
 
+// NewCaller constructs the appropriate LLMCaller from cfg.
+// It is exported so other packages (e.g. generator) can reuse the same backends
+// without duplicating the backend-selection switch.
+func NewCaller(cfg Config) (LLMCaller, error) {
+	return newCaller(cfg)
+}
+
 // newCaller constructs the appropriate LLMCaller from cfg.
 func newCaller(cfg Config) (LLMCaller, error) {
 	switch cfg.Backend {

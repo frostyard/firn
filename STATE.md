@@ -27,7 +27,7 @@ tasks:
 
   - id: mentat-skill-generator
     description: Per-domain LLM generation of SKILL.md content, write to .agents/skills/{domain}/SKILL.md
-    status: pending
+    status: done
     depends_on: [mentat-llm-domain-classifier]
     parallel: false
 
@@ -98,6 +98,7 @@ tasks:
 - `spec-templates` — specs/template/product.md + tech.md written in initial scaffold
 - `mentat-go-module` — clix+cobra CLI scaffold (sync/status/init stubs), version ldflags, tests passing
 - `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
+- `mentat-skill-generator` — generator.go with GenerateAll(), NewCaller export, full scan→classify→generate pipeline in syncCmd; 10 tests
 - `mentat-llm-domain-classifier` — LLMCaller interface, claude/openai/ollama backends, env-based detection; 14 tests
 - `mentat-scanner` — scanner.Scan() with SkipDirs/ContainerDirs/MinFiles/MaxDepth; 12 tests; wired into syncCmd
 - `pipeline-issue-watcher` — GHRunner interface, Watch() with dedup/error-recovery, 7 tests
