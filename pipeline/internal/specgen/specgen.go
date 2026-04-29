@@ -464,6 +464,14 @@ func parsePRNumber(prURL string) int {
 // io.Discard assignment to satisfy the import if only used in test files.
 var _ io.Writer = io.Discard
 
+// NewLLMCaller constructs the appropriate LLMCaller from a Config.
+// It is the exported counterpart of the internal newLLMCaller and is
+// intended for use by sibling packages (e.g. worker) that want to reuse
+// the same LLM backend detection logic without duplicating it.
+func NewLLMCaller(cfg Config) (LLMCaller, error) {
+	return newLLMCaller(cfg)
+}
+
 // jsonUnmarshal is a thin wrapper so the package has a single import of
 // encoding/json (defined in backends.go).
 func jsonUnmarshal(data []byte, v any) error {
