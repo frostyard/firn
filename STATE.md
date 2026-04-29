@@ -69,7 +69,7 @@ tasks:
 
   - id: pipeline-config
     description: Config file support — pr_throttle (default 3), ci_fixer_max_attempts (default 3), draft_first (default true)
-    status: pending
+    status: done
     depends_on: [pipeline-go-module]
     parallel: true
 
@@ -98,6 +98,7 @@ tasks:
 - `spec-templates` — specs/template/product.md + tech.md written in initial scaffold
 - `mentat-go-module` — clix+cobra CLI scaffold (sync/status/init stubs), version ldflags, tests passing
 - `pipeline-go-module` — clix-based cobra CLI scaffold with run/status/trigger stubs, internal/version package, tests, ldflags build target
+- `pipeline-config` — TOML config via viper; `pipeline/internal/config` package; `--config` flag wired into runCmd; 8 tests
 - `goreleaser-setup` — `.goreleaser.yml` (GoReleaser Pro, two binaries), `.github/workflows/release.yml` + `snapshot.yml`, Justfile `snapshot`/`release` targets, `dist/` in `.gitignore`
 
 ## Decisions
