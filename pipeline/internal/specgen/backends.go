@@ -98,13 +98,13 @@ type copilotBackend struct {
 }
 
 func (b *copilotBackend) Call(ctx context.Context, prompt string) (string, error) {
-	args := []string{"--print", "--no-session", "--no-context-files", "--no-tools"}
+	args := []string{"--prompt", prompt}
 	if b.model != "" {
 		args = append(args, "--model", b.model)
 	}
 
 	cmd := exec.CommandContext(ctx, "copilot", args...)
-	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Stdin = nil
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
