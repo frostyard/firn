@@ -36,56 +36,69 @@ Then:
 1. Identify all tasks with `status: pending` where every `depends_on` entry is `done`
 2. These are the **immediately dispatchable** tasks
 3. Tasks with `parallel: true` can all run at the same time
-4. Tasks with `parallel: false` must run one at a time (check if any in-flight)
+4. Tasks with `parallel: false` must run one at a time
 
-Report to the user: "Wave N has X tasks ready. N are parallel, M must be sequential."
+Report to the user: "Wave N has X tasks ready. N are parallel, M must be sequential. Here are the unblocked tasks: [list]"
 
 ---
 
 ## Dispatching Tasks
 
-For each unblocked task:
-1. Create an isolated git worktree: `git worktree add ../repo-wt-{task-id} -b {branch-prefix}/{task-id}`
-2. Dispatch subagent with `workdir` pointing to the worktree
-3. **Always include in the task prompt:** "Do NOT modify STATE.md — the orchestrator updates it after merge."
-4. Log dispatch: record subagent ID, task ID, and worktree path
+Each task should run in an **isolated git worktree** so parallel tasks don't conflict:
 
-Example dispatch pattern:
+```bash
+# Create an isolated worktree for this task
+git worktree add ../repo-wt-{task-id} -b {branch-prefix}/{task-id}
+cd ../repo-wt-{task-id}
+
+# Run your agent of choice in that directory
+# e.g. with Claude Code:
+#   claude
+# e.g. with Codex:
+#   codex
+# e.g. with Copilot CLI:
+#   copilot suggest ...
 ```
-dispatch_subagent({
-  agent: "coder",
-  workdir: "/path/to/repo-wt-task-slug",
-  task: "Implement [task description]...\n\nDo NOT modify STATE.md."
-})
-```
+
+When describing the task to the agent, always include:
+> "Do NOT modify STATE.md — the human updates it after the work is merged."
+
+For parallel tasks: open multiple terminals, one worktree per task, run the agent in each.
 
 ---
 
-## After a Subagent Completes
+## After a Task Completes
 
-1. Review the PR/output
-2. Merge via your standard merge workflow
-3. Update STATE.md yourself (never delegate this):
-   ```python
-   content = open('STATE.md').read()
-   content = re.sub(
-     r'(id: task-slug.*?status:) pending',
-     r'\1 done',
-     content, flags=re.DOTALL
-   )
-   open('STATE.md', 'w').write(content)
-   ```
-4. Add to the Completed section with a one-line summary
+1. Review the output / PR
+2. Merge it
+3. Update STATE.md yourself — never ask an agent to do this:
+
+```python
+# Quick Python one-liner to mark a task done:
+python3 -c "
+import re, sys
+slug = 'task-slug'  # replace with actual id
+content = open('STATE.md').read()
+content = re.sub(
+    r'(id: ' + slug + r'.*?status:) pending',
+    r'\1 done', content, flags=re.DOTALL
+)
+open('STATE.md', 'w').write(content)
+print('done')
+"
+```
+
+4. Add a one-line note to the Completed section
 5. Commit: `git add STATE.md && git commit -m "state: {task-slug} done"`
-6. Check for newly unblocked tasks and dispatch them
+6. Check for newly unblocked tasks and start the next round
 
 ---
 
 ## Worktree Cleanup
 
-After a task is merged and STATE.md updated:
+After a task is merged:
 ```bash
-git worktree remove /path/to/repo-wt-task-slug --force
+git worktree remove ../repo-wt-{task-id} --force
 git push origin --delete {branch}
 ```
 
@@ -93,14 +106,20 @@ git push origin --delete {branch}
 
 ## Rules
 
-1. **Orchestrator-only STATE.md writes.** Subagents write code and open PRs. The orchestrator (you) updates STATE.md after merge. Never delegate this.
-2. **Worktree isolation.** Each parallel task gets its own worktree. Never dispatch two concurrent tasks to the same working directory.
-3. **Verify YAML validity before committing.** After editing STATE.md, validate the YAML block parses:
+1. **Human-only STATE.md writes.** Agents write code and open PRs. The human updates STATE.md after merge. Never delegate this.
+2. **Worktree isolation.** Each parallel task gets its own worktree. Never run two concurrent tasks in the same directory.
+3. **Verify YAML validity before committing:**
    ```bash
-   python3 -c "import yaml, re; content=open('STATE.md').read(); m=re.search(r'\`\`\`yaml\n(.*?)\`\`\`',content,re.DOTALL); yaml.safe_load(m.group(1)); print('valid')"
+   python3 -c "
+   import yaml, re
+   content = open('STATE.md').read()
+   m = re.search(r'\`\`\`yaml\n(.*?)\`\`\`', content, re.DOTALL)
+   yaml.safe_load(m.group(1))
+   print('valid')
+   "
    ```
-4. **New tasks go inside the YAML fence.** When adding tasks, place them inside the ` ```yaml ` block, not after the closing fence.
-5. **Wave boundaries are implicit.** There are no explicit wave markers — a wave ends when all pending tasks are done and all newly unblocked tasks are identified. Update the phase header when moving to a new wave.
+4. **New tasks go inside the YAML fence.** When adding tasks, place them inside the ` ```yaml ` block, not after the closing ` ``` `.
+5. **Wave boundaries are implicit.** A wave ends when all pending tasks are done and newly unblocked tasks are identified. Update the phase header in STATE.md when moving to a new wave.
 
 ---
 
@@ -108,14 +127,30 @@ git push origin --delete {branch}
 
 | ❌ Don't | ✅ Do instead |
 |---|---|
-| Let a subagent update STATE.md | Orchestrator updates STATE.md after merge |
-| Dispatch two tasks to the same clone | Create a worktree per task |
+| Ask an agent to update STATE.md | You update STATE.md after merge |
+| Run two tasks in the same clone | Create a worktree per task |
 | Append new tasks after the closing YAML fence | Insert inside the ` ```yaml ` block |
-| Assume a task is done because its PR is open | Mark done only after merge is confirmed |
-| Keep STATE.md in a memory file | Keep it in git — it's the source of truth |
+| Mark a task done when the PR is open | Mark done only after merge is confirmed |
+| Store project state in chat history | Keep it in STATE.md — it survives context resets |
 
 ---
 
 ## Reference Implementation
 
-Firn (`github.com/frostyard/firn`) uses this pattern throughout. The `STATE.md` in that repo is the canonical example.
+Firn (`github.com/frostyard/firn`) uses this pattern throughout. The `STATE.md` in that repo is the canonical example of a well-structured task graph.
+
+---
+
+## Note for Pie/Miles users
+
+If you are running this skill inside Pie with the `dispatch_subagent` tool available, you can automate the dispatch step:
+
+```
+dispatch_subagent({
+  agent: "coder",
+  workdir: "/path/to/repo-wt-task-slug",
+  task: "Implement [description]...\n\nDo NOT modify STATE.md."
+})
+```
+
+The worktree isolation and orchestrator-only STATE.md update rules still apply.
