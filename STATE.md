@@ -162,6 +162,11 @@ tasks:
     status: pending
     depends_on: [pipeline-issue-worker]
     parallel: false
+  - id: mentat-writing-skills-prompt
+    description: Replace hand-rolled generator prompt with writing-skills/SKILL.md as context. Bundle obra/superpowers writing-skills skill as a default; override with repo-local version if present. LLM follows skill methodology rather than bespoke section list.
+    status: pending
+    depends_on: [mentat-skill-generator]
+    parallel: true
 ```
 
 ## Completed
