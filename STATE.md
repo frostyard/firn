@@ -104,6 +104,12 @@ tasks:
     depends_on: [mentat-skill-generator]
     parallel: true
 
+  - id: mentat-skill-validation
+    description: Verify skills are actually loaded by real agents. Embed a canary identifier in generated SKILL.md, invoke claude/codex/copilot CLI with a domain question, assert canary appears in response.
+    status: pending
+    depends_on: [mentat-skill-distribution]
+    parallel: false
+
   - id: mentat-integration-test-green
     description: Run mentat sync against frostyard/mentat-fixture-green, compare output against DOMAINS.md ground truth, score result
     status: pending
