@@ -98,6 +98,24 @@ tasks:
     depends_on: [mentat-llm-domain-classifier, pipeline-spec-generator]
     parallel: true
 
+  - id: mentat-skill-distribution
+    description: After generating master SKILL.md files, distribute them to agent-specific paths (.agents/skills/, .claude/commands/, .codex/, .cursor/rules/, AGENTS.md). Config-driven target list.
+    status: pending
+    depends_on: [mentat-skill-generator]
+    parallel: true
+
+  - id: mentat-integration-test-green
+    description: Run mentat sync against frostyard/mentat-fixture-green, compare output against DOMAINS.md ground truth, score result
+    status: pending
+    depends_on: [mentat-skill-generator]
+    parallel: true
+
+  - id: mentat-integration-test-brown
+    description: Run mentat sync against frostyard/mentat-fixture-brown, compare output against DOMAINS.md ground truth (structural containers, sparse dirs, multi-language)
+    status: pending
+    depends_on: [mentat-skill-generator]
+    parallel: true
+
   - id: docs-agents-md
     description: Write AGENTS.md and CLAUDE.md with harness rules for this repo
     status: done
