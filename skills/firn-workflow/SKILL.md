@@ -164,6 +164,16 @@ AGENTS.md            Agent navigation map for this repo
 
 ---
 
+## LLM Output Validation
+
+When invoking LLM CLIs (claude, copilot, codex) to generate file content:
+
+1. **Disable agent tools.** Tools-enabled mode produces scaffolding (failed tool calls, status lines) instead of content. Use `--available-tools=` (copilot) or equivalent.
+2. **Validate before writing.** Check that the output starts with the expected structure (e.g. YAML frontmatter for SKILL.md). If missing, inject it rather than writing garbage.
+3. **Strip trailing stats.** Some CLIs append `Changes +0 -0 / Requests N` lines. Trim before writing.
+
+---
+
 ## References
 
 - [[state-md]] — how to work with the STATE.md task graph
