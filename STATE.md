@@ -167,6 +167,11 @@ tasks:
     status: done
     depends_on: [mentat-skill-generator]
     parallel: true
+  - id: agent-recall-ai-evaluation
+    description: Evaluate agent-recall-ai (https://github.com/srinathsankara/agent-recall-ai) for integration with firn pipeline and Pie subagent dispatch. Prototype wrapping pipeline issue-worker with Checkpoint, test as_handoff() for mid-task resume, assess alternatives_rejected compounding for spec quality. Determine whether this replaces or complements pipeline-task-state-folders.
+    status: pending
+    depends_on: []
+    parallel: true
 ```
 
 ## Completed
