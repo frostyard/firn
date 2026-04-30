@@ -53,9 +53,10 @@ func DefaultConfig() Config {
 		},
 		ContainerDirs: []string{
 			"src", "internal", "cmd", "pkg", "lib", "app", "core",
+			"frontend", "backend", "client", "web",
 		},
 		MinFiles:   2,
-		Extensions: []string{".go", ".ts", ".js", ".py", ".sh", ".rs", ".rb", ".java", ".kt", ".swift"},
+		Extensions: []string{".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".sh", ".rs", ".rb", ".java", ".kt", ".swift"},
 		MaxDepth:   3,
 	}
 }

@@ -76,6 +76,8 @@ type Config struct {
 // not found; Classify() will return ErrNoBackend in that case.
 func DefaultConfig() Config {
 	switch {
+	case os.Getenv("MENTAT_BACKEND") != "":
+		return Config{Backend: os.Getenv("MENTAT_BACKEND"), Model: os.Getenv("MENTAT_MODEL")}
 	case os.Getenv("ANTHROPIC_API_KEY") != "":
 		return Config{Backend: "claude"}
 	case os.Getenv("GH_COPILOT_TOKEN") != "":
@@ -201,12 +203,13 @@ func buildPrompt(candidates []scanner.Candidate) (string, error) {
 
 %s
 
-Which directories represent logical domains (e.g. auth, billing, scanner, config) vs structural containers or utilities?
+Which directories represent logical domains vs structural containers or utilities?
+Domains exist in all layers — backend (e.g. auth, billing), frontend (e.g. components, hooks, pages), and infrastructure (e.g. config, migrations).
 
 For each domain, respond with a JSON array (and nothing else — no markdown fences, no explanation) in this exact format:
 [{"name": "short-domain-name", "path": "relative/path/from/root", "description": "One sentence describing what this domain does."}]
 
-Only include directories that represent genuine logical domains. Omit pure utilities, test helpers, or structural scaffolding.`, string(b)), nil
+Only omit directories that are pure utilities, test helpers, or structural scaffolding with no domain logic of their own.`, string(b)), nil
 }
 
 // parseResponse strips optional markdown fences and unmarshals the JSON array

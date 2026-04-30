@@ -128,6 +128,8 @@ type Config struct {
 //  4. OLLAMA_HOST or OLLAMA_BASE_URL → "ollama"
 func DefaultConfig() Config {
 	switch {
+	case os.Getenv("PIPELINE_BACKEND") != "":
+		return Config{Backend: os.Getenv("PIPELINE_BACKEND"), Model: os.Getenv("PIPELINE_MODEL")}
 	case os.Getenv("ANTHROPIC_API_KEY") != "":
 		return Config{Backend: "claude"}
 	case os.Getenv("GH_COPILOT_TOKEN") != "":
