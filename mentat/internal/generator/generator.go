@@ -336,18 +336,43 @@ func readFirstLines(path string, n int) (string, error) {
 // Response normalisation
 // ---------------------------------------------------------------------------
 
-// normaliseContent strips any markdown code fences the LLM may have added and
-// ensures the content ends with a single newline.
+// normaliseContent strips any markdown code fences, agent tool-call output,
+// and trailing stats lines (e.g. "Changes +0 -0 / Requests 1 Premium") that
+// some LLM CLIs emit around the actual content.
 func normaliseContent(raw string) string {
 	s := strings.TrimSpace(raw)
 
-	// Strip ```markdown ... ``` or ``` ... ``` fences.
-	if strings.HasPrefix(s, "```") {
-		start := strings.Index(s, "\n")
-		end := strings.LastIndex(s, "```")
-		if start != -1 && end > start {
-			s = strings.TrimSpace(s[start+1 : end])
+	// Strip trailing stats lines emitted by some CLI tools (e.g. copilot).
+	// These appear as lines like "Changes +0 -0" or "Requests 1 Premium (5s)".
+	lines := strings.Split(s, "\n")
+	for len(lines) > 0 {
+		last := strings.TrimSpace(lines[len(lines)-1])
+		if strings.HasPrefix(last, "Changes") || strings.HasPrefix(last, "Requests") || last == "" {
+			lines = lines[:len(lines)-1]
+		} else {
+			break
 		}
+	}
+	s = strings.TrimSpace(strings.Join(lines, "\n"))
+
+	// If the response contains a code fence, extract the content inside the
+	// last/outermost fence (handles agent preamble before the fence).
+	if idx := strings.LastIndex(s, "```"); idx != -1 {
+		// Find the opening fence
+		openIdx := strings.Index(s, "```")
+		closeIdx := strings.LastIndex(s, "```")
+		if openIdx != closeIdx {
+			start := strings.Index(s[openIdx:], "\n")
+			if start != -1 {
+				s = strings.TrimSpace(s[openIdx+start+1 : closeIdx])
+			}
+		}
+	}
+
+	// If the response has agent tool-call preamble before the YAML frontmatter,
+	// find the first --- and take everything from there.
+	if i := strings.Index(s, "---\n"); i > 0 {
+		s = strings.TrimSpace(s[i:])
 	}
 
 	return s + "\n"

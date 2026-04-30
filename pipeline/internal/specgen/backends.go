@@ -98,7 +98,7 @@ type copilotBackend struct {
 }
 
 func (b *copilotBackend) Call(ctx context.Context, prompt string) (string, error) {
-	args := []string{"--prompt", prompt}
+	args := []string{"--available-tools=", "--prompt", prompt}
 	if b.model != "" {
 		args = append(args, "--model", b.model)
 	}
