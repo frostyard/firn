@@ -157,6 +157,11 @@ tasks:
     depends_on: [pipeline-issue-worker]
     parallel: true
 
+  - id: pipeline-task-state-folders
+    description: Research botfiles task-status-tracker-contract.md pattern for durable multi-run task state. Apply to pipeline issue-worker resume logic — when an implementation job fails partway, where does state live?
+    status: pending
+    depends_on: [pipeline-issue-worker]
+    parallel: false
 ```
 
 ## Completed
