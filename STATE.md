@@ -127,6 +127,36 @@ tasks:
     status: done
     depends_on: []
     parallel: true
+  - id: mentat-agents-md-richer
+    description: Upgrade AGENTS.md generation — repo-level overview section + domain index (one-liner + link per domain) + critical patterns. Hard cap 500 lines. Compress domain sections to index entries if cap would be exceeded.
+    status: pending
+    depends_on: [mentat-skill-distribution]
+    parallel: false
+
+  - id: mentat-distribute-agents-md
+    description: Distribute AGENTS.md to CLAUDE.md, .github/copilot-instructions.md, .codex/AGENTS.md in addition to existing targets
+    status: pending
+    depends_on: [mentat-agents-md-richer]
+    parallel: false
+
+  - id: pipeline-ci-fixer
+    description: After issue-worker opens a PR, push CI fixes up to ci_fixer_max_attempts, then add needs-human label and stop
+    status: pending
+    depends_on: [pipeline-issue-worker]
+    parallel: false
+
+  - id: pipeline-review-addresser
+    description: Watch for PR review comments on agent-opened PRs, push fixes addressing reviewer feedback
+    status: pending
+    depends_on: [pipeline-ci-fixer]
+    parallel: false
+
+  - id: pipeline-auto-merger
+    description: Auto-merge approved PRs (agent-pr label, all checks green, at least one approval)
+    status: pending
+    depends_on: [pipeline-issue-worker]
+    parallel: true
+
 ```
 
 ## Completed
