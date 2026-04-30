@@ -369,8 +369,8 @@ func readFirstLines(path string, n int) (string, error) {
 // Response normalisation
 // ---------------------------------------------------------------------------
 
-// normaliseContent strips markdown code fences and trailing stats lines that
-// some LLM CLIs emit, then ensures the result ends with a single newline.
+// normaliseContent strips markdown code fences, trailing stats lines, and
+// agent tool-call preamble. Ensures the result ends with a single newline.
 //
 // If no YAML frontmatter is detected the caller (generateWith) injects a
 // minimal one — that responsibility lives there, not here.
@@ -402,6 +402,17 @@ func normaliseContent(raw string) string {
 				s = strings.TrimSpace(s[start+1 : closeIdx])
 			}
 		}
+	}
+
+	// When LLM agents make tool calls before generating content they often
+	// produce multiple frontmatter blocks (one failed attempt, then the real
+	// one). Find the LAST valid YAML frontmatter start and take everything
+	// from there. A valid frontmatter start is "---\n" followed by "name:".
+	if idx := strings.LastIndex(s, "\n---\nname:"); idx >= 0 {
+		s = strings.TrimSpace(s[idx+1:])
+	} else if idx := strings.LastIndex(s, "\n---\n"); idx >= 0 && !strings.HasPrefix(s, "---\n") {
+		// Fallback: take from last --- if content doesn't start cleanly with frontmatter
+		s = strings.TrimSpace(s[idx+1:])
 	}
 
 	return s + "\n"
