@@ -390,14 +390,16 @@ func normaliseContent(raw string) string {
 	}
 	s = strings.TrimSpace(strings.Join(lines, "\n"))
 
-	// Strip outermost code fence if present (handles "```markdown ... ```").
-	if strings.Contains(s, "```") {
-		openIdx := strings.Index(s, "```")
+	// Strip outermost code fence ONLY when the entire response is wrapped in one
+	// (first non-empty line starts with ```) — not when the content contains
+	// internal code blocks inside valid SKILL.md content.
+	if strings.HasPrefix(s, "```") {
+		openIdx := 0
 		closeIdx := strings.LastIndex(s, "```")
-		if openIdx != closeIdx {
-			start := strings.Index(s[openIdx:], "\n")
+		if closeIdx > openIdx {
+			start := strings.Index(s, "\n")
 			if start != -1 {
-				s = strings.TrimSpace(s[openIdx+start+1 : closeIdx])
+				s = strings.TrimSpace(s[start+1 : closeIdx])
 			}
 		}
 	}
