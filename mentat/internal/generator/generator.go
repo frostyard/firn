@@ -145,6 +145,12 @@ func generateWith(ctx context.Context, domain classifier.DomainResult, repoPath 
 
 	content := normaliseContent(raw)
 
+	// If the LLM omitted the YAML frontmatter, inject a minimal one.
+	if !strings.HasPrefix(content, "---\n") {
+		header := fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n", domain.Name, domain.Description)
+		content = header + content
+	}
+
 	// Ensure the output directory exists.
 	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
 		return Result{}, fmt.Errorf("generator: creating output dir for domain %q: %w", domain.Name, err)
@@ -370,9 +376,13 @@ func normaliseContent(raw string) string {
 	}
 
 	// If the response has agent tool-call preamble before the YAML frontmatter,
-	// find the first --- and take everything from there.
-	if i := strings.Index(s, "---\n"); i > 0 {
-		s = strings.TrimSpace(s[i:])
+	// find the FIRST occurrence of a line that is exactly "---" and take
+	// everything from there — but only if it precedes the main content.
+	// Guard: only apply if the current content does NOT already start with ---.
+	if !strings.HasPrefix(s, "---") {
+		if i := strings.Index(s, "\n---\n"); i >= 0 {
+			s = strings.TrimSpace(s[i+1:])
+		}
 	}
 
 	return s + "\n"
