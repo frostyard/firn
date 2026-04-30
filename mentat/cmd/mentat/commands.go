@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/frostyard/clix"
 	"github.com/frostyard/firn/mentat/internal/classifier"
+	"github.com/frostyard/firn/mentat/internal/distributor"
 	"github.com/frostyard/firn/mentat/internal/generator"
 	"github.com/frostyard/firn/mentat/internal/scanner"
 	"github.com/frostyard/firn/mentat/internal/tracker"
@@ -15,6 +17,7 @@ import (
 func syncCmd() *cobra.Command {
 	var repoPath string
 	var force bool
+	var noDistribute bool
 	cmd := &cobra.Command{
 		Use:   "sync [path]",
 		Short: "Scan repo and generate/update SKILL.md files",
@@ -113,11 +116,42 @@ func syncCmd() *cobra.Command {
 				}
 			}
 
+			// Distribute generated skills to all agent-specific target locations.
+			if !noDistribute {
+				r.Message("distributing skills")
+				var skills []distributor.SkillContent
+				for _, res := range genResults {
+					if res.Skipped {
+						continue
+					}
+					content, err := os.ReadFile(res.Path)
+					if err != nil {
+						return fmt.Errorf("distribute: reading %s: %w", res.Path, err)
+					}
+					skills = append(skills, distributor.SkillContent{
+						Domain:  res.Domain,
+						Content: string(content),
+					})
+				}
+				if len(skills) > 0 {
+					distCfg := distributor.DefaultConfig()
+					if err := distributor.DistributeAll(repoPath, skills, distCfg, slog.Default()); err != nil {
+						return fmt.Errorf("distribute: %w", err)
+					}
+					for _, sc := range skills {
+						r.Message("  distributed %s", sc.Domain)
+					}
+				}
+			} else {
+				r.Message("--no-distribute: skipping distribution")
+			}
+
 			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&repoPath, "path", "p", ".", "repository path to scan")
 	cmd.Flags().BoolVar(&force, "force", false, "regenerate all domains, ignoring staleness check")
+	cmd.Flags().BoolVar(&noDistribute, "no-distribute", false, "skip distribution to agent-specific paths after generation")
 	return cmd
 }
 

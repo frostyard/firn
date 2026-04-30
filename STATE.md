@@ -100,7 +100,7 @@ tasks:
 
   - id: mentat-skill-distribution
     description: After generating master SKILL.md files, distribute them to agent-specific paths (.agents/skills/, .claude/commands/, .codex/, .cursor/rules/, AGENTS.md). Config-driven target list.
-    status: pending
+    status: done
     depends_on: [mentat-skill-generator]
     parallel: true
 
