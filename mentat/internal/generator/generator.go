@@ -233,7 +233,35 @@ func generateAllWith(ctx context.Context, domains []classifier.DomainResult, rep
 // Prompt construction
 // ---------------------------------------------------------------------------
 
+// promptExample is the one-shot SKILL.md example embedded in every prompt.
+// Keeping it as a package-level constant avoids nesting raw-string literals
+// (Go does not allow backtick inside a backtick raw string).
+const promptExample = `---
+name: queue
+description: In-memory task queue with priority scheduling and dead-letter support.
+---
+
+## When to use
+
+Call ` + "`queue.Enqueue`" + ` to schedule work; call ` + "`queue.Drain`" + ` in tests to flush synchronously.
+Never access ` + "`Queue.items`" + ` directly — the field is unexported intentionally.
+
+## Key invariant
+
+` + "`maxRetries`" + ` is checked BEFORE re-enqueue. Exceeding it moves the item to the
+dead-letter list, not back to the main queue. Forgetting this causes silent data loss.
+
+## Entry point
+
+Start at ` + "`queue.go`" + ` → ` + "`Queue.process`" + ` loop. The scheduler lives in ` + "`scheduler.go`" + `.
+`
+
 // buildPrompt assembles the LLM prompt for a single domain.
+//
+// Design rationale: concise over prescriptive. One concrete example beats five
+// section headers. Only the frontmatter format is mandatory — structure of the
+// markdown body is left to the model. Domain context is passed on a single line
+// to reduce token count while keeping all signal.
 func buildPrompt(domain classifier.DomainResult, fileSample string) string {
 	langs := strings.Join(domain.Languages, ", ")
 	if langs == "" {
@@ -241,36 +269,35 @@ func buildPrompt(domain classifier.DomainResult, fileSample string) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("You are generating a SKILL.md documentation file for an AI coding agent navigating a software repository.\n\n")
-	sb.WriteString(fmt.Sprintf("Domain: %s\n", domain.Name))
-	sb.WriteString(fmt.Sprintf("Path: %s\n", domain.Path))
+
+	// Domain context — one dense line keeps token usage low.
+	sb.WriteString(fmt.Sprintf("Domain: %s | Path: %s | Lang: %s | Files: %d\n", domain.Name, domain.Path, langs, domain.FileCount))
 	sb.WriteString(fmt.Sprintf("Description: %s\n", domain.Description))
-	sb.WriteString(fmt.Sprintf("Languages: %s\n", langs))
-	sb.WriteString(fmt.Sprintf("File count: %d\n\n", domain.FileCount))
 
 	if fileSample != "" {
-		sb.WriteString("Source files in this domain (filename + first few lines):\n")
+		sb.WriteString("\nSource sample (filename + first lines):\n")
 		sb.WriteString(fileSample)
-		sb.WriteString("\n")
 	}
 
-	sb.WriteString(`Generate a SKILL.md file that an AI agent would find useful when working in this domain.
+	// Task instruction.
+	sb.WriteString("\nWrite a SKILL.md for an AI coding agent working in this domain.\n\n")
+	sb.WriteString("A good SKILL.md is short and specific. It tells the agent only what it cannot\n")
+	sb.WriteString("infer from reading the code: non-obvious invariants, tricky entry points,\n")
+	sb.WriteString("load-bearing conventions, and concrete usage patterns. Prefer code snippets\n")
+	sb.WriteString("over prose where they are clearer. Do not reproduce information that is\n")
+	sb.WriteString("obvious from filenames, type names, or package comments.\n\n")
 
-Include these sections:
-- Purpose: what this domain does and why it exists
-- Key Abstractions: main types, interfaces, and concepts an agent must understand
-- Common Patterns: recurring code patterns agents should follow when modifying this domain
-- Entry Points: where to start when reading or modifying this domain
-- Things to Know Before Modifying: gotchas, invariants, constraints, and things that will break if ignored
+	// Frontmatter requirement.
+	sb.WriteString("Required: the file MUST start with YAML frontmatter:\n\n")
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("name: %s\n", domain.Name))
+	sb.WriteString("description: <one-sentence description>\n")
+	sb.WriteString("---\n\n")
 
-Output ONLY the SKILL.md content — no preamble, no explanation, no markdown fences.
-The file must start with YAML frontmatter in exactly this format:
----
-name: ` + domain.Name + `
-description: <one-sentence description>
----
-
-Then a markdown body with the sections listed above.`)
+	// One-shot example.
+	sb.WriteString("Example of a well-written SKILL.md (for a different domain — do not copy it verbatim):\n\n")
+	sb.WriteString(promptExample)
+	sb.WriteString("\nOutput ONLY the SKILL.md content — no preamble, no explanation, no markdown fences.\n")
 
 	return sb.String()
 }
@@ -342,14 +369,16 @@ func readFirstLines(path string, n int) (string, error) {
 // Response normalisation
 // ---------------------------------------------------------------------------
 
-// normaliseContent strips any markdown code fences, agent tool-call output,
-// and trailing stats lines (e.g. "Changes +0 -0 / Requests 1 Premium") that
-// some LLM CLIs emit around the actual content.
+// normaliseContent strips markdown code fences and trailing stats lines that
+// some LLM CLIs emit, then ensures the result ends with a single newline.
+//
+// If no YAML frontmatter is detected the caller (generateWith) injects a
+// minimal one — that responsibility lives there, not here.
 func normaliseContent(raw string) string {
 	s := strings.TrimSpace(raw)
 
 	// Strip trailing stats lines emitted by some CLI tools (e.g. copilot).
-	// These appear as lines like "Changes +0 -0" or "Requests 1 Premium (5s)".
+	// Patterns: "Changes +N -N" or "Requests N Premium (Ns)".
 	lines := strings.Split(s, "\n")
 	for len(lines) > 0 {
 		last := strings.TrimSpace(lines[len(lines)-1])
@@ -361,10 +390,8 @@ func normaliseContent(raw string) string {
 	}
 	s = strings.TrimSpace(strings.Join(lines, "\n"))
 
-	// If the response contains a code fence, extract the content inside the
-	// last/outermost fence (handles agent preamble before the fence).
-	if idx := strings.LastIndex(s, "```"); idx != -1 {
-		// Find the opening fence
+	// Strip outermost code fence if present (handles "```markdown ... ```").
+	if strings.Contains(s, "```") {
 		openIdx := strings.Index(s, "```")
 		closeIdx := strings.LastIndex(s, "```")
 		if openIdx != closeIdx {
@@ -372,16 +399,6 @@ func normaliseContent(raw string) string {
 			if start != -1 {
 				s = strings.TrimSpace(s[openIdx+start+1 : closeIdx])
 			}
-		}
-	}
-
-	// If the response has agent tool-call preamble before the YAML frontmatter,
-	// find the FIRST occurrence of a line that is exactly "---" and take
-	// everything from there — but only if it precedes the main content.
-	// Guard: only apply if the current content does NOT already start with ---.
-	if !strings.HasPrefix(s, "---") {
-		if i := strings.Index(s, "\n---\n"); i >= 0 {
-			s = strings.TrimSpace(s[i+1:])
 		}
 	}
 

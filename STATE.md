@@ -164,7 +164,7 @@ tasks:
     parallel: false
   - id: mentat-writing-skills-prompt
     description: Replace hand-rolled generator prompt with Anthropic skill best-practices as the writing spec (concise, trust the model, right freedom level). One-shot generation — no iterative TDD cycle. Canonical SKILL.md format; distributor handles per-target transforms.
-    status: pending
+    status: done
     depends_on: [mentat-skill-generator]
     parallel: true
 ```
