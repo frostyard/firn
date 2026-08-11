@@ -109,9 +109,11 @@ groups = ["wheel"]
 1. Validation is fail-closed: unknown fields, unknown enum values, and
    fields belonging to the other family are **errors**, never warnings
    or ignored noise.
-2. Every `*_file` field MUST reference an existing, regular,
-   non-world-readable file at validation time; inline and `_file`
-   variants of the same value are mutually exclusive.
+2. Every `*_file` field MUST reference an existing regular file at
+   validation time; the secret-valued ones (`passphrase_file`,
+   `mok_password_file`, `password_file`) MUST NOT be world-readable.
+   Inline and `_file` variants of the same value are mutually
+   exclusive.
 3. `[security]` completeness is family- and machine-aware: `mok` is
    required exactly when `family = "ab"` and Secure Boot is active on
    the install machine; `tpm2-*` modes are an error on machines with no

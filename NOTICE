@@ -1,0 +1,22 @@
+Firn — the installer for snosi images
+Copyright (C) 2026 Brian Ketelsen and the frostyard project
+
+Licensed under the GNU General Public License, version 3.0 only
+(GPL-3.0-only). See LICENSE for the full text.
+
+Firn is a deeply-inspired rewrite of the fisherman installer, and
+incorporates code copied from or derived from that lineage:
+
+  - tuna-os/fisherman        (original project)
+  - projectbluefin/fisherman (upstream continuation)
+  - frostyard/fisherman      (frostyard fork)
+
+Fisherman is licensed GPL-3.0-only. Files copied or substantially
+derived from fisherman retain a provenance comment at the top of the
+file identifying their origin.
+
+Firn also ports logic from the snosi native installer
+(frostyard/snosi, shared/native-installer), part of the same
+frostyard project.
+
+Rationale and attribution policy: docs/adr/0003-rewrite-fisherman-as-firn.md

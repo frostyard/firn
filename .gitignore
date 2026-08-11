@@ -1,0 +1,4 @@
+/firn
+/dist/
+coverage.out
+*.test

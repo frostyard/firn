@@ -1,11 +1,9 @@
-# Project Name
+# Firn
 
-<!-- One paragraph: what this project is and who it serves. Point at
-docs/README.md as the entry point for everything else. Keep this file under
-~200 lines — it is loaded into every agent session; long files dilute the
-rules that matter. -->
-
-One or two sentences describing the project. Start at
+Firn is the single installer for all snosi image families — bootc OCI
+images and native A/B disk images — recipe-driven, with a built-in TUI.
+It is a deeply-inspired GPL-3.0-only rewrite of fisherman (attribution in
+`NOTICE`, rationale in ADR-0003). Start at
 [docs/README.md](docs/README.md).
 
 This file (`AGENTS.md`) is the CANONICAL agent instructions — `CLAUDE.md`,
@@ -39,10 +37,21 @@ every structural rule. Rules that remove a degree of freedom are the
 valuable ones: every choice an agent doesn't have to make is a failure mode
 removed. -->
 
-- *(add rules as the code that enforces them lands)*
-- Run the project's full check (`just check`, `make check`, or equivalent —
-  define it early) before calling any change done. CI runs the same recipe,
-  so a local pass is a CI pass.
+- Run `just check` (gofmt, vet, tests, build) before calling any change
+  done. CI runs the same recipe, so a local pass is a CI pass.
+- Pipeline and domain packages (`internal/*` except the TUI) use only the
+  Go stdlib plus shelling out to host tools; the sanctioned exceptions are
+  the TOML decoder (ADR-0005) and, in the TUI layer only, the Charm stack
+  (ADR-0007). Do not add other dependencies without an ADR.
+- Recipe validation is fail-closed: unknown fields, unknown enum values,
+  and wrong-family fields are errors (`internal/recipe/validate.go` is the
+  canonical example). New recipe fields change
+  `docs/specs/recipe-schema.md` in the same commit.
+- Progress events are the only user-visible output of pipeline code; new
+  event types and stable codes change `docs/specs/progress-protocol.md`
+  in the same commit (`internal/progress`).
+- Files copied or substantially derived from fisherman keep a provenance
+  comment at the top identifying their origin (see `NOTICE`).
 
 ## Repository boundary
 
