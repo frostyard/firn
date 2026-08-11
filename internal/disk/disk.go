@@ -44,7 +44,10 @@ func List(ctx context.Context, r *runner.Runner) ([]Device, error) {
 	}
 	var disks []Device
 	for _, d := range parsed.Blockdevices {
-		if d.Type == "disk" {
+		// Loop devices are legitimate whole-disk targets (the E2E
+		// harness installs to one); the refusal rules still reject any
+		// that are mounted or backing the running system.
+		if d.Type == "disk" || d.Type == "loop" {
 			disks = append(disks, d)
 		}
 	}

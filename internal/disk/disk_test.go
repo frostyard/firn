@@ -43,13 +43,18 @@ func fakeRunner(t *testing.T, lsblkJSON, rootSource string) *runner.Runner {
 	)
 }
 
-func TestListReturnsWholeDisksOnly(t *testing.T) {
+func TestListReturnsWholeDisksAndLoops(t *testing.T) {
 	devices, err := List(context.Background(), fakeRunner(t, lsblkFixture, "/dev/sda2"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(devices) != 4 {
-		t.Fatalf("got %d disks, want 4 (loop devices excluded)", len(devices))
+	// Whole disks plus loop devices (valid E2E targets); partitions
+	// never appear as top-level devices.
+	if len(devices) != 5 {
+		t.Fatalf("got %d devices, want 5", len(devices))
+	}
+	if _, ok := Find(devices, "/dev/loop0"); !ok {
+		t.Error("loop device should be listed as a target candidate")
 	}
 }
 

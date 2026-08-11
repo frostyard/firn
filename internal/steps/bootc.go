@@ -151,11 +151,28 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 	if bootloader == "" {
 		bootloader = "systemd" // recipe default (specs/recipe-schema.md)
 	}
+	// The podman wrapper bind-mounts the scratch dir over the
+	// container's /var/tmp; it must exist before podman resolves the
+	// mount source (observed: exit 125 "statfs /var/firn-tmp: no such
+	// file or directory" in the loop-device E2E).
+	scratch := env.ScratchDir
+	if scratch == "" {
+		scratch = "/var/firn-tmp"
+		env.ScratchDir = scratch
+	}
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		return fmt.Errorf("creating scratch dir: %w", err)
+	}
 	return bootcimg.Install(ctx, env.Runner, bootcimg.Options{
 		Image:        r.Image.Ref,
 		TargetImgref: r.Image.TargetRef,
 		TargetDir:    targetDir(env),
 		Bootloader:   bootloader,
+		ScratchDir:   scratch,
+		// Always on: firn installs snosi images, and all snosi bootc
+		// images use the composefs-native backend. Becomes a recipe
+		// field only if a non-composefs snosi image ever exists.
+		Composefs: true,
 	})
 }
 
@@ -198,8 +215,14 @@ func runSysconfig(ctx context.Context, env *pipeline.Env) error {
 		return err
 	}
 	if sys.User != nil {
-		if err := w.CreateUser(ctx, *sys.User); err != nil {
+		missing, err := w.CreateUser(ctx, *sys.User)
+		if err != nil {
 			return err
+		}
+		for _, g := range missing {
+			msg := fmt.Sprintf("group %q does not exist in the image; user %s not joined to it", g, sys.User.Name)
+			env.Emit(progress.Warning{Code: "group_missing", Message: msg})
+			env.AddSummary("group_missing", msg)
 		}
 		if key, err := resolveKey(sys.User.SSHAuthorizedKey, sys.User.SSHAuthorizedKeyFile); err != nil {
 			return err

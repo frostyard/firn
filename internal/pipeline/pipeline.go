@@ -48,11 +48,12 @@ type Env struct {
 	Emit    func(progress.Event)
 
 	// Install state shared between steps, populated as steps run.
-	Layout    disk.Layout
-	RootDev   string // device holding the root fs (mapper path when encrypted)
-	LuksKey   string // transient unlock key for first-boot TPM enrollment
-	TargetDir string // where the target filesystem tree is mounted
-	Summary   []progress.SummaryItem
+	Layout     disk.Layout
+	RootDev    string // device holding the root fs (mapper path when encrypted)
+	LuksKey    string // transient unlock key for first-boot TPM enrollment
+	TargetDir  string // where the target filesystem tree is mounted
+	ScratchDir string // disk-backed scratch space (podman tmp etc.)
+	Summary    []progress.SummaryItem
 
 	cleanup []cleanupEntry
 }

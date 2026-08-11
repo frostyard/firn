@@ -30,16 +30,24 @@ import (
 // --create-home, and chpasswd gets a pre-computed hash with -e because the
 // etc-only chroot has no PAM modules to load.
 //
-// Returns nil if u.Name is empty (no-op).
-func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) error {
+// Groups are joined only where they exist in the deployment's
+// etc/group — snosi-install's join-where-exists rule. Fisherman passed
+// the list verbatim, and useradd exits 6 on any distro mismatch (e.g.
+// "wheel" against a Debian image, observed in the cayo loop-device
+// E2E); the skipped names are returned for the caller to report
+// loudly.
+//
+// Returns missing == nil and a nil error if u.Name is empty (no-op).
+func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) (missing []string, err error) {
 	if u.Name == "" {
-		return nil
+		return nil, nil
 	}
 
 	lay, err := w.resolve(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	groups, missing := filterGroups(lay.etcDir, u.Groups)
 	root := lay.root
 	var staterootHome string
 	if !lay.composefs {
@@ -48,7 +56,7 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) error 
 		// the relocation below has a destination.
 		staterootHome = filepath.Join(w.staterootVarDir(lay), "home")
 		if _, err := w.Runner.Run(ctx, "mkdir", "-p", staterootHome); err != nil {
-			return fmt.Errorf("mkdir stateroot home: %w", err)
+			return missing, fmt.Errorf("mkdir stateroot home: %w", err)
 		}
 	}
 
@@ -72,8 +80,8 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) error 
 	if u.Fullname != "" {
 		tail = append(tail, "--comment", u.Fullname)
 	}
-	if len(u.Groups) > 0 {
-		tail = append(tail, "--groups", strings.Join(u.Groups, ","))
+	if len(groups) > 0 {
+		tail = append(tail, "--groups", strings.Join(groups, ","))
 	}
 	tail = append(tail, u.Name)
 
@@ -99,18 +107,18 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) error 
 			cargs = append(cargs, a)
 		}
 		if _, err := w.Runner.Run(ctx, "useradd", cargs...); err != nil {
-			return fmt.Errorf("useradd (--root %s): %w", root, err)
+			return missing, fmt.Errorf("useradd (--root %s): %w", root, err)
 		}
 		// First-boot home creation for composefs-native (no staterootHome
 		// relocation path). /home -> var/home is a bootc invariant, so the
 		// runtime /var/home/<user> path is correct regardless of the composefs
 		// deploy layout. Mirrors the ostree snippet below.
 		if err := writeHomeTmpfiles(root, u.Name); err != nil {
-			return err
+			return missing, err
 		}
 	} else {
 		if _, err := w.Runner.Run(ctx, "chroot", append([]string{root}, tail...)...); err != nil {
-			return fmt.Errorf("useradd (chroot %s): %w", root, err)
+			return missing, fmt.Errorf("useradd (chroot %s): %w", root, err)
 		}
 	}
 
@@ -130,12 +138,12 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) error 
 		if _, err := os.Stat(deployHome); err == nil {
 			if _, err := os.Stat(stateHome); os.IsNotExist(err) {
 				if _, err := w.Runner.Run(ctx, "mv", deployHome, stateHome); err != nil {
-					return fmt.Errorf("relocating home to stateroot var: %w", err)
+					return missing, fmt.Errorf("relocating home to stateroot var: %w", err)
 				}
 			}
 		}
 		if err := writeHomeTmpfiles(root, u.Name); err != nil {
-			return err
+			return missing, err
 		}
 	}
 
@@ -143,7 +151,7 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) error 
 	// Same ostree-chroot vs composefs---root split as useradd above.
 	hash, err := passwordHash(u)
 	if err != nil {
-		return err
+		return missing, err
 	}
 	if hash != "" {
 		input := fmt.Sprintf("%s:%s\n", u.Name, hash)
@@ -161,11 +169,11 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) error 
 			_, cpErr = w.Runner.RunInput(ctx, input, "chroot", root, "chpasswd", "-e")
 		}
 		if cpErr != nil {
-			return fmt.Errorf("chpasswd (%s): %w", root, cpErr)
+			return missing, fmt.Errorf("chpasswd (%s): %w", root, cpErr)
 		}
 	}
 
-	return nil
+	return missing, nil
 }
 
 // passwordHash resolves the recipe's password choice to a crypt(5) hash:
@@ -460,4 +468,28 @@ func sha512Crypt(password, salt string) string {
 	b64(C[62], C[20], C[41], 4)
 	b64(0, 0, C[63], 2)
 	return "$6$" + salt + "$" + string(out)
+}
+
+// filterGroups splits the requested supplementary groups into those
+// present in the deployment's etc/group and those missing from it —
+// snosi-install's join-where-exists rule (seed_first_user), replacing
+// fisherman's pass-through that made useradd fail outright on distro
+// mismatches.
+func filterGroups(etcDir string, want []string) (have, missing []string) {
+	known := map[string]bool{}
+	if data, err := os.ReadFile(filepath.Join(etcDir, "group")); err == nil {
+		for line := range strings.SplitSeq(string(data), "\n") {
+			if name, _, ok := strings.Cut(line, ":"); ok && name != "" {
+				known[name] = true
+			}
+		}
+	}
+	for _, g := range want {
+		if known[g] {
+			have = append(have, g)
+		} else {
+			missing = append(missing, g)
+		}
+	}
+	return have, missing
 }

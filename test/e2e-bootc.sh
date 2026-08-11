@@ -35,7 +35,16 @@ cleanup() {
 trap cleanup EXIT
 
 echo "e2e: building firn"
-(cd "$here" && go build -o "$work/firn" ./cmd/firn)
+if command -v go >/dev/null 2>&1; then
+  (cd "$here" && go build -o "$work/firn" ./cmd/firn)
+elif [[ -x $here/firn ]]; then
+  # Root often lacks the user's go toolchain (e.g. linuxbrew); a
+  # pre-built ./firn from `just build` works fine.
+  cp "$here/firn" "$work/firn"
+else
+  echo "e2e: go not on PATH and no prebuilt ./firn — run 'just build' first" >&2
+  exit 1
+fi
 
 echo "e2e: creating 20G disk image + loop device"
 truncate -s 20G "$work/disk.raw"
@@ -66,7 +75,7 @@ flatpaks = []
 [system.user]
 name = "e2e"
 password_hash = "\$6\$firn.e2e\$XjSAJP9d3TXbJ4wIcZarBOUpAo6yLh4uYUniEcpKPGqAe7EfWbrKZOfjfHiZ0KOhSjrqAGdRhrGxU0aTsTfW/1"
-groups = ["wheel"]
+groups = ["sudo"]
 EOF
 fi
 
@@ -75,6 +84,16 @@ echo "e2e: installing $image to $loop"
 
 grep -q '"event":"done","ok":true' "$work/progress.ndjson" \
   || { echo "e2e: install did not complete" >&2; exit 1; }
+
+# Make the installed system speak on the serial console: without a
+# console=ttyS0 karg the kernel and getty are silent on -nographic
+# QEMU even when the boot succeeds (observed: firmware handoff then
+# 240 bytes of serial silence over a perfectly healthy disk).
+echo "e2e: enabling serial console in the boot entry"
+esp=$(mktemp -d)
+mount "${loop}p1" "$esp"
+sed -i 's/^options /options console=ttyS0,115200 /' "$esp"/loader/entries/*.conf
+umount "$esp" && rmdir "$esp"
 
 losetup -d "$loop"; loop=""
 

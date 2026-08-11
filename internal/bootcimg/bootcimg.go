@@ -44,6 +44,12 @@ type Options struct {
 	Bootloader string
 	// SELinuxDisabled passes --disable-selinux when true.
 	SELinuxDisabled bool
+	// Composefs passes --composefs-backend. Required for images using the
+	// composefs-native deployment backend — which includes every snosi
+	// bootc image (they enable composefs at runtime; the default ostree
+	// deploy path then fails outright). Ported from fisherman's
+	// Options.ComposeFsBackend.
+	Composefs bool
 	// BtrfsSubvolumes records the recipe's target.btrfs_subvolumes choice.
 	// It is retained in the schema but NOT emitted as a bootc flag —
 	// `bootc install to-filesystem` has no subvolume option; the subvolume
@@ -118,6 +124,14 @@ func buildArgs(o Options, installTarget string, direct bool) []string {
 	}
 	if o.SELinuxDisabled {
 		args = append(args, "--disable-selinux")
+	}
+	// Placement matches fisherman: after --disable-selinux, before
+	// --source-imgref (fisherman bootc.go:194-196). Snosi images enable
+	// composefs at runtime; without this flag bootc's default ostree
+	// deploy path fails "composefs: enabled at runtime, but support is
+	// not compiled in" (observed in the loop-device E2E).
+	if o.Composefs {
+		args = append(args, "--composefs-backend")
 	}
 	if direct && resolved != "" {
 		// Direct mode: bootc runs natively (not in a container) and needs

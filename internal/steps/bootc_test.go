@@ -96,8 +96,9 @@ groups = ["wheel"]
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-		TargetDir: target,
-		Emit:      func(e progress.Event) { events = append(events, e) },
+		TargetDir:  target,
+		ScratchDir: filepath.Join(t.TempDir(), "scratch"),
+		Emit:       func(e progress.Event) { events = append(events, e) },
 	}
 	env.Machine.TPM = true
 
@@ -153,6 +154,7 @@ groups = ["wheel"]
 		"mkfs.btrfs",                     // root
 		"btrfs subvolume create",         // subvolumes
 		"podman run --rm --privileged",   // bootc via podman
+		"--composefs-backend",            // snosi images require it
 		"useradd",                        // user creation
 		"cryptsetup luksClose firn-root", // cleanup unwound
 		"umount",                         // target unmounted

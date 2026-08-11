@@ -225,7 +225,7 @@ func TestWriteHostname(t *testing.T) {
 func TestCreateUser_EmptyNameIsNoop(t *testing.T) {
 	var calls []call
 	w := &DeploymentWriter{TargetDir: t.TempDir(), Runner: fakeRunner(&calls)}
-	if err := w.CreateUser(context.Background(), recipe.User{}); err != nil {
+	if _, err := w.CreateUser(context.Background(), recipe.User{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(calls) != 0 {
@@ -240,16 +240,25 @@ func TestCreateUser_Ostree(t *testing.T) {
 	deployHome := filepath.Join(deployDir, "var", "home", "dev")
 	writeFile(t, filepath.Join(deployHome, ".bashrc"), "# skel\n")
 
+	// Deployment etc/group defines which groups exist in the image;
+	// "missing" must be filtered out and reported (join-where-exists).
+	writeFile(t, filepath.Join(deployDir, "etc", "group"),
+		"root:x:0:\nwheel:x:10:\ndocker:x:970:\n")
+
 	var calls []call
 	w := &DeploymentWriter{TargetDir: target, Runner: fakeRunner(&calls)}
 	u := recipe.User{
 		Name:         "dev",
 		Fullname:     "Dev Eloper",
-		Groups:       []string{"wheel", "docker"},
+		Groups:       []string{"wheel", "docker", "missing"},
 		PasswordHash: "$6$salt$hash",
 	}
-	if err := w.CreateUser(context.Background(), u); err != nil {
+	missing, err := w.CreateUser(context.Background(), u)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(missing) != 1 || missing[0] != "missing" {
+		t.Errorf("missing groups = %v, want [missing]", missing)
 	}
 
 	// useradd runs inside the deployment via chroot, with full argv.
@@ -307,6 +316,7 @@ func TestCreateUser_Composefs(t *testing.T) {
 	if err := os.WriteFile(passwordFile, []byte("hunter2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeFile(t, filepath.Join(deployRoot, "etc", "group"), "root:x:0:\nwheel:x:10:\n")
 
 	var calls []call
 	w := &DeploymentWriter{TargetDir: target, Runner: fakeRunner(&calls)}
@@ -316,7 +326,7 @@ func TestCreateUser_Composefs(t *testing.T) {
 		Groups:       []string{"wheel"},
 		PasswordFile: passwordFile,
 	}
-	if err := w.CreateUser(context.Background(), u); err != nil {
+	if _, err := w.CreateUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
 
