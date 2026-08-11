@@ -53,11 +53,21 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		steps = append(steps, pipeline.Step{Name: "tpm-stage", Weight: 1, Run: runTPMStage})
 	}
 	steps = append(steps,
-		pipeline.Step{Name: "flatpaks", Weight: 15, Tools: []string{"flatpak"}, Run: runFlatpaks},
+		pipeline.Step{Name: "flatpaks", Weight: 15, Tools: flatpakTools(r), Run: runFlatpaks},
 		pipeline.Step{Name: "sysconfig", Weight: 8, Tools: []string{"useradd", "chpasswd", "chroot"}, Run: runSysconfig},
 		pipeline.Step{Name: "finalize", Weight: 5, Tools: []string{"fstrim", "fsfreeze"}, Run: runFinalize},
 	)
 	return steps
+}
+
+// flatpakTools declares the flatpak binary only when the recipe
+// actually provisions flatpaks — a flatpak-less install (e.g. a server
+// image) must not fail tool preflight over an unused binary.
+func flatpakTools(r *recipe.Recipe) []string {
+	if len(r.System.Flatpaks) > 0 || r.System.CoreFlatpaks {
+		return []string{"flatpak", "du", "sh", "tar"}
+	}
+	return nil
 }
 
 func abSteps(r *recipe.Recipe) []pipeline.Step {
@@ -82,7 +92,7 @@ func abSteps(r *recipe.Recipe) []pipeline.Step {
 	steps = append(steps,
 		pipeline.Step{Name: "seed-var", Weight: 4, Tools: []string{"mount", "umount"}, Run: runSeedVar},
 		pipeline.Step{Name: "sysconfig", Weight: 6, Run: runSysconfigAB},
-		pipeline.Step{Name: "flatpaks", Weight: 20, Run: runFlatpaksAB},
+		pipeline.Step{Name: "flatpaks", Weight: 20, Tools: flatpakTools(r), Run: runFlatpaksAB},
 	)
 	if r.Security.Mok == "enroll" {
 		steps = append(steps, pipeline.Step{Name: "mok-stage", Weight: 1,

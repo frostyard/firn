@@ -64,7 +64,7 @@ ordered so every phase ends with something demonstrable in a VM.
 - **Done when:** a recipe-driven A/B install of snow-ab in the E2E VM
   boots with encrypted `/var`, TPM auto-unlock, and the seeded user.
 
-## Phase 5 — Full configuration matrix (medium) — ✅ shipped 2026-08-11 (both E2Es apply and SSH-verify hostname, user+groups+password, locale, timezone, keyboard, root+user SSH keys on booted systems. Flatpak provisioning incl. core_flatpaks is wired on both paths and integration-tested; booted-system flatpak assertion awaits a flatpak-capable E2E image — cayo ships no flatpak runtime)
+## Phase 5 — Full configuration matrix (medium) — ✅ shipped 2026-08-11 (both E2Es apply and SSH-verify hostname, user+groups+password, locale, timezone, keyboard, root+user SSH keys on booted systems; the snow-ab E2E additionally proves install-time flatpak download — org.gnome.Calculator lands via the firn-added flathub remote and appears in `flatpak list` on the booted GNOME system. The medium-copy path is fake-runner-tested; its on-ISO E2E is a Phase 7 item)
 
 - Close the writer gaps so both writers implement every `[system]`
   feature: locale/timezone/keyboard/SSH keys on the deployment writer;
@@ -86,13 +86,24 @@ ordered so every phase ends with something demonstrable in a VM.
 
 ## Phase 7 — Becoming the only installer (medium, cross-repo)
 
-- snosi media integration: native-installer ISO ships firn's kiosk unit,
-  drops GTK4/Mesa/cage, seeds a flatpak repo
+- **One installer ISO** for all image families, built in the snosi repo
+  as the successor to `shared/native-installer`
+  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)): ships
+  firn + its kiosk unit, drops GTK4/Mesa/cage, carries both families'
+  tool payloads (firn's step-declared preflight is the contract), seeds
+  a flatpak repo, the MOK cert, and the pubring
   ([ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
-  [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md)); live-ISO
-  bootc path ships firn.
-- Full-fidelity encrypted-boot E2E: with firn's ISO in hand, the A/B E2E
-  installs from that ISO **inside one VM with a persistent swtpm**, so
+  [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md)). The
+  native-installer ISO and the live ISO's installer role both converge
+  into it.
+- **On-ISO staged-flatpak validation**: an E2E that installs from the
+  ISO with the network cut (or restricted) and asserts the medium's
+  seeded flatpaks land on the target via the tar-copy path — proving
+  ADR-0006's offline-first promise, not just the download path
+  (Phase 5 proved download; the medium-copy path currently has only
+  fake-runner coverage).
+- Full-fidelity encrypted-boot E2E: with the ISO in hand, the A/B E2E
+  installs from it **inside one VM with a persistent swtpm**, so
   encrypted `/var` + signed-PCR-11 TPM auto-unlock is exercised through
   a real boot (today it is argv-level unit-tested only —
   [ADR-0009](../adr/0009-ab-installs-require-partition-isolation.md)
@@ -101,9 +112,9 @@ ordered so every phase ends with something demonstrable in a VM.
 - Retire `snosi-firstboot`'s flatpak role (snosi-side).
 - Retirement ADRs for frostyard/fisherman and `snosi-install` once
   parity is demonstrated.
-- **Done when:** current snosi installer ISOs for both families ship
-  firn as the only installer, and an install from each published ISO
-  succeeds on real hardware.
+- **Done when:** the single snosi installer ISO ships firn as the only
+  installer, and installs of both image families from that published
+  ISO succeed on real hardware.
 
 ## Later / ideas
 

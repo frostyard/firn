@@ -26,6 +26,13 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 product=${FIRN_E2E_PRODUCT:-cayo-ab}
 work=${FIRN_E2E_DIR:-$(mktemp -d /var/tmp/firn-e2e-ab.XXXXXX)}
 timeout=${FIRN_E2E_TIMEOUT:-600}
+# Flatpak proof needs an image that ships the flatpak runtime — snow
+# does, cayo does not. Default a small app on snow products; override
+# with FIRN_E2E_FLATPAK (empty disables).
+case $product in
+  snow*) flatpak_app=${FIRN_E2E_FLATPAK-org.gnome.Calculator} ;;
+  *)     flatpak_app=${FIRN_E2E_FLATPAK-} ;;
+esac
 # Default under /var: on a snosi A/B host root (and /root) is read-only
 # erofs, so $HOME/.cache is unwritable under sudo.
 cache=${FIRN_E2E_CACHE:-/var/tmp/firn-e2e-cache}
@@ -92,6 +99,7 @@ hostname = "$hostname"
 timezone = "America/Chicago"
 locale = "en_US.UTF-8"
 keyboard = "us"
+flatpaks = [$( [[ -n $flatpak_app ]] && printf '"%s"' "$flatpak_app" )]
 root_ssh_authorized_key_file = "/root/id_e2e.pub"
 
 [system.user]
@@ -148,7 +156,9 @@ echo "e2e: staging firn + recipe into the installer VM"
 gscp "$work/firn" "$work/recipe.toml" "$work/pubring.gpg" "$work/id_e2e.pub" debian@127.0.0.1:/tmp/ >/dev/null
 
 echo "e2e: installing $product inside the VM (host kernel never scans the target)"
-gssh 'sudo cp /tmp/id_e2e.pub /root/id_e2e.pub && sudo DEBIAN_FRONTEND=noninteractive sh -c "apt-get update -q && apt-get install -y -q xz-utils gpgv"' >/dev/null 2>&1 || {
+guest_pkgs="xz-utils gpgv"
+[[ -n $flatpak_app ]] && guest_pkgs="$guest_pkgs flatpak"
+gssh "sudo cp /tmp/id_e2e.pub /root/id_e2e.pub && sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update -q && apt-get install -y -q $guest_pkgs'" >/dev/null 2>&1 || {
   echo "e2e: FAIL — could not install tool deps in the guest" >&2; exit 1; }
 set +e
 gssh "sudo /tmp/firn install --uefi on --secure-boot off --tpm off \
@@ -206,6 +216,9 @@ check keyboard 'XKBLAYOUT="us"' "$(ssh "${sshopts[@]}" root@127.0.0.1 cat /etc/d
 check user-ssh-key firn-e2e "$(ssh "${sshopts[@]}" root@127.0.0.1 cat /var/home/e2e/.ssh/authorized_keys)"
 check var-mount /var "$(ssh "${sshopts[@]}" root@127.0.0.1 findmnt -n -o TARGET /var)"
 check install-info "$product" "$(ssh "${sshopts[@]}" root@127.0.0.1 cat /var/lib/snosi/install-info.json)"
+if [[ -n $flatpak_app ]]; then
+  check flatpak "$flatpak_app" "$(ssh "${sshopts[@]}" root@127.0.0.1 flatpak list --system --app --columns=application)"
+fi
 
 ssh "${sshopts[@]}" root@127.0.0.1 poweroff 2>/dev/null || true
 wait "$qemu_pid" 2>/dev/null || true; qemu_pid=""

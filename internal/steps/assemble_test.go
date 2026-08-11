@@ -106,10 +106,20 @@ func TestPreflightStepsComeFirstAndDeclareTools(t *testing.T) {
 		}
 	}
 	tools := p.Tools()
-	for _, want := range []string{"lsblk", "sfdisk", "podman", "flatpak"} {
+	for _, want := range []string{"lsblk", "sfdisk", "podman"} {
 		if !slices.Contains(tools, want) {
 			t.Errorf("tool union missing %q: %v", want, tools)
 		}
+	}
+	// No flatpaks in the recipe → the flatpak binary must NOT be
+	// demanded by preflight (server images / flatpak-less installers).
+	if slices.Contains(tools, "flatpak") {
+		t.Errorf("flatpak demanded without any flatpaks in the recipe: %v", tools)
+	}
+	withFlatpaks := strings.Replace(strings.Replace(bootcBase, "%s", "none", 1),
+		`hostname = "h"`, "hostname = \"h\"\nflatpaks = [\"org.gnome.Calculator\"]", 1)
+	if !slices.Contains(Assemble(load(t, withFlatpaks)).Tools(), "flatpak") {
+		t.Error("flatpak tool must be demanded when the recipe requests flatpaks")
 	}
 }
 

@@ -5,7 +5,10 @@ Living document. Rationale:
 [ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md),
 [ADR-0005](../adr/0005-toml-recipe-model.md),
 [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
-[ADR-0007](../adr/0007-tui-only-frontend-single-binary.md).
+[ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
+[ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) (media
+boundary: firn ships binary + kiosk unit + contracts; snosi ships the
+single installer ISO).
 Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
 [specs/progress-protocol.md](../specs/progress-protocol.md).
 

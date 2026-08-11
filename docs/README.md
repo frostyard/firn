@@ -22,6 +22,7 @@ Docs are split by the question they answer:
 - [0007 — TUI-only frontend in a single binary, one progress protocol](adr/0007-tui-only-frontend-single-binary.md)
 - [0008 — /var filesystem choice for A/B installs](adr/0008-ab-var-filesystem-choice.md)
 - [0009 — A/B installs run only against an isolated partition namespace](adr/0009-ab-installs-require-partition-isolation.md)
+- [0010 — One installer ISO for all image families, built in the snosi repo](adr/0010-single-installer-iso-in-snosi.md)
 
 ### Design
 
