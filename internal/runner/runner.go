@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -28,6 +29,10 @@ func New() *Runner {
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
+			if in, out, ok := Stream(ctx); ok {
+				cmd.Stdin = in
+				cmd.Stdout = out
+			}
 			if err := cmd.Run(); err != nil {
 				return stdout.Bytes(), fmt.Errorf("%s: %w (stderr: %s)", name, err, bytes.TrimSpace(stderr.Bytes()))
 			}
@@ -65,6 +70,32 @@ func (r *Runner) RunInput(ctx context.Context, input string, name string, args .
 func Stdin(ctx context.Context) (string, bool) {
 	s, ok := ctx.Value(stdinKey{}).(string)
 	return s, ok
+}
+
+// streamKey carries RunStream's stdin/stdout pair through the context
+// so the exec seam's signature (and NewFake's) stays unchanged.
+type streamKey struct{}
+
+// streamIO is the reader/writer pair RunStream attaches to the context.
+type streamIO struct {
+	stdin  io.Reader
+	stdout io.Writer
+}
+
+// RunStream executes name with args, streaming stdin from a reader and
+// stdout to a writer instead of buffering them in memory. Stderr is
+// captured into the returned error like Run. Fake exec functions
+// recover the pair with Stream.
+func (r *Runner) RunStream(ctx context.Context, stdin io.Reader, stdout io.Writer, name string, args ...string) error {
+	_, err := r.exec(context.WithValue(ctx, streamKey{}, streamIO{stdin: stdin, stdout: stdout}), name, args...)
+	return err
+}
+
+// Stream reports the stdin reader and stdout writer attached by
+// RunStream, if any.
+func Stream(ctx context.Context) (io.Reader, io.Writer, bool) {
+	s, ok := ctx.Value(streamKey{}).(streamIO)
+	return s.stdin, s.stdout, ok
 }
 
 // LookPath reports where name resolves on PATH.

@@ -62,31 +62,31 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 
 func abSteps(r *recipe.Recipe) []pipeline.Step {
 	steps := []pipeline.Step{
-		{Name: "fetch-index", Weight: 2, Tools: []string{"gpgv"}},
+		{Name: "fetch-index", Weight: 2, Tools: []string{"gpgv", "blockdev"}, Run: runFetchIndex},
 		{Name: "stream-write", Weight: 50, Destructive: true,
-			Tools: []string{"xz"}},
-		{Name: "validate-layout", Weight: 1, Tools: []string{"sfdisk"}},
+			Tools: []string{"xz", "wipefs", "blockdev", "udevadm"}, Run: runStreamWrite},
+		{Name: "validate-layout", Weight: 1, Tools: []string{"sfdisk"}, Run: runValidateLayout},
 		{Name: "relocate-grow", Weight: 4, Destructive: true,
-			Tools: append([]string{"sfdisk", "udevadm"}, varFsTools(r.Target.VarFilesystem)...)},
+			Tools: []string{"sfdisk", "udevadm", "blockdev"}, Run: runRelocateGrow},
 	}
 	if r.Security.Encryption != "none" {
 		steps = append(steps, pipeline.Step{Name: "luks-var", Weight: 3, Destructive: true,
-			Tools: []string{"cryptsetup"}})
+			Tools: []string{"cryptsetup"}, Run: runLuksVar})
 	}
 	steps = append(steps, pipeline.Step{Name: "format-var", Weight: 3, Destructive: true,
-		Tools: varFsTools(r.Target.VarFilesystem)})
+		Tools: varFsTools(r.Target.VarFilesystem), Run: runFormatVar})
 	if r.Security.Encryption == "tpm2-luks" {
 		steps = append(steps, pipeline.Step{Name: "tpm-enroll", Weight: 2,
-			Tools: []string{"systemd-cryptenroll", "objcopy", "mount", "umount"}})
+			Tools: []string{"systemd-cryptenroll", "objcopy", "mount", "umount"}, Run: runTPMEnroll})
 	}
 	steps = append(steps,
-		pipeline.Step{Name: "seed-var", Weight: 4, Tools: []string{"mount", "umount"}},
-		pipeline.Step{Name: "sysconfig", Weight: 6},
-		pipeline.Step{Name: "flatpaks", Weight: 20, Tools: []string{"flatpak"}},
+		pipeline.Step{Name: "seed-var", Weight: 4, Tools: []string{"mount", "umount"}, Run: runSeedVar},
+		pipeline.Step{Name: "sysconfig", Weight: 6, Run: runSysconfigAB},
+		pipeline.Step{Name: "flatpaks", Weight: 20, Run: runFlatpaksAB},
 	)
 	if r.Security.Mok == "enroll" {
 		steps = append(steps, pipeline.Step{Name: "mok-stage", Weight: 1,
-			Tools: []string{"mokutil", "openssl"}})
+			Tools: []string{"mokutil", "openssl"}, Run: runMOKStage})
 	}
 	return steps
 }
@@ -106,7 +106,7 @@ func rootFsTools(fs string) []string {
 
 func varFsTools(fs string) []string {
 	if fs == "btrfs" {
-		return []string{"mkfs.btrfs", "btrfs"}
+		return []string{"mkfs.btrfs", "btrfs", "mount", "umount"}
 	}
-	return []string{"mkfs.ext4", "e2fsck", "resize2fs"}
+	return []string{"mkfs.ext4"}
 }

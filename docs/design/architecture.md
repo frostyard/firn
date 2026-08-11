@@ -151,6 +151,12 @@ deliberate event type the TUI renders with confirmation.
 - Firn runs as root from live media; every destructive action sits behind
   preflight plus (interactively) typed disk confirmation matching the
   disk path or serial — `snosi-install`'s rule, adopted everywhere.
+- **A/B installs need an isolated partition namespace:** the A/B image
+  carries the same discoverable-partition types/labels as any snosi A/B
+  host, so its partition surgery must not run against a device the host
+  kernel scans — installers run from media against a bare disk, and the
+  A/B E2E installs inside a VM
+  ([ADR-0009](../adr/0009-ab-installs-require-partition-isolation.md)).
 - **A/B stream-then-verify residue:** on any write/verify failure the
   failure path discards the GPT regions and ESP signatures so nothing on
   the disk is bootable or auto-discoverable, then reports loudly — but

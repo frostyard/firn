@@ -22,3 +22,7 @@ fmt:
 # Requires root, QEMU/OVMF, podman, ~20G scratch. See test/e2e-bootc.sh.
 e2e-bootc:
     sudo test/e2e-bootc.sh
+
+# Requires root, network, QEMU/OVMF, ~30G scratch. See test/e2e-ab.sh.
+e2e-ab:
+    sudo test/e2e-ab.sh

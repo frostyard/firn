@@ -14,6 +14,7 @@ import (
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/runner"
 	"github.com/frostyard/firn/internal/steps"
+	"github.com/frostyard/firn/internal/trust"
 )
 
 func runInstall(args []string) int {
@@ -24,6 +25,7 @@ func runInstall(args []string) int {
 	sb := fs.String("secure-boot", "auto", "auto|on|off")
 	tpm := fs.String("tpm", "auto", "auto|on|off")
 	uefi := fs.String("uefi", "auto", "auto|on|off")
+	pubring := fs.String("pubring", "", "OpenPGP keyring for A/B index verification (default: search known locations)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -36,6 +38,7 @@ func runInstall(args []string) int {
 		Machine: recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
 		Runner:  runner.New(),
 		Version: version,
+		Trust:   trust.Options{PubringPath: *pubring},
 	}
 	var err error
 	if env.Machine.SecureBoot, err = tristate(*sb, platform.SecureBoot); err != nil {
