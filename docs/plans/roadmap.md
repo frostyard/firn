@@ -34,7 +34,7 @@ ordered so every phase ends with something demonstrable in a VM.
   prints the assembled step list and correct preflight verdicts (BIOS VM
   refused, busy disk refused) without touching any disk.
 
-## Phase 3 — bootc path to fisherman parity (large)
+## Phase 3 — bootc path to fisherman parity (large) — ⏳ core shipped 2026-08-11 (`0140b40`); Done-when awaits an E2E run (`just e2e-bootc` on a KVM machine)
 
 - Copy/port fisherman's `disk`, `luks`, `install` (bootc), and `post`
   packages into steps, provenance headers intact: partitioning profiles,
