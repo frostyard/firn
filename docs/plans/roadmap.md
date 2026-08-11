@@ -108,13 +108,16 @@ Correction: snowfield already ships `snow-first-setup` transitively via
 (the earlier "snowfield lost it" note was a shallow-grep error).
 
 Still to do:
-- **ISO flatpak seeding — decided: Option A.** The 24 apps of
-  first-setup's `core.json` are staged as a data area ON the ISO
-  (outside the RAM-unpacked initramfs), mounted read-only at
-  `/var/lib/flatpak` in the installer environment so firn's medium-copy
-  path (ADR-0006) finds them offline. Naive seeding into the initramfs
-  is unviable (2–4 GB into an all-in-RAM rootfs).
-- on-ISO staged-flatpak (offline medium-copy) E2E, once seeding lands.
+- ✅ **ISO flatpak seeding (Option A) — done and proven.** The 23 apps
+  of first-setup's `core.json` + GNOME runtime (1.9 GB) are staged into
+  a flatpak installation, embedded as a 624 MB squashfs data area on
+  the ISO (outside the RAM-unpacked initramfs), and mounted read-only
+  at `/var/lib/flatpak` by a oneshot before the kiosk. Initramfs size
+  unchanged.
+- ✅ **on-ISO offline medium-copy E2E — passes.** `FIRN_ISO_FLATPAK=1`
+  installs snow-ab with `core_flatpaks` and dl.flathub.org black-holed;
+  all 23 apps land on the booted system from the seed alone, with the
+  encrypted `/var` TPM-auto-unlocked.
 - retiring snosi-firstboot's flatpak role.
 - **frostyard/lab suites** (final step, "once proven out"): add a firn
   suite and an iso+installation suite to lab's Argo-Workflows homelab
