@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/frostyard/firn/internal/bootcimg"
@@ -16,8 +17,12 @@ import (
 )
 
 // DefaultTargetDir is where the target tree is mounted; tests and the
-// CLI set Env.TargetDir (steps fall back to this).
-const DefaultTargetDir = "/mnt/firn-target"
+// CLI set Env.TargetDir (steps fall back to this). It lives under /run
+// (tmpfs) rather than /mnt: on image-based hosts with a read-only root
+// (snosi A/B, and fisherman's own live ISOs only escape this because
+// their roots are overlays) /mnt is not writable, and mkdir fails with
+// EROFS (observed live on a snow-ab host, 2026-08-11).
+const DefaultTargetDir = "/run/firn/target"
 
 const luksMapper = "firn-root"
 
@@ -188,8 +193,25 @@ func runTPMStage(ctx context.Context, env *pipeline.Env) error {
 func runFlatpaks(ctx context.Context, env *pipeline.Env) error {
 	apps := env.Recipe.System.Flatpaks
 	if env.Recipe.System.CoreFlatpaks {
-		env.Emit(progress.Warning{Code: "not_implemented",
-			Message: "core_flatpaks: image-defined core set resolution arrives with the A/B catalog work (roadmap phase 4/5)"})
+		// The core set ships in the image's /usr. On an ostree
+		// deployment that tree is materialized on disk; on
+		// composefs-native targets /usr lives in composefs objects and
+		// is not readable as plain files at install time — report,
+		// don't guess.
+		etcDir, err := sysconfig.EtcDir(ctx, env.Runner, targetDir(env))
+		if err != nil {
+			return err
+		}
+		core, ok, err := flatpak.CoreSet(filepath.Dir(etcDir))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			msg := "core_flatpaks: image publishes no readable core set on this deployment layout"
+			env.Emit(progress.Warning{Code: "no_core_set", Message: msg})
+			env.AddSummary("no_core_set", msg)
+		}
+		apps = append(apps, core...)
 	}
 	if len(apps) == 0 {
 		return nil
@@ -239,17 +261,13 @@ func runSysconfig(ctx context.Context, env *pipeline.Env) error {
 			return err
 		}
 	}
-	// Locale/timezone/keyboard on the bootc path arrive in phase 5
-	// (docs/plans/roadmap.md); the recipe accepts them today, so be
-	// loud rather than silent.
-	for field, val := range map[string]string{"locale": sys.Locale, "timezone": sys.Timezone, "keyboard": sys.Keyboard} {
-		if val != "" {
-			msg := field + " is not applied on the bootc path yet (roadmap phase 5)"
-			env.Emit(progress.Warning{Code: "not_implemented", Message: msg})
-			env.AddSummary("not_implemented", msg)
-		}
+	if err := w.WriteLocale(ctx, sys.Locale); err != nil {
+		return err
 	}
-	return nil
+	if err := w.WriteTimezone(ctx, sys.Timezone); err != nil {
+		return err
+	}
+	return w.WriteKeyboard(ctx, sys.Keyboard)
 }
 
 func resolveKey(inline, file string) (string, error) {

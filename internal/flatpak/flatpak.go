@@ -11,6 +11,7 @@ package flatpak
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,10 +41,23 @@ type Opts struct {
 	// TargetDir is the mounted target root. The target's flatpak
 	// installation is resolved beneath it (see targetFlatpakDir).
 	TargetDir string
+	// InstallationDir, when set, is the target flatpak installation
+	// directory itself, bypassing resolution — the A/B path mounts the
+	// var FILESYSTEM (runtime /var) rather than a full target root, so
+	// its installation lives at <varMount>/lib/flatpak, which the
+	// TargetDir heuristics cannot derive.
+	InstallationDir string
 	// Apps is the recipe's explicit list of flatpak app IDs to
 	// provision, e.g. "org.mozilla.firefox".
 	Apps []string
 }
+
+// flathubRepo is the remote added to the target installation so
+// downloads have a source even on a bare target — same remote
+// snosi-firstboot added on first boot (snosi-install lineage,
+// snosi-firstboot lines 83-84); firn does it at install time per
+// ADR-0006.
+const flathubRepo = "https://dl.flathub.org/repo/flathub.flatpakrepo"
 
 // Provision installs the requested flatpak apps into the mounted target:
 //
@@ -85,7 +99,10 @@ func Provision(ctx context.Context, r *runner.Runner, o Opts) (unreachable []str
 	}
 
 	// Target /var/lib/flatpak: resolve the writable var path.
-	dst := targetFlatpakDir(ctx, r, o.TargetDir)
+	dst := o.InstallationDir
+	if dst == "" {
+		dst = targetFlatpakDir(ctx, r, o.TargetDir)
+	}
 	if _, mkErr := r.Run(ctx, "mkdir", "-p", dst); mkErr != nil {
 		return nil, fmt.Errorf("flatpak: mkdir %s: %w", dst, mkErr)
 	}
@@ -138,15 +155,27 @@ func Provision(ctx context.Context, r *runner.Runner, o Opts) (unreachable []str
 	for _, ref := range flatpakList(ctx, r, "--system", "--app") {
 		present[flatpakAppName(ref)] = true
 	}
+	var needDownload []string
 	for _, app := range o.Apps {
-		if present[app] {
-			continue
+		if !present[app] {
+			needDownload = append(needDownload, app)
 		}
+	}
+	if len(needDownload) > 0 {
+		// A bare target installation (nothing tar-copied, or a medium
+		// with no flatpak data) has NO remotes, so downloads would all
+		// fail as "unreachable" for the wrong reason. Add flathub
+		// --if-not-exists first; if this itself fails (offline), the
+		// downloads below fail individually and land in unreachable —
+		// ADR-0006's report-don't-fail covers both.
+		_, _ = r.Run(ctx, "env", "FLATPAK_SYSTEM_DIR="+dst,
+			"flatpak", "remote-add", "--system", "--if-not-exists", "flathub", flathubRepo)
+	}
+	for _, app := range needDownload {
 		// FLATPAK_SYSTEM_DIR points flatpak's system installation at
 		// the mounted target, so the download lands in the target's
-		// repo (remotes come from the config the tar copy seeded).
-		// env(1) carries the variable because the runner seam has no
-		// environment injection.
+		// repo. env(1) carries the variable because the runner seam has
+		// no environment injection.
 		if _, dlErr := r.Run(ctx, "env", "FLATPAK_SYSTEM_DIR="+dst,
 			"flatpak", "install", "--system", "-y", "--noninteractive", app); dlErr != nil {
 			// ADR-0006: with no network the install still succeeds;
@@ -237,4 +266,42 @@ func dirSize(ctx context.Context, r *runner.Runner, path string) int64 {
 	}
 	n, _ := strconv.ParseInt(fields[0], 10, 64)
 	return n
+}
+
+// coreJSONPath is where snosi images publish their core flatpak set —
+// owned by the snow-first-setup package (single source of truth;
+// snosi-firstboot line 36 reads the same file on first boot).
+const coreJSONPath = "usr/share/org.frostyard.FirstSetup/snow_first_setup/core.json"
+
+// CoreSet reads the image-defined core flatpak app IDs from a mounted
+// image root (bootc deployment root or A/B erofs root). Images that
+// publish no core set (e.g. server images without snow-first-setup)
+// return ok=false — the caller reports it, per the recipe's
+// core_flatpaks contract ("where the image family publishes one").
+// The list is deduplicated: it is human-maintained and has carried
+// duplicates (snosi-firstboot's sort -u comment).
+func CoreSet(imageRoot string) (ids []string, ok bool, err error) {
+	data, readErr := os.ReadFile(filepath.Join(imageRoot, coreJSONPath))
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("flatpak: reading core set: %w", readErr)
+	}
+	var parsed struct {
+		Core []struct {
+			ID string `json:"id"`
+		} `json:"core"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil, false, fmt.Errorf("flatpak: parsing core.json: %w", err)
+	}
+	seen := map[string]bool{}
+	for _, e := range parsed.Core {
+		if e.ID != "" && !seen[e.ID] {
+			seen[e.ID] = true
+			ids = append(ids, e.ID)
+		}
+	}
+	return ids, true, nil
 }

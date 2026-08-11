@@ -414,24 +414,28 @@ func TestWriteRootAuthorizedKey(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		make func(t *testing.T) (target, deployRoot string)
+		make func(t *testing.T) (target, staterootVar string)
 	}{
 		{"composefs", func(t *testing.T) (string, string) {
 			target := composefsTarget(t, "aaa")
-			return target, filepath.Join(target, "state", "deploy", "aaa")
+			return target, filepath.Join(target, "state", "os", "default", "var")
 		}},
 		{"ostree", func(t *testing.T) (string, string) {
-			return ostreeTarget(t)
+			target, _ := ostreeTarget(t)
+			return target, filepath.Join(target, "ostree", "deploy", "default", "var")
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			target, deployRoot := tc.make(t)
+			target, staterootVar := tc.make(t)
 			var calls []call
 			w := &DeploymentWriter{TargetDir: target, Runner: fakeRunner(&calls)}
 			if err := w.WriteRootAuthorizedKey(ctx, key); err != nil {
 				t.Fatal(err)
 			}
-			sshDir := filepath.Join(deployRoot, "root", ".ssh")
+			// Runtime /root is /var/roothome on the STATEROOT var — a
+			// deployment-root write would be invisible to the booted
+			// system.
+			sshDir := filepath.Join(staterootVar, "roothome", ".ssh")
 			keyFile := filepath.Join(sshDir, "authorized_keys")
 			got, err := os.ReadFile(keyFile)
 			if err != nil {

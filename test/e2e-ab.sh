@@ -91,12 +91,14 @@ encryption = "none"
 hostname = "$hostname"
 timezone = "America/Chicago"
 locale = "en_US.UTF-8"
+keyboard = "us"
 root_ssh_authorized_key_file = "/root/id_e2e.pub"
 
 [system.user]
 name = "e2e"
 password_hash = "\$6\$firn.e2e\$XjSAJP9d3TXbJ4wIcZarBOUpAo6yLh4uYUniEcpKPGqAe7EfWbrKZOfjfHiZ0KOhSjrqAGdRhrGxU0aTsTfW/1"
 groups = ["sudo"]
+ssh_authorized_key_file = "/root/id_e2e.pub"
 EOF
 
 # cloud-init NoCloud seed: just inject our key so the HOST can drive the
@@ -199,6 +201,9 @@ check hostname "$hostname" "$(ssh "${sshopts[@]}" root@127.0.0.1 hostname)"
 check user "uid=1000(e2e)" "$(ssh "${sshopts[@]}" root@127.0.0.1 id e2e)"
 check groups sudo "$(ssh "${sshopts[@]}" root@127.0.0.1 id -Gn e2e)"
 check timezone America/Chicago "$(ssh "${sshopts[@]}" root@127.0.0.1 readlink /etc/localtime)"
+check locale "LANG=en_US.UTF-8" "$(ssh "${sshopts[@]}" root@127.0.0.1 cat /etc/locale.conf)"
+check keyboard 'XKBLAYOUT="us"' "$(ssh "${sshopts[@]}" root@127.0.0.1 cat /etc/default/keyboard)"
+check user-ssh-key firn-e2e "$(ssh "${sshopts[@]}" root@127.0.0.1 cat /var/home/e2e/.ssh/authorized_keys)"
 check var-mount /var "$(ssh "${sshopts[@]}" root@127.0.0.1 findmnt -n -o TARGET /var)"
 check install-info "$product" "$(ssh "${sshopts[@]}" root@127.0.0.1 cat /var/lib/snosi/install-info.json)"
 

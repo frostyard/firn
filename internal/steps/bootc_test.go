@@ -86,6 +86,9 @@ btrfs_subvolumes = true
 encryption = "tpm2-luks"
 [system]
 hostname = "frost01"
+locale = "en_US.UTF-8"
+timezone = "America/Chicago"
+keyboard = "us"
 flatpaks = ["org.mozilla.firefox"]
 [system.user]
 name = "bjk"
@@ -139,6 +142,16 @@ groups = ["wheel"]
 	}
 	if key, err := os.ReadFile(filepath.Join(etcDir, "firn", "tpm2-enroll.key")); err != nil || len(key) == 0 {
 		t.Errorf("transient enroll key not staged: %v", err)
+	}
+	// Phase-5 matrix: locale/timezone/keyboard land in the deployment etc.
+	if data, err := os.ReadFile(filepath.Join(etcDir, "locale.conf")); err != nil || string(data) != "LANG=en_US.UTF-8\n" {
+		t.Errorf("locale.conf = %q, %v", data, err)
+	}
+	if link, err := os.Readlink(filepath.Join(etcDir, "localtime")); err != nil || !strings.HasSuffix(link, "America/Chicago") {
+		t.Errorf("localtime -> %q, %v", link, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(etcDir, "default", "keyboard")); err != nil || !strings.Contains(string(data), `XKBLAYOUT="us"`) {
+		t.Errorf("keyboard = %q, %v", data, err)
 	}
 
 	// Command-sequence spot checks.

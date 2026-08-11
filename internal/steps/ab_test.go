@@ -102,7 +102,16 @@ func TestABPipelineEndToEnd(t *testing.T) {
 				return err
 			}
 		}
-		return os.WriteFile(filepath.Join(etc, "skel", ".bashrc"), []byte("# skel\n"), 0o644)
+		if err := os.WriteFile(filepath.Join(etc, "skel", ".bashrc"), []byte("# skel\n"), 0o644); err != nil {
+			return err
+		}
+		// Image-defined core flatpak set (duplicate id exercises dedupe).
+		coreDir := filepath.Join(dir, "usr", "share", "org.frostyard.FirstSetup", "snow_first_setup")
+		if err := os.MkdirAll(coreDir, 0o755); err != nil {
+			return err
+		}
+		core := `{"core":[{"name":"A","id":"io.core.App"},{"name":"A dup","id":"io.core.App"},{"name":"B","id":"io.core.Other"}]}`
+		return os.WriteFile(filepath.Join(coreDir, "core.json"), []byte(core), 0o644)
 	}
 
 	var argvs [][]string
@@ -178,6 +187,8 @@ hostname = "frost-ab"
 locale = "en_US.UTF-8"
 timezone = "America/Chicago"
 keyboard = "us"
+flatpaks = ["org.mozilla.firefox"]
+core_flatpaks = true
 root_ssh_authorized_key_file = "%s"
 [system.user]
 name = "bjk"
@@ -281,10 +292,26 @@ groups = ["sudo", "wheel"]
 		"gpgv", "sfdisk --lock=yes --relocate gpt-bak-std",
 		"cryptsetup luksFormat", "mkfs.btrfs -f -L var", "btrfs subvolume create",
 		"--tpm2-public-key-pcrs=11", "cryptsetup luksClose firn-var-install",
+		// Phase-5 matrix: flatpaks provision into <varMount>/lib/flatpak
+		// (explicit app + deduped image core set, flathub remote added).
+		"flatpak remote-add --system --if-not-exists flathub",
+		"flatpak install --system -y --noninteractive org.mozilla.firefox",
+		"flatpak install --system -y --noninteractive io.core.App",
+		"flatpak install --system -y --noninteractive io.core.Other",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("expected %q in command sequence:\n%s", want, all)
 		}
+	}
+	if strings.Count(all, "io.core.App") != 1 {
+		t.Errorf("duplicate core id must be installed once:\n%s", all)
+	}
+	if !strings.Contains(all, "FLATPAK_SYSTEM_DIR="+env.VarMount+"/lib/flatpak") {
+		t.Errorf("flatpak installation must target <varMount>/lib/flatpak:\n%s", all)
+	}
+	// Keyboard landed in the overlay upper.
+	if data, err := os.ReadFile(filepath.Join(upper, "default", "keyboard")); err != nil || !strings.Contains(string(data), `XKBLAYOUT="us"`) {
+		t.Errorf("overlay keyboard = %q, %v", data, err)
 	}
 }
 

@@ -64,7 +64,7 @@ ordered so every phase ends with something demonstrable in a VM.
 - **Done when:** a recipe-driven A/B install of snow-ab in the E2E VM
   boots with encrypted `/var`, TPM auto-unlock, and the seeded user.
 
-## Phase 5 — Full configuration matrix (medium)
+## Phase 5 — Full configuration matrix (medium) — ✅ shipped 2026-08-11 (both E2Es apply and SSH-verify hostname, user+groups+password, locale, timezone, keyboard, root+user SSH keys on booted systems. Flatpak provisioning incl. core_flatpaks is wired on both paths and integration-tested; booted-system flatpak assertion awaits a flatpak-capable E2E image — cayo ships no flatpak runtime)
 
 - Close the writer gaps so both writers implement every `[system]`
   feature: locale/timezone/keyboard/SSH keys on the deployment writer;
@@ -91,6 +91,13 @@ ordered so every phase ends with something demonstrable in a VM.
   ([ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
   [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md)); live-ISO
   bootc path ships firn.
+- Full-fidelity encrypted-boot E2E: with firn's ISO in hand, the A/B E2E
+  installs from that ISO **inside one VM with a persistent swtpm**, so
+  encrypted `/var` + signed-PCR-11 TPM auto-unlock is exercised through
+  a real boot (today it is argv-level unit-tested only —
+  [ADR-0009](../adr/0009-ab-installs-require-partition-isolation.md)
+  consequences); same-VM install also covers the bootc path's staged
+  first-boot enrollment.
 - Retire `snosi-firstboot`'s flatpak role (snosi-side).
 - Retirement ADRs for frostyard/fisherman and `snosi-install` once
   parity is demonstrated.

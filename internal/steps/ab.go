@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/frostyard/firn/internal/abimg"
+	"github.com/frostyard/firn/internal/flatpak"
 	"github.com/frostyard/firn/internal/luks"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
@@ -283,12 +285,38 @@ func runSysconfigAB(ctx context.Context, env *pipeline.Env) error {
 }
 
 func runFlatpaksAB(ctx context.Context, env *pipeline.Env) error {
-	// Unified offline-first flatpak provisioning on the A/B path lands
-	// in phase 5 (docs/plans/roadmap.md); be loud, not silent.
-	if len(env.Recipe.System.Flatpaks) > 0 || env.Recipe.System.CoreFlatpaks {
-		msg := "flatpaks are not provisioned on the A/B path yet (roadmap phase 5)"
-		env.Emit(progress.Warning{Code: "not_implemented", Message: msg})
-		env.AddSummary("not_implemented", msg)
+	apps := env.Recipe.System.Flatpaks
+	if env.Recipe.System.CoreFlatpaks {
+		// The A/B erofs root is fully materialized: the image-defined
+		// core set is readable directly (unlike composefs bootc
+		// targets).
+		core, ok, err := flatpak.CoreSet(env.RootMount)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			msg := "core_flatpaks: this image publishes no core set"
+			env.Emit(progress.Warning{Code: "no_core_set", Message: msg})
+			env.AddSummary("no_core_set", msg)
+		}
+		apps = append(apps, core...)
+	}
+	if len(apps) == 0 {
+		return nil
+	}
+	// The var FILESYSTEM is mounted (its runtime path is /var), so the
+	// flatpak installation lives at <varMount>/lib/flatpak.
+	unreachable, err := flatpak.Provision(ctx, env.Runner, flatpak.Opts{
+		TargetDir:       env.VarMount,
+		InstallationDir: filepath.Join(env.VarMount, "lib", "flatpak"),
+		Apps:            apps,
+	})
+	if err != nil {
+		return err
+	}
+	for _, app := range unreachable {
+		env.Emit(progress.Warning{Code: progress.CodeFlatpakUnreachable, Message: app})
+		env.AddSummary(progress.CodeFlatpakUnreachable, app)
 	}
 	return nil
 }

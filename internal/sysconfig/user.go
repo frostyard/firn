@@ -234,7 +234,13 @@ func (w *DeploymentWriter) WriteRootAuthorizedKey(ctx context.Context, key strin
 	if err != nil {
 		return err
 	}
-	rootHome := filepath.Join(lay.root, "root")
+	// Runtime /root on bootc systems is /var/roothome (the image's
+	// /root is a symlink into var), and /var at runtime is the
+	// STATEROOT var — writing under the deployment root's own var is
+	// invisible to the booted system (the exact bug class fisherman's
+	// home-relocation comment documents; observed live: sshd up, key
+	// never seen, cayo bootc E2E 2026-08-11).
+	rootHome := filepath.Join(w.staterootVarDir(lay), "roothome")
 	if err := os.MkdirAll(rootHome, 0o700); err != nil {
 		return fmt.Errorf("mkdir root home: %w", err)
 	}

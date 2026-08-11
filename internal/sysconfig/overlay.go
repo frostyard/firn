@@ -124,7 +124,7 @@ func (w *OverlayWriter) WriteHostname(hostname string) error {
 }
 
 // WriteLocale writes the overlay upper's locale.conf with a single LANG=
-// line, seed_var's exact format.
+// line, seed_var's exact format (shared builder in locale.go).
 func (w *OverlayWriter) WriteLocale(locale string) error {
 	if locale == "" {
 		return nil
@@ -133,41 +133,20 @@ func (w *OverlayWriter) WriteLocale(locale string) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(filepath.Join(upper, "locale.conf"), []byte("LANG="+locale+"\n"), 0o644)
+	return writeLocaleTo(upper, locale)
 }
 
-// WriteTimezone writes the overlay upper's timezone file and the localtime
-// symlink. The symlink target is RELATIVE — ../usr/share/zoneinfo/<tz>,
-// the exact form seed_var's `ln -sfn` wrote: resolved from /etc on the
-// booted system it lands on /usr/share/zoneinfo/<tz>, and it must stay
-// relative so it resolves inside the overlay-mounted root rather than on
-// the installer's host.
+// WriteTimezone writes the overlay upper's timezone file and the
+// localtime symlink (relative-target rationale in locale.go).
 func (w *OverlayWriter) WriteTimezone(tz string) error {
 	if tz == "" {
 		return nil
-	}
-	// tz becomes a symlink target component; snosi validated it at the CLI
-	// (TIMEZONE_RE rejects e.g. "America/../../etc"). Guard here too since
-	// this method is the last stop before the path is written.
-	if strings.HasPrefix(tz, "/") || strings.Contains(tz, "..") {
-		return fmt.Errorf("invalid timezone %q", tz)
 	}
 	upper, err := w.ensureUpper()
 	if err != nil {
 		return err
 	}
-	if err := writeFileAtomic(filepath.Join(upper, "timezone"), []byte(tz+"\n"), 0o644); err != nil {
-		return err
-	}
-	link := filepath.Join(upper, "localtime")
-	// ln -sfn semantics: replace any existing link.
-	if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("removing old localtime symlink: %w", err)
-	}
-	if err := os.Symlink("../usr/share/zoneinfo/"+tz, link); err != nil {
-		return fmt.Errorf("symlinking localtime: %w", err)
-	}
-	return nil
+	return writeTimezoneTo(upper, tz)
 }
 
 // WriteKeyboard writes the overlay upper's default/keyboard file from a
@@ -178,38 +157,16 @@ func (w *OverlayWriter) WriteTimezone(tz string) error {
 // that shape on first boot — observed live 2026-07-17: a plain-file
 // vconsole.conf write was replaced by the symlink on the installed system's
 // first boot). So, exactly like seed_var, write the file the symlink
-// resolves to, in its keyboard(5) format.
+// resolves to, in its keyboard(5) format (shared builder in locale.go).
 func (w *OverlayWriter) WriteKeyboard(spec string) error {
 	if spec == "" {
 		return nil
-	}
-	parts := strings.SplitN(spec, ":", 3)
-	layout := parts[0]
-	if layout == "" {
-		return fmt.Errorf("invalid keyboard spec %q: empty layout", spec)
-	}
-	var variant, model string
-	if len(parts) > 1 {
-		variant = parts[1]
-	}
-	if len(parts) > 2 {
-		model = parts[2]
-	}
-	if model == "" {
-		model = "pc105" // seed_var's ${kb_model:-pc105} default
 	}
 	upper, err := w.ensureUpper()
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(upper, "default")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", dir, err)
-	}
-	// Field order and quoting match seed_var byte for byte.
-	content := fmt.Sprintf("XKBMODEL=\"%s\"\nXKBLAYOUT=\"%s\"\nXKBVARIANT=\"%s\"\nXKBOPTIONS=\"\"\nBACKSPACE=\"guess\"\n",
-		model, layout, variant)
-	return writeFileAtomic(filepath.Join(dir, "keyboard"), []byte(content), 0o644)
+	return writeKeyboardTo(upper, spec)
 }
 
 // WriteRootAuthorizedKey writes root's SSH key into the overlay upper at
