@@ -100,11 +100,30 @@ Proven so far (2026-08-11), in review branches (not yet merged):
 - **first-setup slimmed to first-login only** (`first-setup` branch
   `first-login-only`): modes 1–2 removed, `core.json` contract kept.
 
-Still to do: on-ISO staged-flatpak (offline medium-copy) E2E; the ISO's
-seeded flatpak repo (ADR-0006, deferred with a TODO in the profile);
-retiring snosi-firstboot's flatpak role and snosi's dead mode-1/2
-wiring; restoring snow-first-setup to snowfield; retirement ADRs for
-fisherman and snosi-install; and reviewing/merging the three branches.
+Also done: snosi's dead first-boot-setup wiring removed
+(`_snow-linux-live-setup` + service + the `Session=firstsetup`
+AccountsService override) in the same `firn-installer` branch.
+Correction: snowfield already ships `snow-first-setup` transitively via
+`shared/composition/snow` → `shared/packages/snow` — no restore needed
+(the earlier "snowfield lost it" note was a shallow-grep error).
+
+Still to do:
+- **ISO flatpak seeding — decided: Option A.** The 24 apps of
+  first-setup's `core.json` are staged as a data area ON the ISO
+  (outside the RAM-unpacked initramfs), mounted read-only at
+  `/var/lib/flatpak` in the installer environment so firn's medium-copy
+  path (ADR-0006) finds them offline. Naive seeding into the initramfs
+  is unviable (2–4 GB into an all-in-RAM rootfs).
+- on-ISO staged-flatpak (offline medium-copy) E2E, once seeding lands.
+- retiring snosi-firstboot's flatpak role.
+- **frostyard/lab suites** (final step, "once proven out"): add a firn
+  suite and an iso+installation suite to lab's Argo-Workflows homelab
+  harness — new `lab/argo/*.yaml` workflows modeled on
+  `snosi-bootc-install-test.yaml` / `snosi-install-test.yaml`, booting
+  the firn ISO on incus VMs and running installs of both families.
+- retirement ADRs for fisherman and snosi-install.
+- reviewing/merging the review branches (snosi `firn-installer`,
+  first-setup `first-login-only`).
 
 ## Phase 7 plan — Becoming the only installer (medium, cross-repo)
 
