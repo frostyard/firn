@@ -7,7 +7,7 @@ implementing [design/architecture.md](../design/architecture.md) and the
 [progress protocol](../specs/progress-protocol.md) specs. Phases are
 ordered so every phase ends with something demonstrable in a VM.
 
-## Phase 1 — Skeleton and contracts (small)
+## Phase 1 — Skeleton and contracts (small) — ✅ shipped 2026-08-11 (`545d831`)
 
 - Repo scaffold: Go module, `LICENSE` (GPL-3.0 text) + `NOTICE`
   (attribution lineage) — required before any code is copied in
