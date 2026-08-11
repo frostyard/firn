@@ -15,18 +15,25 @@ Docs are split by the question they answer:
 
 - [0001 — Record architecture decisions](adr/0001-record-architecture-decisions.md)
 - [0002 — Agent-portable instruction surface](adr/0002-agent-portable-instruction-surface.md)
+- [0003 — Rewrite fisherman as firn rather than hard-forking](adr/0003-rewrite-fisherman-as-firn.md)
+- [0004 — Single installer for all snosi images, UEFI floor, optional security features](adr/0004-single-installer-scope-and-support-matrix.md)
+- [0005 — Versioned, sectioned TOML recipe as the single configuration surface](adr/0005-toml-recipe-model.md)
+- [0006 — Install-time, offline-first flatpak provisioning on both paths](adr/0006-install-time-offline-first-flatpaks.md)
+- [0007 — TUI-only frontend in a single binary, one progress protocol](adr/0007-tui-only-frontend-single-binary.md)
+- [0008 — /var filesystem choice for A/B installs](adr/0008-ab-var-filesystem-choice.md)
 
 ### Design
 
-*(none yet)*
+- [Firn architecture](design/architecture.md)
 
 ### Specs
 
-*(none yet)*
+- [Firn recipe schema (version 1)](specs/recipe-schema.md)
+- [Firn progress protocol (version 1)](specs/progress-protocol.md)
 
 ### Plans
 
-*(none yet)*
+- [Firn roadmap](plans/roadmap.md)
 
 ## Conventions
 
