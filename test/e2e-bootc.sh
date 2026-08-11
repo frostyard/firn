@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# E2E: recipe-driven bootc install onto a loop device, then boot the
+# result under QEMU/OVMF and wait for a login prompt.
+#
+# Modeled on fisherman's "bootcrew" harness (frostyard/fisherman,
+# justfile, GPL-3.0-only), reduced to firn's phase-3 scope.
+#
+# Requirements: root, qemu-system-x86_64, qemu-img, OVMF firmware,
+# podman, and the usual disk tools (sfdisk, cryptsetup, mkfs.*).
+# Roughly 20 GiB of scratch space.
+#
+# Usage: sudo test/e2e-bootc.sh [recipe.toml]
+#   FIRN_E2E_IMAGE   image to install (default ghcr.io/frostyard/cayo:latest)
+#   FIRN_E2E_DIR     scratch dir (default: mktemp -d)
+#   FIRN_E2E_TIMEOUT seconds to wait for the login prompt (default 300)
+set -euo pipefail
+
+[[ $EUID -eq 0 ]] || { echo "e2e: must run as root" >&2; exit 1; }
+
+here=$(cd "$(dirname "$0")/.." && pwd)
+image=${FIRN_E2E_IMAGE:-ghcr.io/frostyard/cayo:latest}
+work=${FIRN_E2E_DIR:-$(mktemp -d /var/tmp/firn-e2e.XXXXXX)}
+timeout=${FIRN_E2E_TIMEOUT:-300}
+hostname=frn-e2e
+
+ovmf_code=""
+for c in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd /usr/share/edk2/x64/OVMF_CODE.4m.fd; do
+  [[ -f $c ]] && ovmf_code=$c && break
+done
+[[ -n $ovmf_code ]] || { echo "e2e: OVMF firmware not found" >&2; exit 1; }
+
+cleanup() {
+  [[ -n ${loop:-} ]] && losetup -d "$loop" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+echo "e2e: building firn"
+(cd "$here" && go build -o "$work/firn" ./cmd/firn)
+
+echo "e2e: creating 20G disk image + loop device"
+truncate -s 20G "$work/disk.raw"
+loop=$(losetup --find --show --partscan "$work/disk.raw")
+
+recipe=${1:-}
+if [[ -z $recipe ]]; then
+  recipe=$work/recipe.toml
+  cat >"$recipe" <<EOF
+version = 1
+
+[image]
+family = "bootc"
+ref = "$image"
+
+[target]
+disk = "$loop"
+filesystem = "btrfs"
+btrfs_subvolumes = true
+
+[security]
+encryption = "none"
+
+[system]
+hostname = "$hostname"
+flatpaks = []
+
+[system.user]
+name = "e2e"
+password_hash = "\$6\$firn.e2e\$XjSAJP9d3TXbJ4wIcZarBOUpAo6yLh4uYUniEcpKPGqAe7EfWbrKZOfjfHiZ0KOhSjrqAGdRhrGxU0aTsTfW/1"
+groups = ["wheel"]
+EOF
+fi
+
+echo "e2e: installing $image to $loop"
+"$work/firn" install --uefi on --confirm "$loop" --json-progress "$recipe" | tee "$work/progress.ndjson"
+
+grep -q '"event":"done","ok":true' "$work/progress.ndjson" \
+  || { echo "e2e: install did not complete" >&2; exit 1; }
+
+losetup -d "$loop"; loop=""
+
+echo "e2e: booting under QEMU (waiting up to ${timeout}s for login prompt)"
+cp "$ovmf_code" "$work/code.fd"
+vars=${ovmf_code/CODE/VARS}
+cp "$vars" "$work/vars.fd" 2>/dev/null || truncate -s "$(stat -c%s "$work/code.fd")" "$work/vars.fd"
+
+timeout "$timeout" qemu-system-x86_64 \
+  -m 4096 -smp 2 -enable-kvm -cpu host \
+  -drive if=pflash,format=raw,readonly=on,file="$work/code.fd" \
+  -drive if=pflash,format=raw,file="$work/vars.fd" \
+  -drive file="$work/disk.raw",format=raw,if=virtio \
+  -nographic -serial mon:stdio -display none \
+  | tee "$work/console.log" | { grep -m1 -q "$hostname login:" && pkill -P $$ qemu-system-x86 || true; } || true
+
+grep -q "$hostname login:" "$work/console.log" \
+  || { echo "e2e: FAIL — no login prompt for $hostname (console: $work/console.log)" >&2; exit 1; }
+
+echo "e2e: PASS — $hostname booted to login ($work)"

@@ -18,3 +18,7 @@ build:
 
 fmt:
     gofmt -w .
+
+# Requires root, QEMU/OVMF, podman, ~20G scratch. See test/e2e-bootc.sh.
+e2e-bootc:
+    sudo test/e2e-bootc.sh

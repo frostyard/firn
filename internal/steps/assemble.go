@@ -31,31 +31,31 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 	encrypted := r.Security.Encryption != "none"
 	steps := []pipeline.Step{
 		{Name: "partition", Weight: 5, Destructive: true,
-			Tools: []string{"sfdisk", "wipefs", "partprobe"}},
+			Tools: []string{"sfdisk", "wipefs", "partprobe", "udevadm"}, Run: runPartition},
 		{Name: "format-boot", Weight: 3, Destructive: true,
-			Tools: []string{"mkfs.fat", "mkfs.ext4"}},
+			Tools: []string{"mkfs.fat", "mkfs.ext4"}, Run: runFormatBoot},
 	}
 	if encrypted {
 		steps = append(steps, pipeline.Step{Name: "luks-format", Weight: 3, Destructive: true,
-			Tools: []string{"cryptsetup"}})
+			Tools: []string{"cryptsetup"}, Run: runLuksFormat})
 	}
 	steps = append(steps,
 		pipeline.Step{Name: "format-root", Weight: 4, Destructive: true,
-			Tools: rootFsTools(r.Target.Filesystem)},
+			Tools: rootFsTools(r.Target.Filesystem), Run: runFormatRoot},
 		pipeline.Step{Name: "mount-target", Weight: 1, Destructive: false,
-			Tools: []string{"mount", "umount"}},
+			Tools: []string{"mount", "umount"}, Run: runMountTarget},
 		pipeline.Step{Name: "bootc-install", Weight: 55, Destructive: true,
-			Tools: []string{"podman", "skopeo", "bootc"}},
+			Tools: []string{"podman", "skopeo"}, Run: runBootcInstall},
 	)
 	if r.Security.Encryption == "tpm2-luks" || r.Security.Encryption == "tpm2-luks-passphrase" {
 		// Enrollment is staged for first boot: PCR 7 differs inside the
 		// live installer (fisherman's documented incident).
-		steps = append(steps, pipeline.Step{Name: "tpm-stage", Weight: 1})
+		steps = append(steps, pipeline.Step{Name: "tpm-stage", Weight: 1, Run: runTPMStage})
 	}
 	steps = append(steps,
-		pipeline.Step{Name: "flatpaks", Weight: 15, Tools: []string{"flatpak"}},
-		pipeline.Step{Name: "sysconfig", Weight: 8, Tools: []string{"useradd", "chpasswd"}},
-		pipeline.Step{Name: "finalize", Weight: 5, Tools: []string{"fstrim", "fsfreeze", "efibootmgr"}},
+		pipeline.Step{Name: "flatpaks", Weight: 15, Tools: []string{"flatpak"}, Run: runFlatpaks},
+		pipeline.Step{Name: "sysconfig", Weight: 8, Tools: []string{"useradd", "chpasswd", "chroot"}, Run: runSysconfig},
+		pipeline.Step{Name: "finalize", Weight: 5, Tools: []string{"fstrim", "fsfreeze"}, Run: runFinalize},
 	)
 	return steps
 }

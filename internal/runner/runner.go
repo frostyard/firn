@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // Runner executes host commands. The zero value is not usable; use New.
@@ -21,6 +22,9 @@ func New() *Runner {
 	return &Runner{
 		exec: func(ctx context.Context, name string, args ...string) ([]byte, error) {
 			cmd := exec.CommandContext(ctx, name, args...)
+			if input, ok := Stdin(ctx); ok {
+				cmd.Stdin = strings.NewReader(input)
+			}
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
@@ -44,6 +48,23 @@ func NewFake(
 // Run executes name with args and returns its stdout.
 func (r *Runner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return r.exec(ctx, name, args...)
+}
+
+// stdinKey carries RunInput's input through the context so the exec
+// seam's signature (and NewFake's) stays unchanged.
+type stdinKey struct{}
+
+// RunInput executes name with args, feeding input to its stdin, and
+// returns its stdout. Mirrors Run otherwise. Fake exec functions
+// recover the input with Stdin.
+func (r *Runner) RunInput(ctx context.Context, input string, name string, args ...string) ([]byte, error) {
+	return r.exec(context.WithValue(ctx, stdinKey{}, input), name, args...)
+}
+
+// Stdin reports the stdin input attached by RunInput, if any.
+func Stdin(ctx context.Context) (string, bool) {
+	s, ok := ctx.Value(stdinKey{}).(string)
+	return s, ok
 }
 
 // LookPath reports where name resolves on PATH.

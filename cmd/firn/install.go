@@ -19,6 +19,7 @@ import (
 func runInstall(args []string) int {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "validate, assemble, and run preflight only")
+	confirm := fs.String("confirm", "", "typed confirmation: must equal the recipe's target disk path")
 	jsonProgress := fs.Bool("json-progress", false, "emit NDJSON progress events on stdout")
 	sb := fs.String("secure-boot", "auto", "auto|on|off")
 	tpm := fs.String("tpm", "auto", "auto|on|off")
@@ -28,10 +29,6 @@ func runInstall(args []string) int {
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprint(os.Stderr, "firn install: exactly one recipe path is required\n")
-		return 2
-	}
-	if !*dryRun {
-		fmt.Fprint(os.Stderr, "firn install: only --dry-run is implemented so far (docs/plans/roadmap.md, phases 3-4)\n")
 		return 2
 	}
 
@@ -67,6 +64,14 @@ func runInstall(args []string) int {
 		return 1
 	}
 	env.Recipe = &l.Recipe
+
+	// Destructive installs demand typed confirmation of the exact
+	// target disk — snosi-install's rule, applied on every path
+	// (docs/design/architecture.md, Operational notes).
+	if !*dryRun && *confirm != l.Recipe.Target.Disk {
+		fmt.Fprintf(os.Stderr, "firn install: destructive install requires --confirm %s (typed confirmation of the target disk)\n", l.Recipe.Target.Disk)
+		return 2
+	}
 
 	if *jsonProgress {
 		nd := progress.NewNDJSON(os.Stdout)

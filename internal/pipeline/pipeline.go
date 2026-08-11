@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/runner"
@@ -46,7 +47,19 @@ type Env struct {
 	Runner  *runner.Runner
 	Emit    func(progress.Event)
 
+	// Install state shared between steps, populated as steps run.
+	Layout    disk.Layout
+	RootDev   string // device holding the root fs (mapper path when encrypted)
+	LuksKey   string // transient unlock key for first-boot TPM enrollment
+	TargetDir string // where the target filesystem tree is mounted
+	Summary   []progress.SummaryItem
+
 	cleanup []cleanupEntry
+}
+
+// AddSummary queues an item for the pre-terminal summary event.
+func (e *Env) AddSummary(code, detail string) {
+	e.Summary = append(e.Summary, progress.SummaryItem{Code: code, Detail: detail})
 }
 
 type cleanupEntry struct {
@@ -122,6 +135,9 @@ func (p *Pipeline) Run(ctx context.Context, env *Env, dryRun bool) error {
 	if runErr != nil {
 		env.Emit(progress.Error{Step: failedStep, Code: "step_failed", Message: runErr.Error()})
 		return runErr
+	}
+	if len(env.Summary) > 0 {
+		env.Emit(progress.Summary{Items: env.Summary})
 	}
 	env.Emit(progress.Done{OK: true})
 	return nil
