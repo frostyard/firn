@@ -22,7 +22,7 @@ ordered so every phase ends with something demonstrable in a VM.
   rejects each rule violation with a distinct error, and `just check`
   is green in CI.
 
-## Phase 2 — Step engine and preflight (small)
+## Phase 2 — Step engine and preflight (small) — ✅ shipped 2026-08-11 (`f702b37`)
 
 - `internal/pipeline`: step interface, assembly from a validated recipe,
   cleanup stack, dry-run
