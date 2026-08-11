@@ -45,8 +45,18 @@ every structural rule. Rules that remove a degree of freedom are the
 valuable ones: every choice an agent doesn't have to make is a failure mode
 removed. -->
 
-- Run `just check` (gofmt, vet, tests, build) before calling any change
-  done. CI runs the same recipe, so a local pass is a CI pass.
+- Run `make check` (fmt + lint + test) before calling any change done —
+  the frostyard house gate (ADR-0011; exemplar: frostyard/updex). CI
+  runs the same steps. Note `make lint` silently skips when
+  golangci-lint is missing; CI is the backstop.
+- Layout follows the frostyard Go conventions with documented
+  deviations (ADR-0011): `cmd/firn-cli/main.go` is the clix entry,
+  `cmd/firn/` holds cobra handlers, and — deviating from SDK-first —
+  the pipeline stays under `internal/` (firn's public contracts are
+  the recipe schema and progress protocol, not Go APIs).
+- Releases: conventional commits; `make bump` tags via svu; GoReleaser
+  Pro publishes `frostyard-firn` packages plus a nightly `dev`
+  snapshot.
 - Pipeline and domain packages (`internal/*` except the TUI) use only the
   Go stdlib plus shelling out to host tools; the sanctioned exceptions are
   the TOML decoder (ADR-0005) and, in the TUI layer only, the Charm stack

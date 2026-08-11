@@ -56,13 +56,13 @@ mkdir -p "$cache" "$work"
 
 echo "e2e: providing a static firn for the guest"
 if command -v go >/dev/null 2>&1; then
-  (cd "$here" && CGO_ENABLED=0 go build -o "$work/firn" ./cmd/firn)
-elif [[ -x $here/firn ]]; then
+  (cd "$here" && CGO_ENABLED=0 go build -o "$work/firn" ./cmd/firn-cli)
+elif [[ -x $here/build/firn || -x $here/firn ]]; then
   # Root often lacks the user's go toolchain (linuxbrew); a prebuilt
   # ./firn from `just build` works. The guest runs it, not the host.
-  cp "$here/firn" "$work/firn"
+  cp "$(ls "$here/build/firn" "$here/firn" 2>/dev/null | head -1)" "$work/firn"
 else
-  echo "e2e: go not on PATH and no prebuilt ./firn — run 'just build' first" >&2
+  echo "e2e: go not on PATH and no prebuilt ./firn — run 'make build' first" >&2
   exit 1
 fi
 

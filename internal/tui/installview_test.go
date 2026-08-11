@@ -252,7 +252,9 @@ func TestEventLoopRearmsChannelRead(t *testing.T) {
 		t.Fatalf("Init cmd returned %T, want eventMsg", msg)
 	}
 	nm, cmd := m.Update(em)
-	m = nm.(installModel)
+	if _, ok := nm.(installModel); !ok {
+		t.Fatalf("Update returned %T, want installModel", nm)
+	}
 	if cmd == nil {
 		t.Fatal("non-terminal event must re-arm the channel read")
 	}

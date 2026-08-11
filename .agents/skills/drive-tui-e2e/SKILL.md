@@ -1,11 +1,11 @@
 ---
 name: drive-tui-e2e
-description: Extend or debug the tmux-driven TUI end-to-end test (test/e2e-tui.sh), which scripts firn's real wizard screen by screen inside a nested VM. Use whenever a wizard page changes, a new TUI flow needs E2E coverage, or `just e2e-tui` fails and the expect script must be re-synced.
+description: Extend or debug the tmux-driven TUI end-to-end test (test/e2e-tui.sh), which scripts firn's real wizard screen by screen inside a nested VM. Use whenever a wizard page changes, a new TUI flow needs E2E coverage, or `make e2e-tui` fails and the expect script must be re-synced.
 ---
 
 # Drive firn's TUI end-to-end with tmux
 
-Goal: `just e2e-tui` (and `FIRN_E2E_TUI_FAMILY=bootc` for the other
+Goal: `make e2e-tui` (and `FIRN_E2E_TUI_FAMILY=bootc` for the other
 family) walks the real wizard via `tmux send-keys`/`capture-pane`,
 installs to a virtio disk inside a nested VM, and verifies the booted
 system. Done = PASS lines for both families.

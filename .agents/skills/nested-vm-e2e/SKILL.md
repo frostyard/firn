@@ -28,7 +28,7 @@ because it creates fresh generic partitions.
    helpers wrap the port and key.
 3. Stage a static firn (`CGO_ENABLED=0`; root often lacks the user's
    go toolchain, so harnesses fall back to a prebuilt `./firn` — run
-   `just build` first). apt-install exactly the tools firn's preflight
+   `make build` first). apt-install exactly the tools firn's preflight
    will demand for the recipe's family.
 4. Install, capture `--json-progress` output, assert the `done` event.
 5. Boot `target.raw` in a fresh QEMU (OVMF, `hostfwd` to a different

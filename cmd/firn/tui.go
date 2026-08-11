@@ -2,7 +2,7 @@
 // runs the wizard, writes the generated recipe to /run/firn, and drives
 // the install pipeline in-process with progress over a Go channel
 // (ADR-0007 — no subprocess seam, one binary).
-package main
+package firn
 
 import (
 	"context"
@@ -41,35 +41,35 @@ type tuiOptions struct {
 // SSH keys.
 const recipeDir = "/run/firn"
 
-func runTUI(o tuiOptions) int {
+func runTUI(parent context.Context, o tuiOptions) error {
 	env := &pipeline.Env{
 		Machine: recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
 		Runner:  runner.New(),
-		Version: version,
+		Version: Version,
 		Trust:   trust.Options{PubringPath: o.pubring},
 	}
 	var err error
 	if env.Machine.SecureBoot, err = tristate(o.secureBoot, platform.SecureBoot); err != nil {
-		fmt.Fprintf(os.Stderr, "firn: --secure-boot: %v\n", err)
-		return 2
+		return fmt.Errorf("--secure-boot: %w", err)
 	}
 	if env.Machine.TPM, err = tristate(o.tpm, platform.TPM); err != nil {
-		fmt.Fprintf(os.Stderr, "firn: --tpm: %v\n", err)
-		return 2
+		return fmt.Errorf("--tpm: %w", err)
 	}
 	if env.UEFI, err = tristate(o.uefi, platform.UEFI); err != nil {
-		fmt.Fprintf(os.Stderr, "firn: --uefi: %v\n", err)
-		return 2
+		return fmt.Errorf("--uefi: %w", err)
 	}
 
 	// The catalog is a convenience, not a gate: a load problem is a
-	// note on stderr and the wizard falls back to manual entry.
+	// note on stderr and the wizard falls back to built-ins.
 	catalog, warn := tui.LoadCatalog()
 	if warn != nil {
 		fmt.Fprintf(os.Stderr, "firn: note: %v\n", warn)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	r, err := tui.RunWizard(ctx, tui.WizardOpts{
@@ -79,23 +79,22 @@ func runTUI(o tuiOptions) int {
 		Catalog: catalog,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "firn: %v\n", err)
-		return 1
+		return err
 	}
 	if r == nil {
-		return 0 // user quit the wizard; nothing was touched
+		return nil // user quit the wizard; nothing was touched
 	}
 
-	path, l, ok := writeRecipe(r, env.Machine)
-	if !ok {
-		return 1
+	path, l, err := writeRecipe(r, env.Machine)
+	if err != nil {
+		return err
 	}
 	env.Recipe = &l.Recipe
 
 	// No typed --confirm on this path: the wizard's typed-confirmation
 	// page already made the user type the exact target disk path — the
-	// same rule install.go enforces via --confirm for headless runs
-	// (docs/design/architecture.md, Operational notes).
+	// same rule the install command enforces via --confirm for headless
+	// runs (docs/design/architecture.md, Operational notes).
 
 	// Two progress consumers (ADR-0007): the in-process channel feeds
 	// the install view; --json-progress additionally mirrors the
@@ -135,11 +134,10 @@ func runTUI(o tuiOptions) int {
 	}()
 	<-pipeDone
 
-	rc := 0
+	var runErr error
 	switch {
 	case uiErr != nil:
-		fmt.Fprintf(os.Stderr, "firn: %v\n", uiErr)
-		rc = 1
+		runErr = uiErr
 	case res.Done:
 		if res.RecoveryKey != "" {
 			// Mirror headless printEvent: keep the key in scrollback
@@ -147,16 +145,14 @@ func runTUI(o tuiOptions) int {
 			fmt.Fprintf(os.Stderr, "RECOVERY KEY (store it safely): %s\n", res.RecoveryKey)
 		}
 	case res.Failed:
-		fmt.Fprintf(os.Stderr, "firn: install failed at %s: %s\n", res.FailedStep, res.ErrorMessage)
-		rc = 1
+		runErr = fmt.Errorf("install failed at %s: %s", res.FailedStep, res.ErrorMessage)
 	default:
-		fmt.Fprint(os.Stderr, "firn: install cancelled\n")
-		rc = 1
+		runErr = fmt.Errorf("install cancelled")
 	}
 	fmt.Fprintf(os.Stderr, "firn: generated recipe saved at %s\n", path)
 	fmt.Fprintf(os.Stderr, "firn: reproduce headless with: firn install --confirm %s %s\n",
 		l.Recipe.Target.Disk, path)
-	return rc
+	return runErr
 }
 
 // writeRecipe persists the wizard's recipe and re-validates the FILE:
@@ -164,33 +160,27 @@ func runTUI(o tuiOptions) int {
 // 5), and it is exactly what the printed reproduce-headless command
 // will consume. Any failure here is a firn bug — the wizard generated
 // something the schema rejects — never a user error.
-func writeRecipe(r *recipe.Recipe, machine recipe.Env) (string, *recipe.Loaded, bool) {
+func writeRecipe(r *recipe.Recipe, machine recipe.Env) (string, *recipe.Loaded, error) {
 	data, err := toml.Marshal(*r)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "firn: BUG: cannot marshal the wizard's recipe: %v\n", err)
-		return "", nil, false
+		return "", nil, fmt.Errorf("BUG: cannot marshal the wizard's recipe: %w", err)
 	}
 	if err := os.MkdirAll(recipeDir, 0o700); err != nil {
-		fmt.Fprintf(os.Stderr, "firn: %v\n", err)
-		return "", nil, false
+		return "", nil, err
 	}
 	path := filepath.Join(recipeDir, fmt.Sprintf("recipe-%d.toml", os.Getpid()))
 	if err := os.WriteFile(path, data, 0o600); err != nil {
-		fmt.Fprintf(os.Stderr, "firn: %v\n", err)
-		return "", nil, false
+		return "", nil, err
 	}
 	l, err := recipe.Load(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "firn: BUG: the wizard wrote an unloadable recipe: %v\n", err)
-		return "", nil, false
+		return "", nil, fmt.Errorf("BUG: the wizard wrote an unloadable recipe: %w", err)
 	}
 	if issues := recipe.Validate(l, machine); len(issues) > 0 {
 		for _, is := range issues {
 			fmt.Fprintf(os.Stderr, "%v\n", is)
 		}
-		fmt.Fprintf(os.Stderr, "firn: BUG: the wizard generated an invalid recipe (%d issue(s), kept at %s)\n",
-			len(issues), path)
-		return "", nil, false
+		return "", nil, fmt.Errorf("BUG: the wizard generated an invalid recipe (%d issue(s), kept at %s)", len(issues), path)
 	}
-	return path, l, true
+	return path, l, nil
 }
