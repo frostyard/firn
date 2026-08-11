@@ -283,9 +283,20 @@ groups = ["sudo", "wheel"]
 	// Command spot-checks: enrollment argv and secret hygiene.
 	all := ""
 	for _, a := range argvs {
-		all += strings.Join(a, " ") + "\n"
-		if recoveryKey != "" && strings.Contains(strings.Join(a, " "), recoveryKey) {
+		line := strings.Join(a, " ")
+		all += line + "\n"
+		if recoveryKey != "" && strings.Contains(line, recoveryKey) {
 			t.Fatalf("recovery key leaked onto argv: %v", a)
+		}
+		// systemd-cryptenroll must target the LUKS PARTITION
+		// (/dev/fake6, the container with the LUKS2 superblock), never
+		// the opened mapper — on-hardware, enrolling the mapper fails
+		// "Failed to load LUKS2 superblock" (ISO E2E, 2026-08-11).
+		if a[0] == "systemd-cryptenroll" {
+			last := a[len(a)-1]
+			if last != "/dev/fake6" {
+				t.Errorf("cryptenroll target = %q, want the var partition /dev/fake6 (not the mapper)", last)
+			}
 		}
 	}
 	for _, want := range []string{

@@ -183,8 +183,14 @@ func runTPMEnroll(ctx context.Context, env *pipeline.Env) error {
 	}
 	keyFile.Close()
 
+	// Enroll against the LUKS PARTITION (VarPart), which holds the
+	// LUKS2 superblock the token is written into — NOT VarDev, the
+	// opened mapper (a plaintext view with no LUKS header:
+	// systemd-cryptenroll fails "Failed to load LUKS2 superblock",
+	// caught only by the on-hardware ISO E2E; the argv unit test used a
+	// fake device and could not see the mix-up).
 	return abimg.EnrollTPMVar(ctx, env.Runner, espMount,
-		env.Recipe.Image.Product, env.ABVersion, env.VarDev, keyFile.Name())
+		env.Recipe.Image.Product, env.ABVersion, env.VarPart, keyFile.Name())
 }
 
 // mountRO mounts dev read-only at a scratch dir and registers cleanup.

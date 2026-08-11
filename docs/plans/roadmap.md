@@ -84,7 +84,29 @@ ordered so every phase ends with something demonstrable in a VM.
 - **Done when:** a TUI-driven install completes on both families in the
   E2E VM, and the recipe it wrote reproduces the same install headless.
 
-## Phase 7 — Becoming the only installer (medium, cross-repo)
+## Phase 7 — Becoming the only installer (medium, cross-repo) — ⏳ in progress
+
+Proven so far (2026-08-11), in review branches (not yet merged):
+- The single installer ISO **builds** from a new snosi profile
+  (`snosi` branch `firn-installer`: `mkosi.profiles/firn-installer` +
+  `shared/firn-installer/`) — 658M, all 33 preflight-contract binaries
+  present, GTK/cage dropped, firn kiosk units wired.
+- The **full-fidelity encrypted-boot E2E passes** (`snosi`
+  `test/firn-installer-iso-test.sh`): the ISO boots to the firn kiosk,
+  a `tpm2-luks` cayo-ab install runs from the medium, and rebooting the
+  same VM (persistent swtpm) auto-unlocks `/var` via the TPM — the
+  proof this phase was created to get. It caught a real bug (TPM
+  enrollment targeted the mapper, not the LUKS partition; fixed).
+- **first-setup slimmed to first-login only** (`first-setup` branch
+  `first-login-only`): modes 1–2 removed, `core.json` contract kept.
+
+Still to do: on-ISO staged-flatpak (offline medium-copy) E2E; the ISO's
+seeded flatpak repo (ADR-0006, deferred with a TODO in the profile);
+retiring snosi-firstboot's flatpak role and snosi's dead mode-1/2
+wiring; restoring snow-first-setup to snowfield; retirement ADRs for
+fisherman and snosi-install; and reviewing/merging the three branches.
+
+## Phase 7 plan — Becoming the only installer (medium, cross-repo)
 
 - **One installer ISO** for all image families, built in the snosi repo
   as the successor to `shared/native-installer`
