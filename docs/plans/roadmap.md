@@ -34,7 +34,7 @@ ordered so every phase ends with something demonstrable in a VM.
   prints the assembled step list and correct preflight verdicts (BIOS VM
   refused, busy disk refused) without touching any disk.
 
-## Phase 3 — bootc path to fisherman parity (large) — ⏳ core shipped 2026-08-11 (`0140b40`); Done-when awaits an E2E run (`just e2e-bootc` on a KVM machine)
+## Phase 3 — bootc path to fisherman parity (large) — ✅ shipped 2026-08-11 (`a67366d`; E2E: cayo boots to login with hostname/user/groups. Flatpak mechanics are covered by fake-runner tests; the E2E exercises an empty set since cayo ships no flatpak runtime — the full-matrix E2E lands in Phase 5)
 
 - Copy/port fisherman's `disk`, `luks`, `install` (bootc), and `post`
   packages into steps, provenance headers intact: partitioning profiles,
