@@ -110,6 +110,18 @@ ordered so every phase ends with something demonstrable in a VM.
   consequences); same-VM install also covers the bootc path's staged
   first-boot enrollment.
 - Retire `snosi-firstboot`'s flatpak role (snosi-side).
+- **Slim frostyard/first-setup to first-login only** (cross-repo):
+  first-setup is a three-mode tool — an old installer mode, a
+  first-boot setup wizard (keyboard, locale, user creation), and a
+  first-login mode (light/dark preference, user flatpak offers, other
+  per-user niceties). Firn now owns everything the first two modes did
+  at install time; rip them out, keep only first-login, and restore the
+  package to BOTH desktop images — today snow ships `snow-first-setup`
+  but snowfield lost it somewhere along the way
+  (`snosi/shared/packages/snow/mkosi.conf:7` vs no reference under
+  snowfield). Guard: the package's `core.json` is firn's install-time
+  core-flatpak contract (ADR-0006 / snosi-firstboot line 36) — it must
+  keep shipping in the slimmed package or move to an owner both consult.
 - Retirement ADRs for frostyard/fisherman and `snosi-install` once
   parity is demonstrated.
 - **Done when:** the single snosi installer ISO ships firn as the only
