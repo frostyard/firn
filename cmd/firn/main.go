@@ -19,11 +19,17 @@ const usage = `firn — the installer for snosi images
 
 Usage:
   firn validate [flags] <recipe.toml>   validate a recipe against this machine
+  firn install  [flags] <recipe.toml>   install (currently --dry-run only)
   firn version                          print the firn version
 
-Validate flags:
+Shared flags:
   --secure-boot auto|on|off   override Secure Boot detection (default auto)
   --tpm auto|on|off           override TPM detection (default auto)
+
+Install flags:
+  --dry-run                   validate, assemble, and run preflight only
+  --uefi auto|on|off          override UEFI detection (default auto)
+  --json-progress             emit NDJSON progress events on stdout
 `
 
 func main() {
@@ -38,6 +44,8 @@ func run(args []string) int {
 	switch args[0] {
 	case "validate":
 		return runValidate(args[1:])
+	case "install":
+		return runInstall(args[1:])
 	case "version", "--version":
 		fmt.Println(version)
 		return 0
