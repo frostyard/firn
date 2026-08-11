@@ -1,6 +1,6 @@
-// Command firn is the installer for snosi images. Phase 1 ships the
-// recipe validator; the install pipeline and TUI arrive in later
-// phases (docs/plans/roadmap.md).
+// Command firn is the installer for snosi images: recipe validator,
+// headless install pipeline, and the TUI wizard (bare `firn`), all in
+// one binary (ADR-0007, docs/plans/roadmap.md).
 package main
 
 import (
@@ -18,8 +18,9 @@ var version = "dev"
 const usage = `firn — the installer for snosi images
 
 Usage:
+  firn                                  launch the interactive installer (TUI)
   firn validate [flags] <recipe.toml>   validate a recipe against this machine
-  firn install  [flags] <recipe.toml>   install (currently --dry-run only)
+  firn install  [flags] [recipe.toml]   install; with no recipe, launch the TUI
   firn version                          print the firn version
 
 Shared flags:
@@ -38,8 +39,10 @@ func main() {
 
 func run(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprint(os.Stderr, usage)
-		return 2
+		// Bare `firn` is the TUI wizard (ADR-0007): probe the platform,
+		// no overrides. `firn install` without a recipe reaches the same
+		// flow with its flags honored.
+		return runTUI(tuiOptions{secureBoot: "auto", tpm: "auto", uefi: "auto"})
 	}
 	switch args[0] {
 	case "validate":

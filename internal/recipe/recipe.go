@@ -31,68 +31,73 @@ type Recipe struct {
 }
 
 // Image selects what to install. family is never inferred (ADR-0005).
+//
+// All optional/family-scoped leaves carry omitempty so that a Recipe
+// marshaled by the TUI wizard round-trips: family scoping (spec rule 1)
+// rejects fields of the other family by PRESENCE (IsSet), so encoding
+// zero values would make every wizard-written recipe invalid.
 type Image struct {
-	Family string `toml:"family"`
+	Family string `toml:"family,omitempty"`
 
 	// bootc-only fields.
-	Ref          string `toml:"ref"`
-	TargetRef    string `toml:"target_ref"`
-	CosignPubKey string `toml:"cosign_pub_key"`
+	Ref          string `toml:"ref,omitempty"`
+	TargetRef    string `toml:"target_ref,omitempty"`
+	CosignPubKey string `toml:"cosign_pub_key,omitempty"`
 
 	// ab-only fields.
-	Product string `toml:"product"`
-	Origin  string `toml:"origin"`
-	Release string `toml:"release"`
+	Product string `toml:"product,omitempty"`
+	Origin  string `toml:"origin,omitempty"`
+	Release string `toml:"release,omitempty"`
 }
 
 // Target selects the disk and (where genuinely variable) the layout.
 type Target struct {
-	Disk string `toml:"disk"`
+	Disk string `toml:"disk,omitempty"`
 
 	// bootc-only fields.
-	Filesystem      string `toml:"filesystem"`
-	BtrfsSubvolumes bool   `toml:"btrfs_subvolumes"`
-	Bootloader      string `toml:"bootloader"`
+	Filesystem      string `toml:"filesystem,omitempty"`
+	BtrfsSubvolumes bool   `toml:"btrfs_subvolumes,omitempty"`
+	Bootloader      string `toml:"bootloader,omitempty"`
 
 	// ab-only fields (ADR-0008).
-	VarFilesystem string `toml:"var_filesystem"`
-	VarSubvolumes bool   `toml:"var_subvolumes"`
+	VarFilesystem string `toml:"var_filesystem,omitempty"`
+	VarSubvolumes bool   `toml:"var_subvolumes,omitempty"`
 }
 
 // Security holds the always-explicit security choices (ADR-0004).
 type Security struct {
-	Encryption     string `toml:"encryption"`
-	Passphrase     string `toml:"passphrase"`
-	PassphraseFile string `toml:"passphrase_file"`
+	Encryption     string `toml:"encryption,omitempty"`
+	Passphrase     string `toml:"passphrase,omitempty"`
+	PassphraseFile string `toml:"passphrase_file,omitempty"`
 
 	// ab-only fields.
-	RecoveryKeyOut  string `toml:"recovery_key_out"`
-	Mok             string `toml:"mok"`
-	MokPasswordFile string `toml:"mok_password_file"`
+	RecoveryKeyOut  string `toml:"recovery_key_out,omitempty"`
+	Mok             string `toml:"mok,omitempty"`
+	MokPasswordFile string `toml:"mok_password_file,omitempty"`
 }
 
 // System is the post-install configuration surface (ADR-0004).
 type System struct {
-	Hostname                 string   `toml:"hostname"`
-	Locale                   string   `toml:"locale"`
-	Timezone                 string   `toml:"timezone"`
-	Keyboard                 string   `toml:"keyboard"`
-	Flatpaks                 []string `toml:"flatpaks"`
-	CoreFlatpaks             bool     `toml:"core_flatpaks"`
-	RootSSHAuthorizedKey     string   `toml:"root_ssh_authorized_key"`
-	RootSSHAuthorizedKeyFile string   `toml:"root_ssh_authorized_key_file"`
-	User                     *User    `toml:"user"`
+	Hostname                 string   `toml:"hostname,omitempty"`
+	Locale                   string   `toml:"locale,omitempty"`
+	Timezone                 string   `toml:"timezone,omitempty"`
+	Keyboard                 string   `toml:"keyboard,omitempty"`
+	Flatpaks                 []string `toml:"flatpaks,omitempty"`
+	CoreFlatpaks             bool     `toml:"core_flatpaks,omitempty"`
+	RootSSHAuthorizedKey     string   `toml:"root_ssh_authorized_key,omitempty"`
+	RootSSHAuthorizedKeyFile string   `toml:"root_ssh_authorized_key_file,omitempty"`
+	User                     *User    `toml:"user,omitempty"`
 }
 
 // User describes the first user; a nil User creates no user.
 type User struct {
-	Name                 string   `toml:"name"`
-	Fullname             string   `toml:"fullname"`
-	PasswordFile         string   `toml:"password_file"`
-	PasswordHash         string   `toml:"password_hash"`
-	Groups               []string `toml:"groups"`
-	SSHAuthorizedKey     string   `toml:"ssh_authorized_key"`
-	SSHAuthorizedKeyFile string   `toml:"ssh_authorized_key_file"`
+	Name                 string   `toml:"name,omitempty"`
+	Fullname             string   `toml:"fullname,omitempty"`
+	PasswordFile         string   `toml:"password_file,omitempty"`
+	PasswordHash         string   `toml:"password_hash,omitempty"`
+	Groups               []string `toml:"groups,omitempty"`
+	SSHAuthorizedKey     string   `toml:"ssh_authorized_key,omitempty"`
+	SSHAuthorizedKeyFile string   `toml:"ssh_authorized_key_file,omitempty"`
 }
 
 // Loaded pairs a decoded Recipe with the decode metadata needed to

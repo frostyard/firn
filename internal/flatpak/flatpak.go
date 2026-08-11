@@ -268,9 +268,11 @@ func dirSize(ctx context.Context, r *runner.Runner, path string) int64 {
 	return n
 }
 
-// coreJSONPath is where snosi images publish their core flatpak set —
-// owned by the snow-first-setup package (single source of truth;
-// snosi-firstboot line 36 reads the same file on first boot).
+// coreJSONPath is where snosi images publish their core flatpak set.
+// The file is owned by the frostyard/first-setup repository and ships
+// in its package — the single source of truth for the system flatpaks
+// firn installs with core_flatpaks (snosi-firstboot line 36 read the
+// same file on first boot before firn took the install-time role).
 const coreJSONPath = "usr/share/org.frostyard.FirstSetup/snow_first_setup/core.json"
 
 // CoreSet reads the image-defined core flatpak app IDs from a mounted

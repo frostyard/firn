@@ -47,6 +47,12 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		pipeline.Step{Name: "bootc-install", Weight: 55, Destructive: true,
 			Tools: []string{"podman", "skopeo"}, Run: runBootcInstall},
 	)
+	if r.Target.Bootloader != "grub2" && !encrypted {
+		// UKI-style BLS entries boot via gpt-auto discovery, which
+		// needs the DPS root type GUID (see runRetagRoot).
+		steps = append(steps, pipeline.Step{Name: "retag-root", Weight: 1, Destructive: true,
+			Tools: []string{"sfdisk", "udevadm", "mount", "umount"}, Run: runRetagRoot})
+	}
 	if r.Security.Encryption == "tpm2-luks" || r.Security.Encryption == "tpm2-luks-passphrase" {
 		// Enrollment is staged for first boot: PCR 7 differs inside the
 		// live installer (fisherman's documented incident).

@@ -75,7 +75,7 @@ ordered so every phase ends with something demonstrable in a VM.
 - **Done when:** an E2E matrix run applies every `[system]` field on
   both families and asserts each on the booted system.
 
-## Phase 6 — TUI (medium)
+## Phase 6 — TUI (medium) — ✅ shipped 2026-08-11 (tmux-driven E2E walks the real wizard and installs both families in nested VMs; booted disks verify over SSH; wizard-generated recipes pass `firn validate` as the reproduce-headless artifact. Wizard opens with the bootc-vs-A/B guidance page; kiosk units in dist/)
 
 - Wizard flows per [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md):
   recipe generation, in-process pipeline run, progress view,
@@ -119,9 +119,12 @@ ordered so every phase ends with something demonstrable in a VM.
   package to BOTH desktop images — today snow ships `snow-first-setup`
   but snowfield lost it somewhere along the way
   (`snosi/shared/packages/snow/mkosi.conf:7` vs no reference under
-  snowfield). Guard: the package's `core.json` is firn's install-time
-  core-flatpak contract (ADR-0006 / snosi-firstboot line 36) — it must
-  keep shipping in the slimmed package or move to an owner both consult.
+  snowfield). Contract: the system flatpaks firn installs
+  (`core_flatpaks`) are defined by a JSON file owned by the
+  frostyard/first-setup repo and shipped in its package
+  (`/usr/share/org.frostyard.FirstSetup/snow_first_setup/core.json`) —
+  the slimmed package keeps shipping it, and firn keeps reading it from
+  the mounted image at install time (ADR-0006).
 - Retirement ADRs for frostyard/fisherman and `snosi-install` once
   parity is demonstrated.
 - **Done when:** the single snosi installer ISO ships firn as the only
@@ -129,6 +132,15 @@ ordered so every phase ends with something demonstrable in a VM.
   ISO succeed on real hardware.
 
 ## Later / ideas
+
+- **Encrypted bootc installs of UKI-entry images**: newer snosi bootc
+  images write `uki`-directive BLS entries with no `options` line (the
+  cmdline is baked into the UKI), so fisherman's rd.luks karg-injection
+  has nowhere to land. Unencrypted installs are handled by the
+  retag-root step (gpt-auto discovery); the encrypted combo needs
+  entry-`options` merging (systemd-boot appends a Type-1 entry's
+  options to the UKI cmdline) and an E2E proving TPM/passphrase unlock
+  against such an image.
 
 - Fisherman extras not yet scoped: Windows data slurp, OEM vendor
   detection + brew first-login installs, audio/Plymouth polish, cache

@@ -29,8 +29,29 @@ func runInstall(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
-		fmt.Fprint(os.Stderr, "firn install: exactly one recipe path is required\n")
+	switch fs.NArg() {
+	case 0:
+		// No recipe path: launch the TUI wizard (ADR-0007) with this
+		// invocation's platform overrides. --dry-run and --confirm are
+		// headless-only concepts and would be silently meaningless here.
+		if *dryRun {
+			fmt.Fprint(os.Stderr, "firn install: --dry-run requires a recipe path\n")
+			return 2
+		}
+		if *confirm != "" {
+			fmt.Fprint(os.Stderr, "firn install: --confirm applies to headless installs; the TUI wizard asks for typed confirmation itself\n")
+			return 2
+		}
+		return runTUI(tuiOptions{
+			secureBoot:   *sb,
+			tpm:          *tpm,
+			uefi:         *uefi,
+			jsonProgress: *jsonProgress,
+			pubring:      *pubring,
+		})
+	case 1:
+	default:
+		fmt.Fprint(os.Stderr, "firn install: at most one recipe path is allowed\n")
 		return 2
 	}
 
@@ -70,7 +91,10 @@ func runInstall(args []string) int {
 
 	// Destructive installs demand typed confirmation of the exact
 	// target disk — snosi-install's rule, applied on every path
-	// (docs/design/architecture.md, Operational notes).
+	// (docs/design/architecture.md, Operational notes). The TUI path
+	// (tui.go) intentionally bypasses this flag: the wizard's
+	// typed-confirmation page makes the user type the same disk path
+	// interactively, satisfying the same rule.
 	if !*dryRun && *confirm != l.Recipe.Target.Disk {
 		fmt.Fprintf(os.Stderr, "firn install: destructive install requires --confirm %s (typed confirmation of the target disk)\n", l.Recipe.Target.Disk)
 		return 2

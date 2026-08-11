@@ -1,0 +1,653 @@
+package tui
+
+// The wizard is a recipe generator (ADR-0005/ADR-0007): it collects
+// choices page by page and assembles a recipe.Recipe that firn then
+// marshals, re-loads, validates, and runs. Spec rule 5 (recipe-schema):
+// the wizard must be unable to produce a recipe validation rejects —
+// enforced here by round-tripping the assembled recipe through
+// recipe.Parse + recipe.Validate before returning it.
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"unicode"
+
+	"github.com/charmbracelet/huh"
+
+	"github.com/frostyard/firn/internal/recipe"
+	"github.com/frostyard/firn/internal/runner"
+)
+
+// defaultSecretsDir is where interactive secrets (passphrases, the MOK
+// password, the user password) land as 0600 files; the recipe carries
+// only the *_file paths (spec rule 6). /run is tmpfs on the installer.
+const defaultSecretsDir = "/run/firn"
+
+// WizardOpts carries what the wizard needs from the caller.
+type WizardOpts struct {
+	Runner  *runner.Runner
+	Machine recipe.Env
+	UEFI    bool
+	Catalog []CatalogEntry
+}
+
+// RunWizard walks the user through building a recipe. It returns
+// (nil, nil) when the user quits or aborts; an error only on real
+// failures (I/O, disk enumeration, or an internal wizard bug).
+func RunWizard(ctx context.Context, o WizardOpts) (*recipe.Recipe, error) {
+	catalog := o.Catalog
+	if len(catalog) == 0 {
+		var warn error
+		catalog, warn = LoadCatalog()
+		if warn != nil {
+			// Built-ins are returned alongside the warning; the wizard
+			// proceeds on those but must not hide the failure.
+			fmt.Fprintln(os.Stderr, warn)
+		}
+	}
+	w := &wizard{
+		opts:       o,
+		catalog:    orderedCatalog(catalog),
+		theme:      huh.ThemeBase16(), // ANSI 16-color: safe on consoles and serial terminals
+		secretsDir: defaultSecretsDir,
+	}
+	return w.run(ctx)
+}
+
+// wizard holds the flow state for one RunWizard call.
+type wizard struct {
+	opts       WizardOpts
+	catalog    []CatalogEntry
+	theme      *huh.Theme
+	secretsDir string
+	c          wizardChoices
+}
+
+// wizardChoices is everything the pages collect, kept apart from
+// recipe.Recipe so assembly (choices -> recipe + secret files) is a pure
+// function tests drive directly.
+type wizardChoices struct {
+	family string
+	entry  CatalogEntry
+
+	disk string
+
+	// bootc filesystem choices.
+	filesystem      string
+	btrfsSubvolumes bool
+	// ab filesystem choices.
+	varFilesystem string
+	varSubvolumes bool
+
+	encryption  string
+	passphrase  string // secret; never enters the recipe inline
+	mok         string // "", "enroll", or "skip" (ab + Secure Boot only)
+	mokPassword string // secret
+
+	hostname   string
+	locale     string
+	timezone   string
+	keyboard   string
+	rootSSHKey string
+
+	createUser  bool
+	username    string
+	fullname    string
+	password    string // secret
+	groups      []string
+	extraGroups string
+	userSSHKey  string
+
+	coreFlatpaks bool
+	flatpaksRaw  string
+}
+
+// run drives the page flow: welcome, then a collection pass
+// (image, disk, filesystem, security, system, user, flatpaks), then the
+// review / typed-confirmation / validation loop.
+func (w *wizard) run(ctx context.Context) (*recipe.Recipe, error) {
+	if len(w.catalog) == 0 {
+		return nil, errors.New("tui: image catalog is empty")
+	}
+	if quit, err := w.page(ctx, w.welcomeForm()); quit || err != nil {
+		return nil, err
+	}
+	for {
+		if quit, err := w.familyPage(ctx); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.imagePage(ctx); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.diskPage(ctx); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.page(ctx, w.filesystemForm()); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.page(ctx, w.securityForm()); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.page(ctx, w.systemForm()); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.page(ctx, w.userForm()); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.page(ctx, w.flatpaksForm()); quit || err != nil {
+			return nil, err
+		}
+
+		startOver, rec, err := w.reviewLoop(ctx)
+		if err != nil || rec != nil {
+			return rec, err
+		}
+		if !startOver { // user quit from review
+			return nil, nil
+		}
+		w.c = wizardChoices{} // start over: fresh choices, same catalog
+	}
+}
+
+// reviewLoop shows the assembled recipe, requires the typed disk-path
+// confirmation, and validates the result. A validation issue at this
+// point is a wizard bug: it is displayed on a second review pass, and if
+// it persists the issues are returned as an error (spec rule 5 says this
+// must be unreachable).
+func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, rec *recipe.Recipe, err error) {
+	var issues []recipe.Issue
+	retried := false
+	for {
+		rec, err := assembleRecipe(w.c, w.secretsDir)
+		if err != nil {
+			return false, nil, err
+		}
+		action := actionInstall
+		quit, err := w.page(ctx, w.reviewForm(renderTOML(rec), issues, &action))
+		if quit || err != nil {
+			return false, nil, err
+		}
+		switch action {
+		case actionStartOver:
+			return true, nil, nil
+		case actionQuit:
+			return false, nil, nil
+		}
+		if quit, err := w.page(ctx, w.confirmForm()); quit || err != nil {
+			return false, nil, err
+		}
+		issues = validateAssembled(rec, w.opts.Machine)
+		if len(issues) == 0 {
+			return false, rec, nil
+		}
+		if retried {
+			return false, nil, issuesError(issues)
+		}
+		retried = true // loop back to review with the issues displayed
+	}
+}
+
+// page runs one huh form, translating a user abort (esc / ctrl-c) into
+// quit=true and a context cancellation into its error.
+func (w *wizard) page(ctx context.Context, f *huh.Form) (quit bool, err error) {
+	err = f.WithTheme(w.theme).RunWithContext(ctx)
+	if err == nil {
+		return false, nil
+	}
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if errors.Is(err, huh.ErrUserAborted) {
+		return true, nil
+	}
+	return false, err
+}
+
+// --- assembly (pure: choices -> recipe + secret files) ---
+
+// assembleRecipe turns collected choices into a recipe, writing every
+// secret to a 0600 file under secretsDir (created 0700) and carrying
+// only the *_file paths (spec rule 6).
+func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) {
+	r := &recipe.Recipe{Version: recipe.SchemaVersion}
+	r.Image.Family = c.entry.Family
+	r.Target.Disk = c.disk
+
+	switch c.entry.Family {
+	case recipe.FamilyBootc:
+		r.Image.Ref = c.entry.Ref
+		r.Target.Filesystem = c.filesystem
+		r.Target.BtrfsSubvolumes = c.btrfsSubvolumes && c.filesystem == "btrfs"
+	case recipe.FamilyAB:
+		r.Image.Product = c.entry.Product
+		r.Target.VarFilesystem = c.varFilesystem
+		r.Target.VarSubvolumes = c.varSubvolumes && c.varFilesystem == "btrfs"
+	default:
+		return nil, fmt.Errorf("tui: catalog entry %q has unknown family %q", c.entry.Name, c.entry.Family)
+	}
+
+	r.Security.Encryption = c.encryption
+	if c.entry.Family == recipe.FamilyBootc && needsPassphrase(c.encryption) {
+		if c.passphrase == "" {
+			return nil, fmt.Errorf("tui: encryption %q selected without a passphrase (wizard bug)", c.encryption)
+		}
+		p, err := writeSecretFile(secretsDir, "passphrase", c.passphrase)
+		if err != nil {
+			return nil, err
+		}
+		r.Security.PassphraseFile = p
+	}
+	if c.entry.Family == recipe.FamilyAB && c.mok != "" {
+		r.Security.Mok = c.mok
+		if c.mok == "enroll" {
+			if c.mokPassword == "" {
+				return nil, errors.New("tui: MOK enrollment selected without a MOK password (wizard bug)")
+			}
+			p, err := writeSecretFile(secretsDir, "mok-password", c.mokPassword)
+			if err != nil {
+				return nil, err
+			}
+			r.Security.MokPasswordFile = p
+		}
+	}
+
+	r.System.Hostname = strings.TrimSpace(c.hostname)
+	r.System.Locale = strings.TrimSpace(c.locale)
+	r.System.Timezone = strings.TrimSpace(c.timezone)
+	r.System.Keyboard = strings.TrimSpace(c.keyboard)
+	r.System.RootSSHAuthorizedKey = strings.TrimSpace(c.rootSSHKey)
+	r.System.CoreFlatpaks = c.coreFlatpaks
+	r.System.Flatpaks = splitList(c.flatpaksRaw)
+
+	if c.createUser {
+		u := &recipe.User{
+			Name:             strings.TrimSpace(c.username),
+			Fullname:         strings.TrimSpace(c.fullname),
+			Groups:           mergeGroups(c.groups, c.extraGroups),
+			SSHAuthorizedKey: strings.TrimSpace(c.userSSHKey),
+		}
+		if c.password == "" {
+			return nil, errors.New("tui: user creation selected without a password (wizard bug)")
+		}
+		p, err := writeSecretFile(secretsDir, "user-password", c.password)
+		if err != nil {
+			return nil, err
+		}
+		u.PasswordFile = p
+		r.System.User = u
+	}
+	return r, nil
+}
+
+// writeSecretFile writes content to dir/name with 0600 permissions
+// (dir created 0700), returning the path for the recipe's *_file field.
+func writeSecretFile(dir, name, content string) (string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("tui: creating secrets dir: %w", err)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return "", fmt.Errorf("tui: writing secret file: %w", err)
+	}
+	// WriteFile keeps existing permissions on overwrite; pin them.
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", fmt.Errorf("tui: securing secret file: %w", err)
+	}
+	return path, nil
+}
+
+// validateAssembled round-trips the recipe through its own TOML
+// rendering and the canonical loader, then validates against the
+// machine env — exactly what headless `firn install` will do.
+func validateAssembled(r *recipe.Recipe, env recipe.Env) []recipe.Issue {
+	l, err := recipe.Parse([]byte(renderTOML(r)))
+	if err != nil {
+		return []recipe.Issue{{Code: "render", Field: "recipe", Message: err.Error()}}
+	}
+	return recipe.Validate(l, env)
+}
+
+func issuesError(issues []recipe.Issue) error {
+	msgs := make([]string, len(issues))
+	for i, is := range issues {
+		msgs[i] = is.Error()
+	}
+	return fmt.Errorf("tui: assembled recipe failed validation (wizard bug): %s", strings.Join(msgs, "; "))
+}
+
+// renderIssues formats validation issues for the review page.
+func renderIssues(issues []recipe.Issue) string {
+	if len(issues) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("VALIDATION ISSUES (this is a wizard bug — please report it):\n")
+	for _, is := range issues {
+		fmt.Fprintf(&b, "  - %s\n", is.Error())
+	}
+	return b.String()
+}
+
+// --- TOML rendering ---
+
+// renderTOML renders the recipe as the exact TOML `firn install` would
+// consume, emitting only fields that are set and only fields belonging
+// to the recipe's family (a toml.Encoder would emit every zero value,
+// tripping the fail-closed family-scope validation). Inline secrets
+// (passphrase, password_hash) are never rendered (spec rule 6); the
+// wizard only ever sets *_file variants.
+func renderTOML(r *recipe.Recipe) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "version = %d\n", r.Version)
+
+	b.WriteString("\n[image]\n")
+	kv(&b, "family", r.Image.Family)
+	switch r.Image.Family {
+	case recipe.FamilyBootc:
+		kv(&b, "ref", r.Image.Ref)
+		kv(&b, "target_ref", r.Image.TargetRef)
+		kv(&b, "cosign_pub_key", r.Image.CosignPubKey)
+	case recipe.FamilyAB:
+		kv(&b, "product", r.Image.Product)
+		kv(&b, "origin", r.Image.Origin)
+		kv(&b, "release", r.Image.Release)
+	}
+
+	b.WriteString("\n[target]\n")
+	kv(&b, "disk", r.Target.Disk)
+	switch r.Image.Family {
+	case recipe.FamilyBootc:
+		kv(&b, "filesystem", r.Target.Filesystem)
+		kvBool(&b, "btrfs_subvolumes", r.Target.BtrfsSubvolumes)
+		kv(&b, "bootloader", r.Target.Bootloader)
+	case recipe.FamilyAB:
+		kv(&b, "var_filesystem", r.Target.VarFilesystem)
+		kvBool(&b, "var_subvolumes", r.Target.VarSubvolumes)
+	}
+
+	b.WriteString("\n[security]\n")
+	kv(&b, "encryption", r.Security.Encryption)
+	if r.Image.Family == recipe.FamilyBootc {
+		kv(&b, "passphrase_file", r.Security.PassphraseFile)
+	}
+	if r.Image.Family == recipe.FamilyAB {
+		kv(&b, "recovery_key_out", r.Security.RecoveryKeyOut)
+		kv(&b, "mok", r.Security.Mok)
+		kv(&b, "mok_password_file", r.Security.MokPasswordFile)
+	}
+
+	b.WriteString("\n[system]\n")
+	kv(&b, "hostname", r.System.Hostname)
+	kv(&b, "locale", r.System.Locale)
+	kv(&b, "timezone", r.System.Timezone)
+	kv(&b, "keyboard", r.System.Keyboard)
+	kvList(&b, "flatpaks", r.System.Flatpaks)
+	kvBool(&b, "core_flatpaks", r.System.CoreFlatpaks)
+	kv(&b, "root_ssh_authorized_key", r.System.RootSSHAuthorizedKey)
+	kv(&b, "root_ssh_authorized_key_file", r.System.RootSSHAuthorizedKeyFile)
+
+	if u := r.System.User; u != nil {
+		b.WriteString("\n[system.user]\n")
+		kv(&b, "name", u.Name)
+		kv(&b, "fullname", u.Fullname)
+		kv(&b, "password_file", u.PasswordFile)
+		kvList(&b, "groups", u.Groups)
+		kv(&b, "ssh_authorized_key", u.SSHAuthorizedKey)
+		kv(&b, "ssh_authorized_key_file", u.SSHAuthorizedKeyFile)
+	}
+	return b.String()
+}
+
+func kv(b *strings.Builder, key, value string) {
+	if value != "" {
+		fmt.Fprintf(b, "%s = %s\n", key, tomlString(value))
+	}
+}
+
+func kvBool(b *strings.Builder, key string, value bool) {
+	if value {
+		fmt.Fprintf(b, "%s = true\n", key)
+	}
+}
+
+func kvList(b *strings.Builder, key string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = tomlString(v)
+	}
+	fmt.Fprintf(b, "%s = [%s]\n", key, strings.Join(quoted, ", "))
+}
+
+// tomlString renders s as a TOML basic string.
+func tomlString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\r':
+			b.WriteString(`\r`)
+		default:
+			if r < 0x20 {
+				fmt.Fprintf(&b, `\u%04X`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// --- small pure helpers the pages and assembly share ---
+
+// needsPassphrase reports whether a bootc encryption mode requires a
+// user-supplied passphrase.
+func needsPassphrase(encryption string) bool {
+	return encryption == "luks-passphrase" || encryption == "tpm2-luks-passphrase"
+}
+
+// splitList splits a free-form comma/whitespace-separated entry into a
+// deduplicated list, preserving first-seen order. Empty input yields nil.
+func splitList(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+	var out []string
+	seen := make(map[string]bool, len(fields))
+	for _, f := range fields {
+		if f == "" || seen[f] {
+			continue
+		}
+		seen[f] = true
+		out = append(out, f)
+	}
+	return out
+}
+
+// mergeGroups combines the multi-select choices with the free-add entry,
+// deduplicated in order.
+func mergeGroups(selected []string, extra string) []string {
+	return splitList(strings.Join(selected, ",") + "," + extra)
+}
+
+// --- live input validation ---
+//
+// These mirror internal/recipe/validate.go so users hear about bad input
+// on the field, not at the end. Keep the patterns in sync; the assembled
+// recipe is still round-tripped through recipe.Validate, which remains
+// the only authority (spec rule 5).
+
+var (
+	hostnameLabelInputRe = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
+	localeInputRe        = regexp.MustCompile(`^[a-z]{2,3}_[A-Z]{2}(\.[A-Za-z0-9-]+)?$`)
+	timezoneInputRe      = regexp.MustCompile(`^[A-Za-z_+-]+(/[A-Za-z0-9_+-]+)*$`)
+	keyboardInputRe      = regexp.MustCompile(`^[a-z0-9_-]+(:[a-z0-9_-]+(:[a-z0-9_-]+)?)?$`)
+	usernameInputRe      = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
+	sshKeyInputRe        = regexp.MustCompile(`^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9-]+@openssh\.com|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+`)
+)
+
+func validateHostnameInput(h string) error {
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return errors.New("hostname is required")
+	}
+	if len(h) > 253 {
+		return errors.New("hostname must be at most 253 characters")
+	}
+	for label := range strings.SplitSeq(h, ".") {
+		if len(label) == 0 || len(label) > 63 || !hostnameLabelInputRe.MatchString(label) {
+			return errors.New("must be RFC 1123 host label(s), e.g. frost01")
+		}
+	}
+	return nil
+}
+
+func validateUsernameInput(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("username is required")
+	}
+	if !usernameInputRe.MatchString(name) || len(name) > 32 {
+		return errors.New("must match [a-z_][a-z0-9_-]* and be at most 32 characters")
+	}
+	return nil
+}
+
+func validateLocaleInput(locale string) error {
+	locale = strings.TrimSpace(locale)
+	if locale != "" && !localeInputRe.MatchString(locale) {
+		return errors.New("must look like ll_CC or ll_CC.ENC, e.g. en_US.UTF-8")
+	}
+	return nil
+}
+
+// validateTimezoneInput checks the zone name format and, when a
+// zoneinfo dir is available, that the zone exists in it.
+func validateTimezoneInput(zoneinfoDir string) func(string) error {
+	return func(tz string) error {
+		tz = strings.TrimSpace(tz)
+		if tz == "" {
+			return nil
+		}
+		if !timezoneInputRe.MatchString(tz) || strings.HasPrefix(tz, "/") {
+			return errors.New("must be an IANA zone name, e.g. America/Chicago")
+		}
+		if zoneinfoDir != "" {
+			if _, err := os.Stat(filepath.Join(zoneinfoDir, tz)); err != nil {
+				return fmt.Errorf("%q not found in zoneinfo", tz)
+			}
+		}
+		return nil
+	}
+}
+
+func validateKeyboardInput(kb string) error {
+	kb = strings.TrimSpace(kb)
+	if kb != "" && !keyboardInputRe.MatchString(kb) {
+		return errors.New("must be LAYOUT[:VARIANT[:MODEL]], e.g. us or de:nodeadkeys")
+	}
+	return nil
+}
+
+func validateSSHKeyInput(key string) error {
+	key = strings.TrimSpace(key)
+	if key != "" && !sshKeyInputRe.MatchString(key) {
+		return errors.New("must be an OpenSSH public key line (ssh-ed25519 AAAA...)")
+	}
+	return nil
+}
+
+func validateGroupListInput(raw string) error {
+	for _, g := range splitList(raw) {
+		if !usernameInputRe.MatchString(g) {
+			return fmt.Errorf("invalid group name %q", g)
+		}
+	}
+	return nil
+}
+
+// timezoneSuggestions lists zone names from zoneinfoDir (up to three
+// levels, e.g. America/Argentina/Buenos_Aires), falling back to a small
+// common list when the dir is empty or unreadable.
+func timezoneSuggestions(zoneinfoDir string) []string {
+	if zoneinfoDir == "" {
+		return commonTimezones
+	}
+	skip := map[string]bool{
+		"posix": true, "right": true, "SECURITY": true, "leapseconds": true,
+		"leap-seconds.list": true, "zone.tab": true, "zone1970.tab": true,
+		"iso3166.tab": true, "tzdata.zi": true,
+	}
+	var zones []string
+	var collect func(rel string, depth int)
+	collect = func(rel string, depth int) {
+		entries, err := os.ReadDir(filepath.Join(zoneinfoDir, rel))
+		if err != nil {
+			return
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if rel == "" {
+				if skip[name] || strings.Contains(name, ".") {
+					continue
+				}
+				if r := rune(name[0]); !unicode.IsUpper(r) {
+					continue // localtime, posixrules, and friends
+				}
+			}
+			full := name
+			if rel != "" {
+				full = rel + "/" + name
+			}
+			if e.IsDir() {
+				if depth < 3 {
+					collect(full, depth+1)
+				}
+				continue
+			}
+			zones = append(zones, full)
+		}
+	}
+	collect("", 1)
+	if len(zones) == 0 {
+		return commonTimezones
+	}
+	sort.Strings(zones)
+	return zones
+}
+
+var commonTimezones = []string{
+	"UTC",
+	"America/Chicago", "America/Denver", "America/Los_Angeles", "America/New_York",
+	"Asia/Shanghai", "Asia/Tokyo", "Australia/Sydney",
+	"Europe/Amsterdam", "Europe/Berlin", "Europe/London", "Europe/Paris",
+}
+
+var commonLocales = []string{
+	"en_US.UTF-8", "en_GB.UTF-8", "de_DE.UTF-8", "fr_FR.UTF-8", "es_ES.UTF-8",
+	"it_IT.UTF-8", "pt_BR.UTF-8", "nl_NL.UTF-8", "pl_PL.UTF-8", "sv_SE.UTF-8",
+	"da_DK.UTF-8", "fi_FI.UTF-8", "nb_NO.UTF-8", "cs_CZ.UTF-8", "ru_RU.UTF-8",
+	"ja_JP.UTF-8", "ko_KR.UTF-8", "zh_CN.UTF-8",
+}
+
+var commonKeyboards = []string{
+	"us", "us:intl", "gb", "de", "de:nodeadkeys", "fr", "es", "it", "pt",
+	"br", "nl", "pl", "se", "no", "dk", "fi", "cz", "jp", "ru",
+}

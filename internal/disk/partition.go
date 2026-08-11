@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -179,4 +180,43 @@ func partition(ctx context.Context, r *runner.Runner, disk, script string) error
 	_, _ = r.Run(ctx, "udevadm", "settle")
 
 	return nil
+}
+
+// LinuxRootX8664GUID is the Discoverable Partitions Spec type for an
+// x86-64 root partition — what systemd-gpt-auto-generator discovers.
+const LinuxRootX8664GUID = "4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709"
+
+// Ported from frostyard/fisherman (GPL-3.0-only),
+// fisherman/internal/disk/partition.go (SetPartitionType,
+// WaitForPartition).
+//
+// SetPartitionType retypes one partition. sfdisk --part-type triggers a
+// BLKRRPART: udev briefly removes and re-adds the kernel's partition
+// block devices, so /dev/<disk>pN can transiently disappear (fisherman
+// issue #32: "/dev/loop0p2 disappearing after sfdisk --part-type"). A
+// caller that mounts immediately afterward can race the node's
+// reappearance — settle here and use WaitForPartition before reopening.
+func SetPartitionType(ctx context.Context, r *runner.Runner, disk string, partNum int, partType string) error {
+	if _, err := r.Run(ctx, "sfdisk", "--part-type", disk, strconv.Itoa(partNum), partType); err != nil {
+		return fmt.Errorf("disk: setting partition type: %w", err)
+	}
+	_, _ = r.Run(ctx, "udevadm", "settle")
+	return nil
+}
+
+// WaitForPartition blocks until partition partNum's device node exists,
+// or the timeout elapses.
+func WaitForPartition(ctx context.Context, r *runner.Runner, diskDev string, partNum int, timeout time.Duration) error {
+	part := PartName(diskDev, partNum)
+	deadline := time.Now().Add(timeout)
+	for {
+		if _, err := stat(part); err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("disk: partition %s did not appear within %s", part, timeout)
+		}
+		_, _ = r.Run(ctx, "udevadm", "settle")
+		sleep(100 * time.Millisecond)
+	}
 }

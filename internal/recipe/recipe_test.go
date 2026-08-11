@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 // writeSecret creates a 0600 file for *_file fields.
@@ -196,5 +198,67 @@ func TestLoadFromFile(t *testing.T) {
 	}
 	if l.IsSet("target", "var_filesystem") {
 		t.Error("IsSet should report var_filesystem absent")
+	}
+}
+
+// TestMarshalRoundTripValidates guards the TUI wizard's write-then-
+// re-validate path (spec rule 5: the written artifact is what must
+// validate). Family scoping rejects other-family fields by PRESENCE,
+// so the struct tags must omit empty leaves when encoding — without
+// omitempty every wizard-generated recipe would be invalid.
+func TestMarshalRoundTripValidates(t *testing.T) {
+	cases := map[string]Recipe{
+		"ab": {
+			Version:  SchemaVersion,
+			Image:    Image{Family: FamilyAB, Product: "cayo-ab"},
+			Target:   Target{Disk: "/dev/vdb", VarFilesystem: "ext4"},
+			Security: Security{Encryption: "none"},
+			System: System{
+				Hostname:             "frn-tui-e2e",
+				RootSSHAuthorizedKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB6C6TryD9UUnr7T4nkDbkO4mCVTsxqoRauC4wEnhV3H e2e",
+				User: &User{
+					Name:         "e2e",
+					PasswordHash: "$6$firn$0123456789abcdef",
+					Groups:       []string{"sudo"},
+				},
+			},
+		},
+		"bootc": {
+			Version:  SchemaVersion,
+			Image:    Image{Family: FamilyBootc, Ref: "ghcr.io/frostyard/snow:latest"},
+			Target:   Target{Disk: "/dev/vda", Filesystem: "btrfs", BtrfsSubvolumes: true},
+			Security: Security{Encryption: "none"},
+			System:   System{Hostname: "frost01"},
+		},
+	}
+	for name, r := range cases {
+		t.Run(name, func(t *testing.T) {
+			data, err := toml.Marshal(r)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			path := filepath.Join(t.TempDir(), "wizard.toml")
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			l, err := Load(path)
+			if err != nil {
+				t.Fatalf("re-load of the written artifact: %v\n%s", err, data)
+			}
+			if issues := Validate(l, Env{}); len(issues) != 0 {
+				t.Errorf("written artifact must validate, got %v\n%s", issues, data)
+			}
+			// Presence-based family scoping is the sharp edge: the
+			// other family's keys must be absent, not empty.
+			otherKeys := bootcOnlyKeys
+			if name == "bootc" {
+				otherKeys = abOnlyKeys
+			}
+			for _, k := range otherKeys {
+				if l.IsSet(k...) {
+					t.Errorf("marshal wrote other-family key %v\n%s", k, data)
+				}
+			}
+		})
 	}
 }

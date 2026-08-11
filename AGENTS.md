@@ -21,7 +21,15 @@ them rather than improvising, whichever agent you are:
 Add a skill whenever you find yourself re-explaining a multi-step procedure.
 Start from .agents/skills/TEMPLATE/SKILL.md. -->
 
-- *(none yet — add the first one when a procedure repeats)*
+- **Changing a wizard page or debugging `just e2e-tui`** →
+  [.agents/skills/drive-tui-e2e/SKILL.md](.agents/skills/drive-tui-e2e/SKILL.md)
+  — the tmux expect-driver is a contract with `internal/tui/wizard_pages.go`.
+- **Extending or debugging any nested-VM E2E** (`e2e-ab`, `e2e-tui`) →
+  [.agents/skills/nested-vm-e2e/SKILL.md](.agents/skills/nested-vm-e2e/SKILL.md)
+  — includes the ADR-0009 isolation rules and artifact locations.
+- **Implementing anything fisherman or snosi-install already does** →
+  [.agents/skills/port-from-parents/SKILL.md](.agents/skills/port-from-parents/SKILL.md)
+  — provenance, incident comments, runner seam, fake-runner tests.
 
 ## Code conventions (live — the code exists)
 

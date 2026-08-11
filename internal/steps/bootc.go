@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
@@ -179,6 +181,50 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 		// field only if a non-composefs snosi image ever exists.
 		Composefs: true,
 	})
+}
+
+// runRetagRoot retypes the root partition to the DPS root-x86-64 GUID
+// after bootc install, on the systemd-boot + unencrypted path — ported
+// from fisherman's documented retag dance. Newer snosi bootc images
+// write UKI-style BLS entries (a `uki` line, no `options` line): the
+// kernel cmdline is baked into the UKI and carries no install-time
+// root=UUID, so the booted initramfs finds root ONLY via
+// systemd-gpt-auto discovery — which requires the DPS type GUID, not
+// the generic Linux one our partitioning writes (observed live: 90s of
+// silence then initramfs emergency mode, TUI bootc E2E 2026-08-11;
+// host runs masked it by installing an older cached image whose
+// entries still carried explicit options). The retag needs the
+// partition unmounted, so: unmount everything, retype, wait for the
+// node to reappear, remount for the post-install steps.
+func runRetagRoot(ctx context.Context, env *pipeline.Env) error {
+	r := env.Recipe
+	dir := targetDir(env)
+	if err := disk.UnmountRecursive(ctx, env.Runner, dir); err != nil {
+		return err
+	}
+	partNum, err := rootPartNum(env.Layout)
+	if err != nil {
+		return err
+	}
+	if err := disk.SetPartitionType(ctx, env.Runner, r.Target.Disk, partNum, disk.LinuxRootX8664GUID); err != nil {
+		return err
+	}
+	if err := disk.WaitForPartition(ctx, env.Runner, r.Target.Disk, partNum, 10*time.Second); err != nil {
+		return err
+	}
+	return disk.MountTarget(ctx, env.Runner, env.Layout, env.RootDev,
+		r.Target.Filesystem, r.Target.BtrfsSubvolumes, dir)
+}
+
+// rootPartNum extracts the root partition's number from the layout.
+func rootPartNum(l disk.Layout) (int, error) {
+	suffix := strings.TrimPrefix(l.Root, l.Disk)
+	suffix = strings.TrimPrefix(suffix, "p")
+	n, err := strconv.Atoi(suffix)
+	if err != nil {
+		return 0, fmt.Errorf("cannot derive partition number of %s on %s: %w", l.Root, l.Disk, err)
+	}
+	return n, nil
 }
 
 func runTPMStage(ctx context.Context, env *pipeline.Env) error {

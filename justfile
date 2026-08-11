@@ -26,3 +26,8 @@ e2e-bootc:
 # Requires root, network, QEMU/OVMF, ~30G scratch. See test/e2e-ab.sh.
 e2e-ab:
     sudo test/e2e-ab.sh
+
+# Drives the real TUI wizard via tmux inside a nested VM (ADR-0009:
+# A/B installs must run nested). Same requirements as e2e-ab.
+e2e-tui:
+    sudo test/e2e-tui.sh
