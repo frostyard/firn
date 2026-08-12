@@ -21,8 +21,8 @@
 # with no prompt. The install proves firn staged the chain + ran mokutil; the
 # secure boot proves that chain is what firmware accepts.
 #
-# Requirements: root; qemu-system-x86_64 (KVM); OVMF (plain + secboot code and
-# an MS-keys varstore); virt-fw-vars; genisoimage; curl; ssh; the snosi MOK
+# Requirements: root; qemu-system-x86_64 (KVM); secboot OVMF code and an
+# MS-keys varstore; virt-fw-vars; genisoimage; curl; ssh; the snosi MOK
 # certificate. Network. ~30 GiB scratch.
 #
 # Usage: sudo test/e2e-bootc-secure.sh
@@ -54,24 +54,29 @@ if [[ -z $mok_cert ]]; then
 fi
 [[ -n $mok_cert && -f $mok_cert ]] || { echo "e2e: snosi MOK cert not found; set FIRN_E2E_MOK_CERT" >&2; exit 1; }
 
-# Plain OVMF for the install guest (a Debian cloud image boots fine, and the
-# install only writes to the target); secboot OVMF + MS-keys varstore for the
-# verify boot, where Secure Boot is genuinely enforced.
-plain_code=""
-for c in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd; do
-  [[ -f $c ]] && plain_code=$c && break
-done
-plain_vars=${plain_code/CODE/VARS}
+# Both guests use secboot OVMF + a Microsoft-keys varstore: the install guest
+# so firn's mokutil sees the SecureBoot EFI variable it requires, the verify
+# guest so Secure Boot is genuinely ENFORCED on firn's staged chain. secboot
+# OVMF requires a q35 machine (set on the QEMU lines below).
 sb_code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
 sb_vars=/usr/share/OVMF/OVMF_VARS_4M.ms.fd
-for f in "$plain_code" "$plain_vars" "$sb_code" "$sb_vars"; do
-  [[ -f $f ]] || { echo "e2e: firmware missing: $f" >&2; exit 1; }
+for f in "$sb_code" "$sb_vars"; do
+  [[ -f $f ]] || { echo "e2e: secboot firmware missing: $f (need OVMF_CODE_4M.secboot.fd + OVMF_VARS_4M.ms.fd)" >&2; exit 1; }
 done
 # virt-fw-vars is often a pip --user install in the invoking user's
 # ~/.local/bin, which sudo's secure_path strips. Resolve it via SUDO_USER.
 virtfw=${FIRN_E2E_VIRT_FW_VARS:-$(command -v virt-fw-vars 2>/dev/null || true)}
 [[ -z $virtfw && -n ${SUDO_USER:-} ]] && virtfw="$(eval echo "~$SUDO_USER")/.local/bin/virt-fw-vars"
 [[ -n $virtfw && -x $virtfw ]] || { echo "e2e: virt-fw-vars required (set FIRN_E2E_VIRT_FW_VARS)" >&2; exit 1; }
+# Its `virt` module tree lives in the invoking user's site-packages, which
+# root's Python does not search — point PYTHONPATH at the dir that has it.
+vpp=""
+if [[ -n ${SUDO_USER:-} ]]; then
+  for d in "$(eval echo "~$SUDO_USER")"/.local/lib/python*/site-packages; do
+    [[ -d $d/virt ]] && vpp="$d" && break
+  done
+fi
+vfw() { PYTHONPATH="${vpp:+$vpp:}${PYTHONPATH:-}" "$virtfw" "$@"; }
 
 qemu_pid=""
 cleanup() { [[ -n $qemu_pid ]] && kill "$qemu_pid" 2>/dev/null || true; }
@@ -138,18 +143,24 @@ EOF
 genisoimage -quiet -output "$work/seed.iso" -volid cidata -joliet -rock \
   "$work/user-data" "$work/meta-data"
 
-# --- Install phase: drive firn over SSH inside a throwaway VM (plain OVMF). ---
+# --- Install phase: drive firn over SSH inside a throwaway VM. ---
 inst_port=2224
 sshopts=(-i "$work/id_e2e" -o StrictHostKeyChecking=no
   -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes)
 gssh() { ssh "${sshopts[@]}" -p "$inst_port" debian@127.0.0.1 "$@"; }
 gscp() { scp "${sshopts[@]}" -P "$inst_port" "$@"; }
 
-cp "$plain_vars" "$work/vars.fd"
-echo "e2e: booting installer VM (firn installs $image to the guest's /dev/vdb)"
+# The install guest boots under the secboot firmware + MS-keys varstore so
+# firn's mok-stage `mokutil` sees the SecureBoot EFI variable it requires (it
+# refuses with "system doesn't support Secure Boot" under plain OVMF). The
+# Debian genericcloud shim is Microsoft-3rd-party-signed and the MS varstore
+# carries that CA, so the installer guest boots. secboot OVMF needs a q35
+# machine — on the default `pc` machine it never boots (empty console).
+cp "$sb_vars" "$work/vars.fd"
+echo "e2e: booting installer VM under Secure Boot (firn installs $image to /dev/vdb)"
 qemu-system-x86_64 \
-  -m 6144 -smp 4 -enable-kvm -cpu host \
-  -drive if=pflash,format=raw,readonly=on,file="$plain_code" \
+  -m 6144 -smp 4 -machine q35,accel=kvm -cpu host \
+  -drive if=pflash,format=raw,readonly=on,file="$sb_code" \
   -drive if=pflash,format=raw,file="$work/vars.fd" \
   -drive file="$work/installer.qcow2",format=qcow2,if=virtio \
   -drive file="$work/target.raw",format=raw,if=virtio \
@@ -174,7 +185,7 @@ gscp "$work/firn" "$work/recipe.toml" "$work/id_e2e.pub" debian@127.0.0.1:/tmp/ 
 # password is created in the guest (0600) so it never crosses scp.
 echo "e2e: installing tool deps in the guest"
 gssh "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update -q && apt-get install -y -q \
-  podman skopeo sbsigntool mokutil openssl btrfs-progs dosfstools e2fsprogs cryptsetup-bin'" >/dev/null 2>&1 \
+  podman skopeo sbsigntool mokutil openssl btrfs-progs dosfstools e2fsprogs cryptsetup-bin parted'" >/dev/null 2>&1 \
   || { echo "e2e: FAIL — could not install guest tool deps" >&2; exit 1; }
 gssh "sudo cp /tmp/id_e2e.pub /root/id_e2e.pub && \
   sudo sh -c 'LC_ALL=C tr -dc A-Za-z0-9 </dev/urandom | head -c 16 > /run/firn-mok.pass; chmod 600 /run/firn-mok.pass'" \
@@ -226,16 +237,15 @@ losetup -d "$loop" || true
 echo "e2e: enrolling snosi MOK into a fresh MS-keys varstore"
 cp "$sb_vars" "$work/vars-secure.fd"
 guid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo 62688093-79f4-4f5c-8e2b-1a2b3c4d5e6f)
-"$virtfw" --inplace "$work/vars-secure.fd" --add-mok "$guid" "$mok_cert" \
+vfw --inplace "$work/vars-secure.fd" --add-mok "$guid" "$mok_cert" \
   || { echo "e2e: FAIL — virt-fw-vars could not enroll the MOK" >&2; exit 1; }
-"$virtfw" -i "$work/vars-secure.fd" -p 2>&1 | grep -q MokList \
+vfw -i "$work/vars-secure.fd" -p 2>&1 | grep -q MokList \
   || { echo "e2e: FAIL — varstore has no MokList after enrollment" >&2; exit 1; }
 
 echo "e2e: booting the INSTALLED disk under ENFORCED Secure Boot (SSH on 2226, up to ${timeout}s)"
 sbport=2226
 qemu-system-x86_64 \
-  -m 4096 -smp 2 -enable-kvm -cpu host \
-  -global driver=cfi.pflash01,property=secure,value=on \
+  -m 4096 -smp 2 -machine q35,accel=kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$sb_code" \
   -drive if=pflash,format=raw,file="$work/vars-secure.fd" \
   -drive file="$work/target.raw",format=raw,if=virtio \
