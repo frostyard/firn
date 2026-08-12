@@ -1,6 +1,6 @@
 # 0012 — Run bootc installs from the RAM installer over containers-storage
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-11
 
 ## Context
