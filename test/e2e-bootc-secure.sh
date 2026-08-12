@@ -67,7 +67,11 @@ sb_vars=/usr/share/OVMF/OVMF_VARS_4M.ms.fd
 for f in "$plain_code" "$plain_vars" "$sb_code" "$sb_vars"; do
   [[ -f $f ]] || { echo "e2e: firmware missing: $f" >&2; exit 1; }
 done
-command -v virt-fw-vars >/dev/null || { echo "e2e: virt-fw-vars required" >&2; exit 1; }
+# virt-fw-vars is often a pip --user install in the invoking user's
+# ~/.local/bin, which sudo's secure_path strips. Resolve it via SUDO_USER.
+virtfw=${FIRN_E2E_VIRT_FW_VARS:-$(command -v virt-fw-vars 2>/dev/null || true)}
+[[ -z $virtfw && -n ${SUDO_USER:-} ]] && virtfw="$(eval echo "~$SUDO_USER")/.local/bin/virt-fw-vars"
+[[ -n $virtfw && -x $virtfw ]] || { echo "e2e: virt-fw-vars required (set FIRN_E2E_VIRT_FW_VARS)" >&2; exit 1; }
 
 qemu_pid=""
 cleanup() { [[ -n $qemu_pid ]] && kill "$qemu_pid" 2>/dev/null || true; }
@@ -222,9 +226,9 @@ losetup -d "$loop" || true
 echo "e2e: enrolling snosi MOK into a fresh MS-keys varstore"
 cp "$sb_vars" "$work/vars-secure.fd"
 guid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo 62688093-79f4-4f5c-8e2b-1a2b3c4d5e6f)
-virt-fw-vars --inplace "$work/vars-secure.fd" --add-mok "$guid" "$mok_cert" \
+"$virtfw" --inplace "$work/vars-secure.fd" --add-mok "$guid" "$mok_cert" \
   || { echo "e2e: FAIL — virt-fw-vars could not enroll the MOK" >&2; exit 1; }
-virt-fw-vars -i "$work/vars-secure.fd" -p 2>&1 | grep -q MokList \
+"$virtfw" -i "$work/vars-secure.fd" -p 2>&1 | grep -q MokList \
   || { echo "e2e: FAIL — varstore has no MokList after enrollment" >&2; exit 1; }
 
 echo "e2e: booting the INSTALLED disk under ENFORCED Secure Boot (SSH on 2226, up to ${timeout}s)"
