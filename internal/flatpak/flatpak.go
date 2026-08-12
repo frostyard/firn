@@ -275,15 +275,40 @@ func dirSize(ctx context.Context, r *runner.Runner, path string) int64 {
 // same file on first boot before firn took the install-time role).
 const coreJSONPath = "usr/share/org.frostyard.FirstSetup/snow_first_setup/core.json"
 
+// InstallerCoreJSONPath is where the single-installer ISO embeds the
+// same core flatpak list, read as a fallback when the deployment does
+// not expose one. Composefs-native bootc images (every snosi desktop
+// image) keep /usr in composefs objects that are not readable as plain
+// files at install time, so CoreSet against the deployment root returns
+// ok=false and core_flatpaks would install nothing. The ISO build
+// (snosi firn-installer) copies first-setup's core.json here so the list
+// is always readable. A var so tests can point it elsewhere.
+var InstallerCoreJSONPath = "/usr/share/firn/core-flatpaks.json"
+
 // CoreSet reads the image-defined core flatpak app IDs from a mounted
 // image root (bootc deployment root or A/B erofs root). Images that
-// publish no core set (e.g. server images without snow-first-setup)
-// return ok=false — the caller reports it, per the recipe's
-// core_flatpaks contract ("where the image family publishes one").
-// The list is deduplicated: it is human-maintained and has carried
-// duplicates (snosi-firstboot's sort -u comment).
+// publish no readable core set (e.g. server images without
+// snow-first-setup, or composefs deployments whose /usr is not
+// materialized at install time) return ok=false — the caller falls back
+// to InstallerCoreSet, then reports it, per the recipe's core_flatpaks
+// contract ("where the image family publishes one"). The list is
+// deduplicated: it is human-maintained and has carried duplicates
+// (snosi-firstboot's sort -u comment).
 func CoreSet(imageRoot string) (ids []string, ok bool, err error) {
-	data, readErr := os.ReadFile(filepath.Join(imageRoot, coreJSONPath))
+	return parseCoreJSON(filepath.Join(imageRoot, coreJSONPath))
+}
+
+// InstallerCoreSet reads the core flatpak list the installer medium
+// embedded at InstallerCoreJSONPath, if present. Same result shape as
+// CoreSet; a missing file returns ok=false.
+func InstallerCoreSet() (ids []string, ok bool, err error) {
+	return parseCoreJSON(InstallerCoreJSONPath)
+}
+
+// parseCoreJSON reads and deduplicates the core flatpak app IDs from a
+// core.json at path. A missing file is not an error (ok=false).
+func parseCoreJSON(path string) (ids []string, ok bool, err error) {
+	data, readErr := os.ReadFile(path)
 	if readErr != nil {
 		if os.IsNotExist(readErr) {
 			return nil, false, nil

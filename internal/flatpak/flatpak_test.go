@@ -5,6 +5,7 @@ package flatpak
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -355,5 +356,56 @@ func TestFlatpakListSkipsHeaderAndBlank(t *testing.T) {
 	got := flatpakList(context.Background(), f.runner(), "--system", "--app")
 	if !slices.Equal(got, []string{"org.mozilla.firefox/x86_64/stable"}) {
 		t.Errorf("flatpakList = %v", got)
+	}
+}
+
+func TestCoreSetReadsAndDedupes(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, coreJSONPath)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"core":[{"id":"org.gnome.Console"},{"id":"org.mozilla.firefox"},{"id":"org.gnome.Console"}]}`
+	if err := os.WriteFile(dir, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ids, ok, err := CoreSet(root)
+	if err != nil || !ok {
+		t.Fatalf("CoreSet ok=%v err=%v", ok, err)
+	}
+	if !slices.Equal(ids, []string{"org.gnome.Console", "org.mozilla.firefox"}) {
+		t.Fatalf("CoreSet ids = %v (want deduped, in order)", ids)
+	}
+}
+
+func TestCoreSetMissingIsNotAnError(t *testing.T) {
+	ids, ok, err := CoreSet(t.TempDir())
+	if err != nil || ok || ids != nil {
+		t.Fatalf("CoreSet on empty root: ids=%v ok=%v err=%v", ids, ok, err)
+	}
+}
+
+// TestInstallerCoreSetFallback covers the composefs case: the deployment
+// publishes no readable core set, but the installer medium embeds one.
+func TestInstallerCoreSetFallback(t *testing.T) {
+	// Deployment root has no core.json (mimics composefs /usr).
+	if _, ok, _ := CoreSet(t.TempDir()); ok {
+		t.Fatal("expected no core set from an empty deployment root")
+	}
+	// The installer-embedded copy is readable.
+	embedded := filepath.Join(t.TempDir(), "core-flatpaks.json")
+	if err := os.WriteFile(embedded, []byte(`{"core":[{"id":"org.gnome.Loupe"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prev := InstallerCoreJSONPath
+	InstallerCoreJSONPath = embedded
+	t.Cleanup(func() { InstallerCoreJSONPath = prev })
+
+	ids, ok, err := InstallerCoreSet()
+	if err != nil || !ok {
+		t.Fatalf("InstallerCoreSet ok=%v err=%v", ok, err)
+	}
+	if !slices.Equal(ids, []string{"org.gnome.Loupe"}) {
+		t.Fatalf("InstallerCoreSet ids = %v", ids)
 	}
 }

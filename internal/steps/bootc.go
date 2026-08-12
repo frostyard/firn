@@ -253,7 +253,17 @@ func runFlatpaks(ctx context.Context, env *pipeline.Env) error {
 			return err
 		}
 		if !ok {
-			msg := "core_flatpaks: image publishes no readable core set on this deployment layout"
+			// Composefs-native deployments (every snosi desktop image)
+			// keep /usr in composefs objects unreadable at install time,
+			// so the deployment publishes no readable core set. Fall back
+			// to the copy the installer medium embeds.
+			core, ok, err = flatpak.InstallerCoreSet()
+			if err != nil {
+				return err
+			}
+		}
+		if !ok {
+			msg := "core_flatpaks: no readable core set in the deployment or on the installer medium"
 			env.Emit(progress.Warning{Code: "no_core_set", Message: msg})
 			env.AddSummary("no_core_set", msg)
 		}
