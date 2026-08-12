@@ -1,6 +1,6 @@
 # 0014 — Port fisherman's secure-install (schema-1) into firn's bootc pipeline
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-12
 
 ## Context
