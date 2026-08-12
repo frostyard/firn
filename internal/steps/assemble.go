@@ -47,6 +47,19 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		pipeline.Step{Name: "bootc-install", Weight: 55, Destructive: true,
 			Tools: []string{"podman", "skopeo", "mount", "umount"}, Run: runBootcInstall},
 	)
+	if r.Security.Encryption == "tpm2-luks" || r.Security.Encryption == "tpm2-luks-passphrase" {
+		// Enroll a TPM2 token at install time bound to the deployed UKI's
+		// SIGNED PCR 11 policy (the A/B path's proven scheme) -- not
+		// fisherman's PCR-7 first-boot staging. PCR 11 is measured by
+		// systemd-stub and is firmware-independent, so it is valid on the
+		// installed system's first boot; PCR-7 staging cannot help because
+		// first boot must unlock BEFORE the staged oneshot could run
+		// (matrix 2026-08-12: encrypted bootc -> emergency mode). Runs
+		// BEFORE retag-root, so the ESP mounted by mount-target (carrying
+		// the just-deployed UKI) is untouched when the .pcrpkey is read.
+		steps = append(steps, pipeline.Step{Name: "tpm-enroll", Weight: 1,
+			Tools: []string{"systemd-cryptenroll", "objcopy"}, Run: runTPMEnrollBootc})
+	}
 	if r.Target.Bootloader != "grub2" {
 		// UKI-style BLS entries boot via gpt-auto discovery, which needs
 		// the DPS root type GUID (see runRetagRoot) — for encrypted roots
@@ -61,17 +74,6 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		}
 		steps = append(steps, pipeline.Step{Name: "retag-root", Weight: 1, Destructive: true,
 			Tools: retagTools, Run: runRetagRoot})
-	}
-	if r.Security.Encryption == "tpm2-luks" || r.Security.Encryption == "tpm2-luks-passphrase" {
-		// Enroll a TPM2 token at install time bound to the deployed UKI's
-		// SIGNED PCR 11 policy (the A/B path's proven scheme) -- not
-		// fisherman's PCR-7 first-boot staging. PCR 11 is measured by
-		// systemd-stub and is firmware-independent, so it is valid on the
-		// installed system's first boot; PCR-7 staging cannot help because
-		// first boot must unlock BEFORE the staged oneshot could run
-		// (matrix 2026-08-12: encrypted bootc -> emergency mode).
-		steps = append(steps, pipeline.Step{Name: "tpm-enroll", Weight: 1,
-			Tools: []string{"systemd-cryptenroll", "objcopy"}, Run: runTPMEnrollBootc})
 	}
 	steps = append(steps,
 		pipeline.Step{Name: "flatpaks", Weight: 15, Tools: flatpakTools(r), Run: runFlatpaks},

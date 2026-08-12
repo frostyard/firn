@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -431,18 +432,19 @@ func rootPartNum(l disk.Layout) (int, error) {
 // EFI/Linux/; its name is kernel-version-based (unlike A/B's
 // channel_version), so glob for it.
 func runTPMEnrollBootc(ctx context.Context, env *pipeline.Env) error {
-	var uki string
-	for _, glob := range []string{
-		filepath.Join(targetDir(env), "boot", "efi", "EFI", "Linux", "*.efi"),
-		filepath.Join(targetDir(env), "boot", "EFI", "Linux", "*.efi"),
-	} {
-		if m, _ := filepath.Glob(glob); len(m) > 0 {
-			uki = m[0]
-			break
-		}
-	}
+	// The UKI's path under the target varies (ESP at boot/efi vs boot,
+	// deployment boot), and its name is kernel-version-based, so search
+	// the whole target tree for an *.efi under an EFI/Linux/ directory.
+	uki, allEFI := findBootcUKI(filepath.Join(targetDir(env), "boot"))
 	if uki == "" {
-		return fmt.Errorf("tpm-enroll: no UKI under the target ESP EFI/Linux (a UKI-entry bootc image is required for TPM2 unlock)")
+		// Diagnostic: report every .efi we DID see so a wrong path or an
+		// unmounted ESP is obvious from the console.
+		seen := "(none)"
+		if len(allEFI) > 0 {
+			seen = strings.Join(allEFI, ", ")
+		}
+		env.Emit(progress.Info{Message: "tpm-enroll: no EFI/Linux UKI under target; .efi files present: " + seen})
+		return fmt.Errorf("tpm-enroll: no UKI under the target's EFI/Linux (a UKI-entry bootc image is required for TPM2 unlock); saw .efi: %s", seen)
 	}
 
 	// The unlock key travels via a 0600 file, never argv.
@@ -463,6 +465,31 @@ func runTPMEnrollBootc(ctx context.Context, env *pipeline.Env) error {
 	// token is written into), never the opened mapper — same rule as the
 	// A/B path (runTPMEnroll).
 	return abimg.EnrollTPMFromUKI(ctx, env.Runner, uki, env.Layout.Root, keyFile.Name())
+}
+
+// findBootcUKI walks a boot tree for the deployed UKI: the first *.efi
+// whose directory ends in EFI/Linux (its name is kernel-version-based).
+// It also returns every *.efi seen, for a diagnostic when none matches
+// (a wrong path or an unmounted ESP is then obvious). Walk errors are
+// ignored so a partial tree still yields what is there.
+func findBootcUKI(root string) (uki string, allEFI []string) {
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(p, ".efi") {
+			allEFI = append(allEFI, p)
+			// bootc drops its UKI in an EFI/Linux/<vendor>/ subdirectory
+			// (observed: EFI/Linux/bootc/bootc_composefs-<hash>.efi), so
+			// match anywhere under EFI/Linux/, not just directly in it.
+			// systemd-bootx64.efi lives under EFI/systemd/ and is excluded.
+			if uki == "" && strings.Contains(filepath.ToSlash(p), "/EFI/Linux/") {
+				uki = p
+			}
+		}
+		return nil
+	})
+	return uki, allEFI
 }
 
 func runFlatpaks(ctx context.Context, env *pipeline.Env) error {
