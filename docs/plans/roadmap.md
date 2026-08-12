@@ -194,7 +194,7 @@ Still to do:
   installer, and installs of both image families from that published
   ISO succeed on real hardware.
 
-## Phase 8 — bootc under Secure Boot: secure-install schema-1 (large, cross-repo) — ⏳ in progress (code + E2E DONE 2026-08-12; lab re-enable + dakota retirement remain)
+## Phase 8 — bootc under Secure Boot: secure-install schema-1 (large, cross-repo) — ⏳ in progress (code + E2E + lab all DONE 2026-08-12; only dakota retirement remains)
 
 Firn cannot yet install a bootc image that boots under UEFI Secure Boot.
 snosi's secure bootc images use the **Debian shim** (Microsoft-trusted)
@@ -249,11 +249,17 @@ assembly and the reconciler unit
   secboot QEMU guest and **boots the disk under enforced Secure Boot**
   (guest reports `SecureBoot enabled`), with the MOK enrolled host-side
   via `virt-fw-vars` (the MokManager stand-in, dakota-style).
-- **Remaining (cross-repo):** re-enable the three PENDING bootc+SB lab
-  cells (`argo/firn-install-test.yaml`) on the real enrollment path, and
-  retire dakota's secure installer + `run-secure-install-tests`.
-- **Done when:** the three PENDING lab cells are green on the real path
-  and dakota's secure installer + `run-secure-install-tests` are retired.
+- ✅ **Lab re-enabled + proven in-fleet (2026-08-12).** firn v0.3.1 (the
+  release that carries schema-1; needed the ISO to ship `sbverify` and the
+  extraction to use `--network host`), and the lab lane completes
+  enrollment host-side after install (`virt-fw-vars --add-mok` + clear
+  `MokNew`). `bootc/cayo/none/sb=true` installed and **booted under
+  enforced Secure Boot**; the three bootc+SB cells are re-enabled in
+  `argo/firn-install-test.yaml` (10 active cells).
+- **Remaining (cross-repo):** retire dakota's secure installer +
+  `run-secure-install-tests`, now that firn's own lane covers bootc+SB.
+- **Done when:** dakota's secure installer + `run-secure-install-tests`
+  are retired.
 
 ## Later / ideas
 
