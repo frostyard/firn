@@ -24,6 +24,7 @@ Docs are split by the question they answer:
 - [0009 — A/B installs run only against an isolated partition namespace](adr/0009-ab-installs-require-partition-isolation.md)
 - [0010 — One installer ISO for all image families, built in the snosi repo](adr/0010-single-installer-iso-in-snosi.md)
 - [0011 — Adopt the frostyard Go repository conventions](adr/0011-adopt-frostyard-go-conventions.md)
+- [0012 — Run bootc installs from the RAM installer over containers-storage](adr/0012-bootc-install-from-ram-installer.md)
 
 ### Design
 

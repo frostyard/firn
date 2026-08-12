@@ -119,14 +119,27 @@ Still to do:
   all 23 apps land on the booted system from the seed alone, with the
   encrypted `/var` TPM-auto-unlocked.
 - retiring snosi-firstboot's flatpak role.
+- ✅ **bootc installs from the all-in-RAM ISO — done and proven**
+  ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)). The RAM
+  environment broke bootc three ways (tmpfs ENOSPC on the image
+  unpack/blob-staging, `pivot_root` off the initramfs, and bootc's
+  empty-`/target` check); firn redirects the store to disk, sets
+  `no_pivot_root`, and self-binds its scratch into a mount point, staying
+  on the `containers-storage` transport. Verified live in a nested VM:
+  cayo and snow (`tpm2-luks-passphrase` + `core_flatpaks` + user +
+  groups) install and produce bootable, encrypted disks. `core_flatpaks`
+  on composefs now reads an installer-embedded core list
+  (`/usr/share/firn/core-flatpaks.json`) since `/usr` is unreadable at
+  install time.
 - **frostyard/lab suites** (final step, "once proven out"): add a firn
   suite and an iso+installation suite to lab's Argo-Workflows homelab
   harness — new `lab/argo/*.yaml` workflows modeled on
   `snosi-bootc-install-test.yaml` / `snosi-install-test.yaml`, booting
   the firn ISO on incus VMs and running installs of both families.
 - retirement ADRs for fisherman and snosi-install.
-- reviewing/merging the review branches (snosi `firn-installer`,
-  first-setup `first-login-only`).
+- reviewing/merging the review branches: first-setup `first-login-only`
+  **merged (#29) and released v0.4.0**; snosi `firn-installer` (#693)
+  marked ready for review.
 
 ## Phase 7 plan — Becoming the only installer (medium, cross-repo)
 
@@ -177,14 +190,17 @@ Still to do:
 
 ## Later / ideas
 
-- **Encrypted bootc installs of UKI-entry images**: newer snosi bootc
-  images write `uki`-directive BLS entries with no `options` line (the
-  cmdline is baked into the UKI), so fisherman's rd.luks karg-injection
-  has nowhere to land. Unencrypted installs are handled by the
-  retag-root step (gpt-auto discovery); the encrypted combo needs
-  entry-`options` merging (systemd-boot appends a Type-1 entry's
-  options to the UKI cmdline) and an E2E proving TPM/passphrase unlock
-  against such an image.
+- **Encrypted bootc installs of UKI-entry images — boot-time unlock**:
+  the *install* now succeeds and is verified on disk (encrypted snow
+  installs from the ISO, [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)),
+  but that the installed system **boots and unlocks** is still unproven.
+  Newer snosi bootc images write `uki`-directive BLS entries with no
+  `options` line (the cmdline is baked into the UKI), so fisherman's
+  rd.luks karg-injection has nowhere to land. Unencrypted installs are
+  handled by the retag-root step (gpt-auto discovery); the encrypted
+  combo still needs entry-`options` merging (systemd-boot appends a
+  Type-1 entry's options to the UKI cmdline) and an E2E booting such an
+  image and proving TPM/passphrase unlock.
 
 - Fisherman extras not yet scoped: Windows data slurp, OEM vendor
   detection + brew first-login installs, audio/Plymouth polish, cache

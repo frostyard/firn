@@ -91,6 +91,20 @@ with the same argument-building logic, TPM2 first-boot enrollment
 staging, the secure-install (schema-1) contract, and filesystem
 finalization. Fisherman's incident comments come along with the code.
 
+**Installing from the all-in-RAM ISO** ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)):
+the single installer ISO ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md))
+boots entirely into RAM, so `/var/lib/containers`, `/var/tmp`, and the
+root are memory-backed and `pivot_root` cannot pivot off the initramfs.
+When it detects that environment (`bootcimg.StorageSpaceConstrained`),
+the bootc-install step redirects podman's image store and blob staging
+onto the target disk (bind mounts), disables `pivot_root`
+(`no_pivot_root` via a scoped `CONTAINERS_CONF_OVERRIDE`), and hides its
+on-target scratch from bootc's empty-`/target` check by self-binding the
+scratch base into a mount point — all while staying on the
+`containers-storage` transport, deliberately **not** fisherman's
+`skopeo`→`oci:` redirect (which trips hardened images' signature policy).
+Disk-backed hosts (the loop-device E2E) skip all of this unchanged.
+
 ### The A/B path
 
 Ported from `snosi-install` (bash → Go, behavior preserved, structure
@@ -182,7 +196,8 @@ deliberate event type the TUI renders with confirmation.
   [ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md),
   [ADR-0005](../adr/0005-toml-recipe-model.md),
   [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
-  [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md)
+  [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
+  [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)
 - Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
   [specs/progress-protocol.md](../specs/progress-protocol.md)
 - Built in: [roadmap — Phases 1–7](../plans/roadmap.md)
