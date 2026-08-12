@@ -194,6 +194,58 @@ Still to do:
   installer, and installs of both image families from that published
   ISO succeed on real hardware.
 
+## Phase 8 — bootc under Secure Boot: secure-install schema-1 (large, cross-repo) — ⏳ planned
+
+Firn cannot yet install a bootc image that boots under UEFI Secure Boot.
+snosi's secure bootc images use the **Debian shim** (Microsoft-trusted)
+chainloading a **snosi-MOK-signed systemd-boot** second stage
+(`grubx64.efi`) plus MokManager (`mmx64.efi`) — a chain the firmware
+trusts only once the snosi MOK is enrolled. Enrollment is a real,
+human-in-the-loop step: the installer stages the MOK with `mokutil
+--import` (password-hashed) so **MokManager prompts the user to enroll it
+on first boot**. A plain `bootc install` does none of this, so firn's
+bootc + SB installs land in MokManager with nothing staged. The contract
+is snosi's `/usr/lib/snosi/bootc-secure.json` (images labelled
+`io.snosi.bootc.secureboot-capable=true`).
+
+Fisherman already implements the whole path — the port target is
+`fisherman/internal/secure` (`espstage.go` stages shim / second-stage /
+MokManager onto the ESP; `enroll.go` `StageMOK`; a runtime bootloader
+reconciler). Firn already has half of `StageMOK`
+(`internal/abimg/mok.go`, wired into the A/B `mok-stage` step) —
+schema-1 extends it to the bootc pipeline plus the ESP secure-chain
+assembly and the reconciler unit
+([port-from-parents](../../.agents/skills/port-from-parents/SKILL.md)).
+
+- Port secure-install schema-1 into firn's bootc pipeline: read
+  `bootc-secure.json`, verify the image is `secureboot-capable`, stage
+  the ESP secure chain (shim → MOK-signed systemd-boot → MokManager)
+  after `bootc install`, and stage the MOK via mokutil for first-boot
+  MokManager enrollment. Recipe `mok` becomes valid for the bootc family
+  (today an `abOnlyKeys` field, `internal/recipe/validate.go`); the
+  schema change lands in
+  [recipe-schema.md](../specs/recipe-schema.md) in the same commit.
+- Ship the runtime bootloader-reconciler equivalent (or rely on the
+  image's `snosi-bootc-bootloader-reconcile.service`) so the MOK-signed
+  second stage survives bootc updates.
+- **Retire dakota's installer and its secure tests** (cross-repo): firn
+  becomes the single installer for the secure bootc path too, superseding
+  dakota-iso's `bootc-secure-installer-runner.sh`. The lab's
+  `run-secure-install-tests` (dakota) lane retires and is replaced by
+  firn's own bootc + SB lane — the three cells held out of the matrix in
+  Phase 7 (`argo/firn-install-test.yaml` PENDING block), re-enabled once
+  firn enrolls the MOK for real (drop the lab `virt-fw-vars --add-mok`
+  pre-seed, which fakes the enrolled end-state; drive MokManager or
+  assert genuine mokutil staging).
+- Kick-off is an ADR: committing firn to schema-1 and retiring dakota's
+  installer/tests is a significant decision, mirroring the
+  fisherman/snosi-install retirement ADRs (frostyard/core 0027–0028).
+- **Done when:** a recipe-driven bootc install with `secureboot` active
+  and `mok = "enroll"` boots through shim → MOK-signed systemd-boot on
+  real (or vTPM + OVMF-secboot) hardware **after a genuine MokManager
+  enrollment**, the three PENDING lab cells are green on that real path,
+  and dakota's secure installer + `run-secure-install-tests` are retired.
+
 ## Later / ideas
 
 - ✅ **Encrypted bootc installs of UKI-entry images — boot-time unlock
@@ -211,22 +263,21 @@ Still to do:
   VM, and the lab matrix's `tpm2-luks` cells (cayo + snow) pass.
   `luks-passphrase` still prompts interactively at boot by design.
 
-- **bootc installs under UEFI Secure Boot don't boot.** The lab matrix
-  found (2026-08-12) that any `bootc` install with Secure Boot ON — with
-  or without encryption — is rejected by firmware at boot (`BdsDxe:
-  … Access Denied -- rejected probably by Secure Boot`): the bootc boot
-  chain is signed by snosi's key, which the guest firmware does not trust.
-  This is the **secure-install schema-1** gap (bootc's own signed
-  assembly + the MOK/enrollment the installed system needs). Unencrypted
-  and encrypted-with-SB-off bootc both boot fine; only SB-on is affected.
-  (For the lab lane specifically, the fix mirrors the A/B lane's
-  `virt-fw-vars --add-mok` pre-seed for the bootc guest; the real
-  installer-side story is the schema-1 secure path.)
+- ✅ **bootc installs under UEFI Secure Boot don't boot — scoped as
+  Phase 8 (2026-08-12).** The lab matrix found any `bootc` install with
+  Secure Boot ON — with or without encryption — is rejected by firmware
+  at boot (`BdsDxe: … Access Denied -- rejected probably by Secure
+  Boot`): the snosi-MOK-signed second stage is untrusted until the MOK is
+  enrolled, and firn does not stage the ESP secure chain or run mokutil
+  for bootc. Unencrypted and encrypted-with-SB-off bootc both boot fine;
+  only SB-on is affected. This is the **secure-install schema-1** gap,
+  now the Phase 8 work item above. The lab's three bootc+SB cells are held
+  out of the matrix as PENDING rather than faked green with a
+  `virt-fw-vars --add-mok` pre-seed (`argo/firn-install-test.yaml`).
 
 - Fisherman extras not yet scoped: Windows data slurp, OEM vendor
   detection + brew first-login installs, audio/Plymouth polish, cache
-  pre-warming, secure-install schema-1 (needed for snow secure path —
-  likely promoted into Phase 3/4 when scoped).
+  pre-warming. (secure-install schema-1 is now scoped as Phase 8.)
 - arm64 targets (fisherman releases arm64; A/B index is x86-64 today).
 - A/B write-path hardening beyond GPT/ESP discard (would supersede the
   accepted stream-then-verify risk via a new ADR).
@@ -236,9 +287,10 @@ Still to do:
 - **Which fisherman extras (slurp, OEM, brew, audio) are in firn's v1
   scope?** Decide by end of Phase 3; resolution that changes
   architecture becomes an ADR.
-- **Is secure-install (schema-1) required for firn to replace fisherman
-  on the snow secure path?** Decide by Phase 4 planning; if yes it is a
-  Phase 4/5 work item, not "Later".
+- ✅ **Is secure-install (schema-1) required for firn to replace fisherman
+  on the snow secure path?** RESOLVED yes (2026-08-12): firn is retiring
+  the dakota installer, so it must own the secure bootc path. Scoped as
+  Phase 8 above; its kick-off ADR records the decision.
 - **Do A/B artifacts need arm64 before Phase 7?** snosi-side; decide by
   Phase 6.
 
