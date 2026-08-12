@@ -194,7 +194,7 @@ Still to do:
   installer, and installs of both image families from that published
   ISO succeed on real hardware.
 
-## Phase 8 — bootc under Secure Boot: secure-install schema-1 (large, cross-repo) — ⏳ planned
+## Phase 8 — bootc under Secure Boot: secure-install schema-1 (large, cross-repo) — ⏳ in progress (code + E2E DONE 2026-08-12; lab re-enable + dakota retirement remain)
 
 Firn cannot yet install a bootc image that boots under UEFI Secure Boot.
 snosi's secure bootc images use the **Debian shim** (Microsoft-trusted)
@@ -241,11 +241,18 @@ assembly and the reconciler unit
   installer/tests is a significant decision, mirroring the
   fisherman/snosi-install retirement ADRs (frostyard/core 0027–0028).
   Recorded as [ADR-0014](../adr/0014-port-secure-install-schema-1-for-bootc.md)
-  (Proposed).
-- **Done when:** a recipe-driven bootc install with `secureboot` active
-  and `mok = "enroll"` boots through shim → MOK-signed systemd-boot on
-  real (or vTPM + OVMF-secboot) hardware **after a genuine MokManager
-  enrollment**, the three PENDING lab cells are green on that real path,
+  (Accepted).
+- ✅ **Code + local proof DONE (2026-08-12).** `internal/secureboot`
+  (espchain/imageroot/contract), the bootc `esp-stage` + `mok-stage`
+  steps, and recipe `mok` for bootc are implemented and unit-tested.
+  `test/e2e-bootc-secure.sh` installs cayo with `mok = "enroll"` in a
+  secboot QEMU guest and **boots the disk under enforced Secure Boot**
+  (guest reports `SecureBoot enabled`), with the MOK enrolled host-side
+  via `virt-fw-vars` (the MokManager stand-in, dakota-style).
+- **Remaining (cross-repo):** re-enable the three PENDING bootc+SB lab
+  cells (`argo/firn-install-test.yaml`) on the real enrollment path, and
+  retire dakota's secure installer + `run-secure-install-tests`.
+- **Done when:** the three PENDING lab cells are green on the real path
   and dakota's secure installer + `run-secure-install-tests` are retired.
 
 ## Later / ideas
