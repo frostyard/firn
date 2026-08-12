@@ -196,7 +196,13 @@ func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, rec *recipe.Re
 // page runs one huh form, translating a user abort (esc / ctrl-c) into
 // quit=true and a context cancellation into its error.
 func (w *wizard) page(ctx context.Context, f *huh.Form) (quit bool, err error) {
-	err = f.WithTheme(w.theme).RunWithContext(ctx)
+	// huh renders to os.Stderr by default (huh form.go: tea.WithOutput
+	// (os.Stderr)). On the installer kiosk, systemd routes the unit's
+	// stderr to the journal while the TTY is stdout — so the wizard was
+	// invisible on every console and fully present in the journal
+	// (root-caused on the incus VGA demo, 2026-08-12: /dev/vcs1 blank,
+	// journal full of frames). Render to the TTY explicitly.
+	err = f.WithTheme(w.theme).WithOutput(os.Stdout).WithInput(os.Stdin).RunWithContext(ctx)
 	if err == nil {
 		return false, nil
 	}
