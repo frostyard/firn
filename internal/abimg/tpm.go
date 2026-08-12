@@ -38,7 +38,18 @@ func EnrollTPMVar(ctx context.Context, r *runner.Runner, espMount, channel, vers
 	if _, err := os.Stat(uki); err != nil {
 		return fmt.Errorf("abimg: installed UKI not found at EFI/Linux/%s_%s.efi: %w", channel, version, err)
 	}
+	return EnrollTPMFromUKI(ctx, r, uki, luksDev, unlockKeyFile)
+}
 
+// EnrollTPMFromUKI is the transport-agnostic core of EnrollTPMVar: given
+// an explicit UKI path (whose .pcrpkey PE section carries the signing
+// public key), it enrolls a signed-PCR-11 TPM2 token on luksDev, unlocked
+// via unlockKeyFile. Both the A/B path (which computes the UKI name from
+// channel+version, EnrollTPMVar above) and the bootc path (which globs
+// the deployed UKI, whose name is kernel-version-based) share this. See
+// EnrollTPMVar for the full rationale on the empty-raw-PCR / signed-PCR-11
+// / no-pcrlock policy and why the .pcrpkey comes from the disk's own UKI.
+func EnrollTPMFromUKI(ctx context.Context, r *runner.Runner, uki, luksDev, unlockKeyFile string) error {
 	pcrpkey, err := os.CreateTemp("", "firn-abimg-pcrpkey-")
 	if err != nil {
 		return fmt.Errorf("abimg: pcrpkey scratch file: %w", err)

@@ -66,10 +66,10 @@ func TestAssemblySplicesByOptions(t *testing.T) {
 	}{
 		{"bootc unencrypted", strings.Replace(bootcBase, "%s", "none", 1),
 			[]string{"preflight-uefi", "preflight-tools", "preflight-disk", "partition", "bootc-install", "retag-root", "finalize"},
-			[]string{"luks-format", "tpm-stage", "stream-write"}},
+			[]string{"luks-format", "tpm-enroll", "stream-write"}},
 		{"bootc tpm2", strings.Replace(bootcBase, "%s", "tpm2-luks", 1),
-			[]string{"luks-format", "tpm-stage"},
-			[]string{"stream-write", "retag-root"}},
+			[]string{"luks-format", "tpm-enroll", "retag-root"},
+			[]string{"stream-write", "tpm-stage"}},
 		{"ab plain", strings.Replace(abBase, "%s", "none", 1),
 			[]string{"preflight-uefi", "fetch-index", "stream-write", "format-var", "seed-var"},
 			[]string{"luks-var", "tpm-enroll", "mok-stage", "partition", "bootc-install"}},

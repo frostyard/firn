@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/frostyard/firn/internal/abimg"
 	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/flatpak"
@@ -361,33 +362,51 @@ func enableNoPivotRoot(dir string) (restore func(), err error) {
 }
 
 // runRetagRoot retypes the root partition to the DPS root-x86-64 GUID
-// after bootc install, on the systemd-boot + unencrypted path — ported
-// from fisherman's documented retag dance. Newer snosi bootc images
-// write UKI-style BLS entries (a `uki` line, no `options` line): the
-// kernel cmdline is baked into the UKI and carries no install-time
-// root=UUID, so the booted initramfs finds root ONLY via
-// systemd-gpt-auto discovery — which requires the DPS type GUID, not
-// the generic Linux one our partitioning writes (observed live: 90s of
-// silence then initramfs emergency mode, TUI bootc E2E 2026-08-11;
-// host runs masked it by installing an older cached image whose
-// entries still carried explicit options). The retag needs the
-// partition unmounted, so: unmount everything, retype, wait for the
-// node to reappear, remount for the post-install steps.
+// after bootc install (systemd-boot path) — ported from fisherman's
+// documented retag dance. Newer snosi bootc images write UKI-style BLS
+// entries (a `uki` line, no `options` line): the kernel cmdline is baked
+// into the UKI and carries no install-time root=UUID, so the booted
+// initramfs finds root ONLY via systemd-gpt-auto discovery — which
+// requires the DPS type GUID, not the generic Linux one our partitioning
+// writes (observed live: 90s of silence then initramfs emergency mode,
+// TUI bootc E2E 2026-08-11).
+//
+// This holds for ENCRYPTED roots too: gpt-auto sets up cryptsetup only
+// for a partition it can discover, so without the retag an encrypted
+// bootc install boots to "Expecting device /dev/gpt-auto-root" then
+// emergency mode (matrix 2026-08-12). Retyping needs the partition free
+// for the GPT re-read: unmount the tree, and on the encrypted path also
+// close the LUKS mapper first (the open mapper holds the partition busy),
+// then reopen it under the same name for the remaining steps.
 func runRetagRoot(ctx context.Context, env *pipeline.Env) error {
 	r := env.Recipe
 	dir := targetDir(env)
-	if err := disk.UnmountRecursive(ctx, env.Runner, dir); err != nil {
-		return err
-	}
 	partNum, err := rootPartNum(env.Layout)
 	if err != nil {
 		return err
+	}
+	encrypted := r.Security.Encryption != "none"
+	if err := disk.UnmountRecursive(ctx, env.Runner, dir); err != nil {
+		return err
+	}
+	if encrypted {
+		if err := luks.Close(ctx, env.Runner, luksMapper); err != nil {
+			return err
+		}
 	}
 	if err := disk.SetPartitionType(ctx, env.Runner, r.Target.Disk, partNum, disk.LinuxRootX8664GUID); err != nil {
 		return err
 	}
 	if err := disk.WaitForPartition(ctx, env.Runner, r.Target.Disk, partNum, 10*time.Second); err != nil {
 		return err
+	}
+	if encrypted {
+		// Reopen under the same mapper name so env.RootDev still resolves;
+		// the mapper stays open for tpm-enroll/sysconfig/finalize, and the
+		// luks-format cleanup defer closes it at the end.
+		if _, err := luks.Open(ctx, env.Runner, env.Layout.Root, luksMapper, env.LuksKey); err != nil {
+			return err
+		}
 	}
 	return disk.MountTarget(ctx, env.Runner, env.Layout, env.RootDev,
 		r.Target.Filesystem, r.Target.BtrfsSubvolumes, dir)
@@ -404,13 +423,46 @@ func rootPartNum(l disk.Layout) (int, error) {
 	return n, nil
 }
 
-func runTPMStage(ctx context.Context, env *pipeline.Env) error {
-	uuid := luks.UUID(ctx, env.Runner, env.Layout.Root)
-	etcDir, err := sysconfig.EtcDir(ctx, env.Runner, targetDir(env))
+// runTPMEnrollBootc enrolls a TPM2 unlock token on the encrypted bootc
+// root at install time, bound to the deployed UKI's signed PCR 11 policy
+// (abimg.EnrollTPMFromUKI — the A/B path's proven scheme), so the
+// installed system auto-unlocks on first boot with no recovery-key
+// prompt. The UKI is the one bootc just wrote under the target ESP's
+// EFI/Linux/; its name is kernel-version-based (unlike A/B's
+// channel_version), so glob for it.
+func runTPMEnrollBootc(ctx context.Context, env *pipeline.Env) error {
+	var uki string
+	for _, glob := range []string{
+		filepath.Join(targetDir(env), "boot", "efi", "EFI", "Linux", "*.efi"),
+		filepath.Join(targetDir(env), "boot", "EFI", "Linux", "*.efi"),
+	} {
+		if m, _ := filepath.Glob(glob); len(m) > 0 {
+			uki = m[0]
+			break
+		}
+	}
+	if uki == "" {
+		return fmt.Errorf("tpm-enroll: no UKI under the target ESP EFI/Linux (a UKI-entry bootc image is required for TPM2 unlock)")
+	}
+
+	// The unlock key travels via a 0600 file, never argv.
+	keyFile, err := os.CreateTemp("", "firn-unlock-")
 	if err != nil {
 		return err
 	}
-	return luks.StageFirstBootEnrollment(etcDir, uuid, env.LuksKey)
+	defer os.Remove(keyFile.Name())
+	if err := os.Chmod(keyFile.Name(), 0o600); err != nil {
+		return err
+	}
+	if _, err := keyFile.WriteString(env.LuksKey); err != nil {
+		return err
+	}
+	keyFile.Close()
+
+	// Enroll on the LUKS PARTITION (which holds the LUKS2 superblock the
+	// token is written into), never the opened mapper — same rule as the
+	// A/B path (runTPMEnroll).
+	return abimg.EnrollTPMFromUKI(ctx, env.Runner, uki, env.Layout.Root, keyFile.Name())
 }
 
 func runFlatpaks(ctx context.Context, env *pipeline.Env) error {

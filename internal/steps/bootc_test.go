@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/runner"
@@ -27,6 +28,18 @@ func TestBootcPipelineEndToEnd(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(target, "state", "os", "default", "var"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The bootc UKI the tpm-enroll step globs for its signed PCR 11 key,
+	// on the ESP mounted at boot/efi.
+	ukiDir := filepath.Join(target, "boot", "efi", "EFI", "Linux")
+	if err := os.MkdirAll(ukiDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ukiDir, "7.1.3-amd64.efi"), []byte("fake-uki"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// retag-root's WaitForPartition stats /dev/vda2, absent in this
+	// fixture; make it appear immediately.
+	defer disk.SwapStat(func(string) (os.FileInfo, error) { return nil, nil })()
 
 	const lsblkJSON = `{"blockdevices": [
 	  {"path": "/dev/vda", "type": "disk", "size": 64000000000, "fstype": null, "label": null, "mountpoints": [null]}]}`
@@ -56,6 +69,15 @@ func TestBootcPipelineEndToEnd(t *testing.T) {
 				return nil, errors.New("network unreachable")
 			case "skopeo":
 				return []byte(`{"schemaVersion": 2}`), nil
+			case "objcopy":
+				// abimg.EnrollTPMFromUKI dumps the UKI's .pcrpkey; write a
+				// non-empty file so its extraction check passes.
+				for _, a := range args {
+					if p, ok := strings.CutPrefix(a, ".pcrpkey="); ok {
+						_ = os.WriteFile(p, []byte("PCRPKEY"), 0o600)
+					}
+				}
+				return nil, nil
 			case "ls":
 				// composefs marker probes resolve against the real fixture.
 				if _, err := os.Stat(args[len(args)-1]); err != nil {
@@ -137,12 +159,6 @@ groups = ["wheel"]
 	if data, err := os.ReadFile(filepath.Join(etcDir, "hostname")); err != nil || strings.TrimSpace(string(data)) != "frost01" {
 		t.Errorf("hostname = %q, %v", data, err)
 	}
-	if _, err := os.Stat(filepath.Join(etcDir, "systemd", "system", "firn-tpm2-enroll.service")); err != nil {
-		t.Errorf("TPM first-boot unit not staged: %v", err)
-	}
-	if key, err := os.ReadFile(filepath.Join(etcDir, "firn", "tpm2-enroll.key")); err != nil || len(key) == 0 {
-		t.Errorf("transient enroll key not staged: %v", err)
-	}
 	// Phase-5 matrix: locale/timezone/keyboard land in the deployment etc.
 	if data, err := os.ReadFile(filepath.Join(etcDir, "locale.conf")); err != nil || string(data) != "LANG=en_US.UTF-8\n" {
 		t.Errorf("locale.conf = %q, %v", data, err)
@@ -169,6 +185,10 @@ groups = ["wheel"]
 		"podman run --rm --privileged",   // bootc via podman
 		"--composefs-backend",            // snosi images require it
 		"useradd",                        // user creation
+		"sfdisk --part-type /dev/vda 2",  // retag-root -> DPS root GUID (encrypted too)
+		"cryptsetup luksOpen",            // retag reopens the mapper after retype
+		"systemd-cryptenroll",            // install-time TPM enrollment
+		"--tpm2-public-key-pcrs=11",      // bound to the UKI's signed PCR 11
 		"cryptsetup luksClose firn-root", // cleanup unwound
 		"umount",                         // target unmounted
 		"fstrim",                         // finalize

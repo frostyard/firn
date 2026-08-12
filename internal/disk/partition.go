@@ -22,6 +22,18 @@ var (
 	stat  = os.Stat
 )
 
+// SwapStat replaces the stat function WaitForPartition (and the partition
+// wipe poller) consult, returning a restore func. Exported only so
+// pipeline-level tests in OTHER packages — which drive WaitForPartition
+// through an assembled step (e.g. retag-root) rather than calling it
+// directly — can simulate a device node appearing without a real block
+// device. Not for production use.
+func SwapStat(fn func(string) (os.FileInfo, error)) (restore func()) {
+	old := stat
+	stat = fn
+	return func() { stat = old }
+}
+
 // Layout names the partitions created on a disk. Boot is empty for
 // layouts without a separate /boot (systemd-boot, ZFS).
 type Layout struct {
