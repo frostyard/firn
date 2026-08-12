@@ -397,16 +397,21 @@ func (w *wizard) userForm() *huh.Form {
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
 				Title("Groups").
-				Description("Groups missing from the image are skipped at install time.").
+				Description("Common groups plus the ones snosi's sysexts provide (docker,\n"+
+					"incus, printing, scanning). Any not present in the chosen image\n"+
+					"are skipped at install time.").
 				Options(
 					huh.NewOption("sudo — administrator", "sudo").Selected(true),
+					huh.NewOption("docker — run containers without sudo", "docker"),
+					huh.NewOption("incus-admin — manage incus VMs/containers", "incus-admin"),
+					huh.NewOption("lpadmin — manage printers", "lpadmin"),
+					huh.NewOption("scanner — use scanners", "scanner"),
 					huh.NewOption("adm — read system logs", "adm"),
 					huh.NewOption("audio", "audio"),
 					huh.NewOption("video", "video"),
 					huh.NewOption("dialout — serial devices", "dialout"),
 					huh.NewOption("plugdev — removable devices", "plugdev"),
 					huh.NewOption("netdev — network configuration", "netdev"),
-					huh.NewOption("libvirt — virtual machines", "libvirt"),
 				).
 				Value(&w.c.groups),
 			huh.NewInput().
