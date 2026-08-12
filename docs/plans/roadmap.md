@@ -196,17 +196,19 @@ Still to do:
 
 ## Later / ideas
 
-- **Encrypted bootc installs of UKI-entry images — boot-time unlock**:
-  the *install* now succeeds and is verified on disk (encrypted snow
-  installs from the ISO, [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)),
-  but that the installed system **boots and unlocks** is still unproven.
-  Newer snosi bootc images write `uki`-directive BLS entries with no
-  `options` line (the cmdline is baked into the UKI), so fisherman's
-  rd.luks karg-injection has nowhere to land. Unencrypted installs are
-  handled by the retag-root step (gpt-auto discovery); the encrypted
-  combo still needs entry-`options` merging (systemd-boot appends a
-  Type-1 entry's options to the UKI cmdline) and an E2E booting such an
-  image and proving TPM/passphrase unlock.
+- 🚧 **Encrypted bootc installs of UKI-entry images — boot-time unlock**
+  (fix implemented, matrix validation pending): UKI-directive BLS entries
+  bake the cmdline into the UKI with no `options` line, so there is
+  nowhere to inject `rd.luks` kargs. Rather than entry-`options` merging,
+  firn leans on the same gpt-auto path the unencrypted case uses:
+  retag-root now runs for encrypted too (the LUKS partition gets the DPS
+  root GUID, so gpt-auto discovers it and sets up cryptsetup), and TPM2
+  is enrolled at install against the deployed UKI's **signed PCR 11** (the
+  A/B path's firmware-independent scheme) so first boot auto-unlocks
+  without the chicken-and-egg of PCR-7 first-boot staging. `luks-passphrase`
+  still prompts interactively at boot by design. Proven at the unit level
+  (bootc fake-runner E2E); the frostyard/lab firn matrix's
+  `bootc × tpm2-luks*` cells are the on-hardware E2E.
 
 - Fisherman extras not yet scoped: Windows data slurp, OEM vendor
   detection + brew first-login installs, audio/Plymouth polish, cache
