@@ -34,9 +34,9 @@
 Deliver btrfs `/var` by making the A/B image's `/var` mount
 **filesystem-agnostic**, not by retracting the feature: the initrd
 autodetects the `/var` filesystem (libblkid) and carries the btrfs
-driver, and `/etc/fstab` uses `auto` with fsck pass `0` (the image ships
-`e2fsprogs` but not `btrfs-progs`, so a pass-2 line would fail
-`fsck.btrfs not found`). This is snosi PR #705.
+driver, and `/etc/fstab` uses `auto` (fsck pass 2 retained — the base
+image ships `btrfs-progs`, so `fsck.btrfs` is present as a no-op for a
+btrfs `/var` while ext4 keeps its boot-time check). This is snosi PR #705.
 
 btrfs `/var` on A/B therefore **requires an ab-root image at or after the
 PR #705 build**. firn's validator continues to accept `var_filesystem =
@@ -53,10 +53,8 @@ the feature in its recipe validator.
   exposure is new installs built on stale media, mitigated by publishing
   the fixed image before the feature is promoted, and by the lab's
   btrfs-var AB cell gating on the real boot.
-- ext4 `/var` is unaffected: autodetection still mounts it, and it is
-  mounted by the initrd before switch-root regardless, so fsck pass `0`
-  in fstab costs only a boot-time ext4 check that the initrd path never
-  ran anyway.
+- ext4 `/var` is unaffected: autodetection still mounts it, and fsck
+  pass 2 is retained, so its boot-time check is preserved.
 - ADR-0008's **"zero-image-change" rationale is superseded**; its
   *decision* (offer `var_filesystem` / `var_subvolumes`, nested
   subvolumes) stands and is orthogonal to this fix.
