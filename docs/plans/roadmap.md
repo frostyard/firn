@@ -86,7 +86,8 @@ ordered so every phase ends with something demonstrable in a VM.
 
 ## Phase 7 — Becoming the only installer (medium, cross-repo) — ⏳ in progress
 
-Proven so far (2026-08-11), in review branches (not yet merged):
+Proven so far (2026-08-11), **all merged 2026-08-12** (snosi #693,
+first-setup #29):
 - The single installer ISO **builds** from a new snosi profile
   (`snosi` branch `firn-installer`: `mkosi.profiles/firn-installer` +
   `shared/firn-installer/`) — 658M, all 33 preflight-contract binaries
@@ -118,7 +119,8 @@ Still to do:
   installs snow-ab with `core_flatpaks` and dl.flathub.org black-holed;
   all 23 apps land on the booted system from the seed alone, with the
   encrypted `/var` TPM-auto-unlocked.
-- retiring snosi-firstboot's flatpak role.
+- ✅ **snosi-firstboot's flatpak role retired** — merged in #693; firn
+  owns install-time flatpaks, first-boot no longer installs them.
 - ✅ **bootc installs from the all-in-RAM ISO — done and proven**
   ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)). The RAM
   environment broke bootc three ways (tmpfs ENOSPC on the image
@@ -131,15 +133,19 @@ Still to do:
   on composefs now reads an installer-embedded core list
   (`/usr/share/firn/core-flatpaks.json`) since `/usr` is unreadable at
   install time.
-- **frostyard/lab suites** (final step, "once proven out"): add a firn
-  suite and an iso+installation suite to lab's Argo-Workflows homelab
-  harness — new `lab/argo/*.yaml` workflows modeled on
-  `snosi-bootc-install-test.yaml` / `snosi-install-test.yaml`, booting
-  the firn ISO on incus VMs and running installs of both families.
-- retirement ADRs for fisherman and snosi-install.
-- reviewing/merging the review branches: first-setup `first-login-only`
-  **merged (#29) and released v0.4.0**; snosi `firn-installer` (#693)
-  marked ready for review.
+- 🚧 **frostyard/lab suites** (final step, in progress): add a firn
+  install-test matrix to lab's Argo-Workflows homelab harness — new
+  `lab/argo/*.yaml` workflows modeled on `snosi-bootc-install-test.yaml`
+  / `snosi-install-test.yaml`, booting the firn ISO on incus VMs and
+  driving a matrix of secure-boot × encryption × image × family from
+  nothing to installed-and-booted.
+- 🚧 **retirement ADRs for fisherman and snosi-install** (in progress):
+  written in frostyard/core (org-wide decision record), recording their
+  supersession by firn.
+- ✅ **review branches merged**: first-setup `first-login-only`
+  (#29, released v0.4.0) and snosi `firn-installer` (#693) — the single
+  installer ISO, embedded flatpak list, VGA-console visibility, and the
+  man-db var-audit fix all landed on their mains.
 
 ## Phase 7 plan — Becoming the only installer (medium, cross-repo)
 
