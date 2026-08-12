@@ -240,6 +240,8 @@ assembly and the reconciler unit
 - Kick-off is an ADR: committing firn to schema-1 and retiring dakota's
   installer/tests is a significant decision, mirroring the
   fisherman/snosi-install retirement ADRs (frostyard/core 0027–0028).
+  Recorded as [ADR-0014](../adr/0014-port-secure-install-schema-1-for-bootc.md)
+  (Proposed).
 - **Done when:** a recipe-driven bootc install with `secureboot` active
   and `mok = "enroll"` boots through shim → MOK-signed systemd-boot on
   real (or vTPM + OVMF-secboot) hardware **after a genuine MokManager

@@ -26,6 +26,7 @@ Docs are split by the question they answer:
 - [0011 — Adopt the frostyard Go repository conventions](adr/0011-adopt-frostyard-go-conventions.md)
 - [0012 — Run bootc installs from the RAM installer over containers-storage](adr/0012-bootc-install-from-ram-installer.md)
 - [0013 — btrfs /var on A/B requires a filesystem-agnostic image mount](adr/0013-btrfs-var-requires-filesystem-agnostic-image-mount.md)
+- [0014 — Port fisherman's secure-install (schema-1) into firn's bootc pipeline](adr/0014-port-secure-install-schema-1-for-bootc.md)
 
 ### Design
 
