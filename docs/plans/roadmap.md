@@ -196,19 +196,32 @@ Still to do:
 
 ## Later / ideas
 
-- 🚧 **Encrypted bootc installs of UKI-entry images — boot-time unlock**
-  (fix implemented, matrix validation pending): UKI-directive BLS entries
-  bake the cmdline into the UKI with no `options` line, so there is
-  nowhere to inject `rd.luks` kargs. Rather than entry-`options` merging,
-  firn leans on the same gpt-auto path the unencrypted case uses:
-  retag-root now runs for encrypted too (the LUKS partition gets the DPS
-  root GUID, so gpt-auto discovers it and sets up cryptsetup), and TPM2
-  is enrolled at install against the deployed UKI's **signed PCR 11** (the
-  A/B path's firmware-independent scheme) so first boot auto-unlocks
-  without the chicken-and-egg of PCR-7 first-boot staging. `luks-passphrase`
-  still prompts interactively at boot by design. Proven at the unit level
-  (bootc fake-runner E2E); the frostyard/lab firn matrix's
-  `bootc × tpm2-luks*` cells are the on-hardware E2E.
+- ✅ **Encrypted bootc installs of UKI-entry images — boot-time unlock
+  (DONE, proven on hardware 2026-08-12).** UKI-directive BLS entries bake
+  the cmdline into the UKI with no `options` line, so there is nowhere to
+  inject `rd.luks` kargs. Rather than entry-`options` merging, firn leans
+  on the same gpt-auto path the unencrypted case uses: retag-root runs for
+  encrypted too (the LUKS partition gets the DPS root GUID, so gpt-auto
+  discovers it and sets up cryptsetup), and TPM2 is enrolled at install
+  against the deployed UKI's **signed PCR 11** (the A/B path's
+  firmware-independent scheme, `EnrollTPMFromUKI`), so first boot
+  auto-unlocks without the chicken-and-egg of PCR-7 first-boot staging.
+  The bootc UKI lives at `EFI/Linux/<vendor>/…efi`. Verified: a
+  `tpm2-luks` install auto-unlocks and boots to a login prompt on a vTPM
+  VM, and the lab matrix's `tpm2-luks` cells (cayo + snow) pass.
+  `luks-passphrase` still prompts interactively at boot by design.
+
+- **bootc installs under UEFI Secure Boot don't boot.** The lab matrix
+  found (2026-08-12) that any `bootc` install with Secure Boot ON — with
+  or without encryption — is rejected by firmware at boot (`BdsDxe:
+  … Access Denied -- rejected probably by Secure Boot`): the bootc boot
+  chain is signed by snosi's key, which the guest firmware does not trust.
+  This is the **secure-install schema-1** gap (bootc's own signed
+  assembly + the MOK/enrollment the installed system needs). Unencrypted
+  and encrypted-with-SB-off bootc both boot fine; only SB-on is affected.
+  (For the lab lane specifically, the fix mirrors the A/B lane's
+  `virt-fw-vars --add-mok` pre-seed for the bootc guest; the real
+  installer-side story is the schema-1 secure path.)
 
 - Fisherman extras not yet scoped: Windows data slurp, OEM vendor
   detection + brew first-login installs, audio/Plymouth polish, cache
