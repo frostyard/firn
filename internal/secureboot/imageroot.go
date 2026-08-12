@@ -45,8 +45,14 @@ var SecureArtifactSubtrees = []string{"usr/lib/snosi", "usr/lib/shim"}
 // this runs before that redirect is torn down. The no_pivot_root override the
 // redirect installs (CONTAINERS_CONF_OVERRIDE) is likewise still in effect.
 func ExtractSecureImageRoot(ctx context.Context, r *runner.Runner, image, dest string) error {
+	// --network host, like bootcimg.BuildPodmanArgs: this container only reads
+	// files and writes a tar to stdout, so it needs no network of its own, and
+	// host networking avoids requiring netavark + nft, which the minimal
+	// installer ISO does not ship (observed live 2026-08-12: the default
+	// bridge net failed the extraction with "netavark: nftables error: unable
+	// to execute nft").
 	args := []string{
-		"run", "--rm", "--pull=never", "--privileged",
+		"run", "--rm", "--pull=never", "--privileged", "--network", "host",
 		"-v", "/var/lib/containers/storage:/var/lib/containers/storage",
 		image, "tar", "-cf", "-", "-C", "/",
 	}
