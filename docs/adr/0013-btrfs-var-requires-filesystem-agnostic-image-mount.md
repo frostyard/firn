@@ -1,6 +1,6 @@
 # 0013 — btrfs /var on A/B requires a filesystem-agnostic image mount
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-12
 
 ## Context
