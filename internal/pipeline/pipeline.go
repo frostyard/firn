@@ -54,7 +54,12 @@ type Env struct {
 	LuksKey    string // transient unlock key (first-boot TPM staging / A/B enrollment)
 	TargetDir  string // where the target filesystem tree is mounted
 	ScratchDir string // disk-backed scratch space (podman tmp etc.)
-	Summary    []progress.SummaryItem
+	// SecureImageRoot is an extracted tree of the secure image's
+	// usr/lib/{snosi,shim} subtrees (secureboot.ExtractSecureImageRoot),
+	// populated by bootc-install for a secure bootc install and consumed by
+	// the esp-stage / mok-stage steps. Empty on non-secure installs.
+	SecureImageRoot string
+	Summary         []progress.SummaryItem
 
 	// A/B path state.
 	Trust     trust.Options // origin/product/arch/pubring for artifact fetches

@@ -60,6 +60,15 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		steps = append(steps, pipeline.Step{Name: "tpm-enroll", Weight: 1,
 			Tools: []string{"systemd-cryptenroll", "objcopy"}, Run: runTPMEnrollBootc})
 	}
+	if secureBootc(r) {
+		// Stage the Secure Boot ESP chain (shim -> MOK-signed systemd-boot ->
+		// MokManager) after bootc-install writes plain systemd-boot, before
+		// retag-root unmounts/remounts the ESP (ADR-0014). Independent of
+		// tpm-enroll (which reads the UKI .pcrpkey, not EFI/BOOT); placed
+		// after it to keep the "tpm-enroll before retag" invariant intact.
+		steps = append(steps, pipeline.Step{Name: "esp-stage", Weight: 2, Destructive: true,
+			Tools: []string{"sbverify"}, Run: runESPStageBootc})
+	}
 	if r.Target.Bootloader != "grub2" {
 		// UKI-style BLS entries boot via gpt-auto discovery, which needs
 		// the DPS root type GUID (see runRetagRoot) — for encrypted roots
@@ -80,7 +89,23 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		pipeline.Step{Name: "sysconfig", Weight: 8, Tools: []string{"useradd", "chpasswd", "chroot"}, Run: runSysconfig},
 		pipeline.Step{Name: "finalize", Weight: 5, Tools: []string{"fstrim", "fsfreeze"}, Run: runFinalize},
 	)
+	if secureBootc(r) {
+		// Stage the MOK last (like the A/B path): it writes firmware NVRAM via
+		// mokutil, not the target, so it is order-independent w.r.t. the
+		// target-modifying steps. Its cert dependency (env.SecureImageRoot)
+		// survives because that scratch is removed only at pipeline exit.
+		steps = append(steps, pipeline.Step{Name: "mok-stage", Weight: 1,
+			Tools: []string{"mokutil", "openssl"}, Run: runMOKStageBootc})
+	}
 	return steps
+}
+
+// secureBootc reports whether this is a bootc install that must set up UEFI
+// Secure Boot: the recipe opted in with security.mok = "enroll" (ADR-0014).
+// mok is a fail-closed, Secure-Boot-only recipe field, so "enroll" already
+// implies Secure Boot is active on this machine (internal/recipe/validate.go).
+func secureBootc(r *recipe.Recipe) bool {
+	return r.Image.Family == recipe.FamilyBootc && r.Security.Mok == "enroll"
 }
 
 // flatpakTools declares the flatpak binary only when the recipe

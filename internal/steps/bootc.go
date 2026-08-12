@@ -17,6 +17,7 @@ import (
 	"github.com/frostyard/firn/internal/luks"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
+	"github.com/frostyard/firn/internal/secureboot"
 	"github.com/frostyard/firn/internal/sysconfig"
 )
 
@@ -191,7 +192,7 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		return fmt.Errorf("creating scratch dir: %w", err)
 	}
-	return bootcimg.Install(ctx, env.Runner, bootcimg.Options{
+	if err := bootcimg.Install(ctx, env.Runner, bootcimg.Options{
 		Image:        r.Image.Ref,
 		TargetImgref: r.Image.TargetRef,
 		TargetDir:    targetDir(env),
@@ -201,7 +202,60 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 		// images use the composefs-native backend. Becomes a recipe
 		// field only if a non-composefs snosi image ever exists.
 		Composefs: true,
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Secure Boot: extract the secure image's usr/lib/{snosi,shim} subtrees
+	// NOW, while the container store is still mounted (and, on the RAM ISO,
+	// still redirected onto disk with no_pivot_root in effect) — the deferred
+	// teardown() above unwinds it on return. A composefs deployment has no
+	// materialized /usr on the target, so the ESP chain, MOK cert and contract
+	// can only be read from the image (ADR-0014). The extracted subtrees are a
+	// few MB, so a host tmp dir (RAM on the ISO) is fine — unlike the multi-GB
+	// image store this does not need the disk redirect.
+	if secureBootc(r) {
+		dest, err := os.MkdirTemp("", "firn-secure-root-")
+		if err != nil {
+			return fmt.Errorf("secure image root scratch: %w", err)
+		}
+		if err := secureboot.ExtractSecureImageRoot(ctx, env.Runner, r.Image.Ref, dest); err != nil {
+			return err
+		}
+		env.SecureImageRoot = dest
+		env.Defer("remove secure image root", func() error { return os.RemoveAll(dest) })
+	}
+	return nil
+}
+
+// runESPStageBootc stages the Secure Boot ESP chain (shim -> MOK-signed
+// systemd-boot -> MokManager) from the extracted secure image onto the freshly
+// installed ESP, after verifying the image's schema-1 contract (ADR-0014).
+func runESPStageBootc(ctx context.Context, env *pipeline.Env) error {
+	if env.SecureImageRoot == "" {
+		return fmt.Errorf("esp-stage: secure image root missing (bootc-install did not extract it)")
+	}
+	contract, err := secureboot.Load(env.SecureImageRoot)
+	if err != nil {
+		return err
+	}
+	return secureboot.StageESPChain(ctx, env.Runner, targetDir(env), env.SecureImageRoot, contract.MokCertificate)
+}
+
+// runMOKStageBootc stages the snosi MOK via mokutil so shim's MokManager
+// prompts the user to enroll it on first boot — the human step that plants
+// firmware trust in the MOK-signed second stage. The cert comes from the
+// extracted image (its /usr is composefs, not on the target).
+func runMOKStageBootc(ctx context.Context, env *pipeline.Env) error {
+	if env.SecureImageRoot == "" {
+		return fmt.Errorf("mok-stage: secure image root missing")
+	}
+	contract, err := secureboot.Load(env.SecureImageRoot)
+	if err != nil {
+		return err
+	}
+	cert := filepath.Join(env.SecureImageRoot, strings.TrimPrefix(contract.MokCertificate, "/"))
+	return abimg.StageMOK(ctx, env.Runner, cert, env.Recipe.Security.MokPasswordFile)
 }
 
 // bootcRAMPaths are the host directories a bootc image pull writes to

@@ -41,6 +41,7 @@ btrfs_subvolumes = true
 
 [security]
 encryption = "none"
+mok = "skip"
 
 [system]
 hostname = "frost01"

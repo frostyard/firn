@@ -74,7 +74,9 @@ var bootcOnlyKeys = [][]string{
 var abOnlyKeys = [][]string{
 	{"image", "product"}, {"image", "origin"}, {"image", "release"},
 	{"target", "var_filesystem"}, {"target", "var_subvolumes"},
-	{"security", "recovery_key_out"}, {"security", "mok"}, {"security", "mok_password_file"},
+	{"security", "recovery_key_out"},
+	// security.mok / mok_password_file are NOT ab-only: bootc uses them for
+	// its Secure Boot secure-install path too (ADR-0014).
 }
 
 // Validate checks a loaded recipe against the schema spec and the
@@ -228,7 +230,12 @@ func validateSecurity(l *Loaded, env Env, family string, add func(code, field, f
 		checkFile(s.PassphraseFile, "security.passphrase_file", true, add)
 	}
 
-	if family == FamilyAB {
+	// MOK enrollment applies to BOTH families under Secure Boot: A/B stages it
+	// via mokutil for shim's MokManager, and bootc does the same for its
+	// secure-install schema-1 path (ADR-0014). The rules are family-independent
+	// — they read only env.SecureBoot and the mok fields — so both families
+	// share them.
+	if family == FamilyAB || family == FamilyBootc {
 		if env.SecureBoot {
 			switch s.Mok {
 			case "enroll":

@@ -53,7 +53,7 @@ omitting a required field here is a validation error, never a default.
 | `encryption` | string | yes | bootc: `"none"`, `"luks-passphrase"`, `"tpm2-luks"`, `"tpm2-luks-passphrase"`. ab: `"none"`, `"luks"` (recovery key only), `"tpm2-luks"` (recovery key + TPM). |
 | `passphrase` / `passphrase_file` | string / path | conditional | Exactly one MUST be set when `encryption` includes `passphrase`; MUST NOT be set otherwise. |
 | `recovery_key_out` | string (path) | no | ab only: also write the generated recovery key to this path (0600). The key is always disclosed via the progress protocol. |
-| `mok` | string | ab: yes when Secure Boot is active | `"enroll"` or `"skip"`. With `"enroll"`, `mok_password_file` MUST be set. |
+| `mok` | string | ab or bootc: yes when Secure Boot is active | `"enroll"` or `"skip"`. With `"enroll"`, `mok_password_file` MUST be set. bootc uses it for the secure-install schema-1 path ([ADR-0014](../adr/0014-port-secure-install-schema-1-for-bootc.md)). |
 | `mok_password_file` | string (path) | conditional | 0600 file; content is the one-time MokManager password. |
 
 ### `[system]`
@@ -115,9 +115,9 @@ groups = ["wheel"]
    Inline and `_file` variants of the same value are mutually
    exclusive.
 3. `[security]` completeness is family- and machine-aware: `mok` is
-   required exactly when `family = "ab"` and Secure Boot is active on
-   the install machine; `tpm2-*` modes are an error on machines with no
-   TPM (no silent fallback).
+   required exactly when `family` is `"ab"` or `"bootc"` and Secure Boot
+   is active on the install machine; `tpm2-*` modes are an error on
+   machines with no TPM (no silent fallback).
 4. Validation MUST succeed or fail entirely before any destructive step;
    a recipe that validates assembles a runnable pipeline.
 5. The TUI MUST NOT be able to produce a recipe this spec rejects, and
