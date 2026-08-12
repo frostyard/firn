@@ -167,6 +167,25 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 		scratch = "/var/firn-tmp"
 		env.ScratchDir = scratch
 	}
+
+	// On a RAM-only installer ISO the whole rootfs is tmpfs, so podman's
+	// default image store (/var/lib/containers) and the scratch dir are
+	// RAM-backed: a bootc image pull unpacks into /var/lib/containers and
+	// dies with ENOSPC partway through the layers (observed live: cayo
+	// pull failed at "write .../solidity.vim: no space left on device",
+	// 2026-08-12). Redirect the image store and bootc's deployment scratch
+	// onto the target disk — which has room — for the pull+deploy, then
+	// tear the redirect down before the later steps unmount the target.
+	if bootcimg.StorageSpaceConstrained() {
+		teardown, diskScratch, err := redirectBootcStorageToDisk(ctx, env)
+		if err != nil {
+			return err
+		}
+		defer teardown()
+		scratch = diskScratch
+		env.ScratchDir = scratch
+	}
+
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		return fmt.Errorf("creating scratch dir: %w", err)
 	}
@@ -181,6 +200,164 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 		// field only if a non-composefs snosi image ever exists.
 		Composefs: true,
 	})
+}
+
+// bootcRAMPaths are the host directories a bootc image pull writes to
+// that are RAM-backed on the installer ISO and must be redirected onto
+// the target disk:
+//
+//   - /var/lib/containers is podman's default graphroot, where pulled
+//     layers are unpacked (ENOSPC at "write .../solidity.vim" without
+//     this redirect).
+//   - /var/tmp is where containers/image stages downloaded blobs before
+//     unpacking. containers/storage hardcodes this path (store.TmpDir())
+//     regardless of TMPDIR, so a multi-GB layer blob overflows the RAM
+//     rootfs there too (ENOSPC at "storing blob to file
+//     /var/tmp/container_images_storageXXX/..." — observed after the
+//     graphroot redirect alone, 2026-08-12).
+var bootcRAMPaths = []string{"/var/lib/containers", "/var/tmp"}
+
+// redirectBootcStorageToDisk points podman's image store and bootc's
+// deployment scratch at disk-backed directories on the (already-mounted)
+// target root, so a large bootc image can be pulled and unpacked without
+// exhausting the RAM-backed installer rootfs. It bind-mounts a directory
+// on the target over /var/lib/containers so podman's default graphroot
+// lands on disk without changing the podman-run argv (the existing,
+// E2E-proven composefs flow still bind-mounts /var/lib/containers into
+// the container unchanged).
+//
+// This deliberately does NOT adopt fisherman's later composefs storage
+// dance (redirect via --root, skopeo-export to an OCI layout, run bootc
+// with --source-imgref oci:<path>). That path solves the same live-media
+// ENOSPC, but makes bootc open the source image over the *oci:* transport,
+// which a hardened snosi image's own /etc/containers/policy.json rejects
+// (reject-by-default, exception only for containers-storage) — forcing
+// fisherman's writeLocalTransportPolicy override and a day lost to secure
+// -image signature-policy failures. Keeping the store at the default path
+// and on the containers-storage transport preserves the exact flow the
+// bootc loop-device E2E already validated against a hardened image, and
+// stays out of that policy rabbit hole entirely. The tradeoff is space:
+// the unpacked store and the deployment coexist on the target during the
+// install (both freed of the store afterward), so very small targets that
+// fisherman's store-dropping would have fit could ENOSPC here. Snosi's
+// disk floor makes that acceptable; revisit if a tighter target appears.
+//
+// It returns the disk-backed scratch path and a teardown func that
+// unmounts the store bind and removes the scratch tree. The caller must
+// run teardown before the target is unmounted (i.e. via a plain defer in
+// the step, not env.Defer, which fires after finalize has remounted the
+// root read-only).
+func redirectBootcStorageToDisk(ctx context.Context, env *pipeline.Env) (teardown func(), scratch string, err error) {
+	base := filepath.Join(targetDir(env), ".firn-install")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		return nil, "", fmt.Errorf("creating install scratch base: %w", err)
+	}
+
+	// Track every mount so teardown unmounts exactly those, LIFO, even if
+	// a later step fails partway.
+	var mounted []string
+	undo := func() {
+		for i := len(mounted) - 1; i >= 0; i-- {
+			// Recursive: podman leaves its overlay driver mount under
+			// /var/lib/containers/storage, so a plain umount of the bind
+			// fails "target is busy" and the store is never reclaimed
+			// (observed live 2026-08-12). Fall back to a lazy detach so a
+			// stubborn mount still releases the underlying tree for removal.
+			if _, e := env.Runner.Run(context.Background(), "umount", "-R", mounted[i]); e != nil {
+				if _, e2 := env.Runner.Run(context.Background(), "umount", "-R", "-l", mounted[i]); e2 != nil {
+					env.Emit(progress.Warning{Code: "store_umount_failed", Message: e2.Error()})
+				}
+			}
+		}
+	}
+
+	// The only disk-backed space on a RAM installer is the target root
+	// itself, but `bootc install to-filesystem` requires /target to
+	// contain only mount points and fails on any stray directory
+	// ("Found empty directory: scratch", observed live 2026-08-12). Bind
+	// the scratch base onto itself so it presents as a mount point: bootc
+	// treats it as a foreign mount and does not recurse into it, leaving
+	// our store tree invisible to the empty-rootfs check. Teardown
+	// removes it before the deployment is finalized.
+	if _, err := env.Runner.Run(ctx, "mount", "--bind", base, base); err != nil {
+		return nil, "", fmt.Errorf("making install scratch a mount point: %w", err)
+	}
+	mounted = append(mounted, base)
+
+	scratch = filepath.Join(base, "scratch")
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		undo()
+		return nil, "", fmt.Errorf("creating disk-backed scratch dir: %w", err)
+	}
+
+	// Bind a disk-backed directory (under the self-bound base) over each
+	// RAM-backed path the pull writes to.
+	for i, mnt := range bootcRAMPaths {
+		disk := filepath.Join(base, fmt.Sprintf("bind%d", i))
+		if err := os.MkdirAll(disk, 0o755); err != nil {
+			undo()
+			return nil, "", fmt.Errorf("creating disk-backed dir for %s: %w", mnt, err)
+		}
+		if err := os.MkdirAll(mnt, 0o755); err != nil {
+			undo()
+			return nil, "", fmt.Errorf("ensuring mountpoint %s: %w", mnt, err)
+		}
+		if _, err := env.Runner.Run(ctx, "mount", "--bind", disk, mnt); err != nil {
+			undo()
+			return nil, "", fmt.Errorf("bind-mounting disk-backed %s: %w", mnt, err)
+		}
+		mounted = append(mounted, mnt)
+	}
+	env.Emit(progress.Info{Message: "redirected container image store and blob staging to target disk (installer runs in RAM)"})
+
+	// The installer's root is the initramfs (a rootfs/ramfs), and
+	// pivot_root(2) cannot pivot off it: the bootc container fails to
+	// start with "crun: pivot_root: Invalid argument" (observed live
+	// once the ENOSPC was cleared, 2026-08-12). Tell podman to fall back
+	// to MS_MOVE+chroot via no_pivot_root, scoped to this process with a
+	// merged CONTAINERS_CONF_OVERRIDE so no global podman config is
+	// touched. Only reached on the RAM-installer path, so hosts where
+	// pivot_root works (the loop-device E2E) are unaffected.
+	restoreEnv, err := enableNoPivotRoot(base)
+	if err != nil {
+		undo()
+		return nil, "", err
+	}
+
+	teardown = func() {
+		// Unmount the binds and reclaim their space before the target is
+		// finalized/unmounted. Best-effort: a failure here must not mask
+		// the install result, so warn rather than fail.
+		restoreEnv()
+		undo()
+		if e := os.RemoveAll(base); e != nil {
+			env.Emit(progress.Warning{Code: "store_cleanup_failed", Message: e.Error()})
+		}
+	}
+	return teardown, scratch, nil
+}
+
+// enableNoPivotRoot writes a minimal containers.conf fragment enabling
+// no_pivot_root and points podman at it via CONTAINERS_CONF_OVERRIDE
+// (which merges over the defaults rather than replacing them). It
+// returns a func that restores the prior env value.
+func enableNoPivotRoot(dir string) (restore func(), err error) {
+	conf := filepath.Join(dir, "podman-override.conf")
+	if err := os.WriteFile(conf, []byte("[engine]\nno_pivot_root = true\n"), 0o644); err != nil {
+		return nil, fmt.Errorf("writing podman no-pivot override: %w", err)
+	}
+	const key = "CONTAINERS_CONF_OVERRIDE"
+	prev, had := os.LookupEnv(key)
+	if err := os.Setenv(key, conf); err != nil {
+		return nil, fmt.Errorf("setting %s: %w", key, err)
+	}
+	return func() {
+		if had {
+			_ = os.Setenv(key, prev)
+		} else {
+			_ = os.Unsetenv(key)
+		}
+	}, nil
 }
 
 // runRetagRoot retypes the root partition to the DPS root-x86-64 GUID

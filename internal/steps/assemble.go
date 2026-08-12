@@ -45,7 +45,7 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		pipeline.Step{Name: "mount-target", Weight: 1, Destructive: false,
 			Tools: []string{"mount", "umount"}, Run: runMountTarget},
 		pipeline.Step{Name: "bootc-install", Weight: 55, Destructive: true,
-			Tools: []string{"podman", "skopeo"}, Run: runBootcInstall},
+			Tools: []string{"podman", "skopeo", "mount", "umount"}, Run: runBootcInstall},
 	)
 	if r.Target.Bootloader != "grub2" && !encrypted {
 		// UKI-style BLS entries boot via gpt-auto discovery, which
