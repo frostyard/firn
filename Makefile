@@ -77,11 +77,15 @@ bump: ## generate a new version with svu
 # firn-specific: root/KVM E2E harnesses (run outside CI; see the
 # nested-vm-e2e skill and ADR-0009 for why some must run nested).
 
-.PHONY: e2e-bootc e2e-ab e2e-tui
+.PHONY: e2e-bootc e2e-bootc-secure e2e-ab e2e-tui
 
 ## e2e-bootc: Loop-device bootc install E2E (root, QEMU/OVMF, podman)
 e2e-bootc:
 	sudo test/e2e-bootc.sh
+
+## e2e-bootc-secure: Nested-VM bootc install under enforced Secure Boot (root, QEMU/secboot-OVMF, virt-fw-vars)
+e2e-bootc-secure:
+	sudo test/e2e-bootc-secure.sh
 
 ## e2e-ab: Nested-VM A/B install E2E (root, QEMU/OVMF, network)
 e2e-ab:

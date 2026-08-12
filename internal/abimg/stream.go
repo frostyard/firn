@@ -14,11 +14,51 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/frostyard/firn/internal/runner"
 )
+
+// streamClient catches a server that never connects, never sends headers, or
+// drops the connection -- without a total http.Client.Timeout, which would
+// abort a healthy but slow multi-GB image download. Mid-stream stalls (headers
+// arrive, then the body goes silent) are caught separately by stallReader.
+func streamClient() *http.Client {
+	return &http.Client{Transport: &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   30 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+	}}
+}
+
+// stallReader cancels the request when the body makes no read progress within
+// window, so a download that stalls mid-stream fails instead of hanging forever
+// (internal/abimg/stream.go once used http.DefaultClient with no timeout at
+// all). The window is generous: a healthy download always advances within it.
+type stallReader struct {
+	r      io.Reader
+	cancel context.CancelFunc
+	window time.Duration
+	once   sync.Once
+	timer  *time.Timer
+}
+
+func (s *stallReader) Read(p []byte) (int, error) {
+	s.once.Do(func() { s.timer = time.AfterFunc(s.window, s.cancel) })
+	n, err := s.r.Read(p)
+	if n > 0 {
+		s.timer.Reset(s.window)
+	}
+	if err != nil && s.timer != nil {
+		s.timer.Stop()
+	}
+	return n, err
+}
 
 // syncEvery is how many decompressed bytes are written to the target
 // between explicit sync calls. Periodic sync keeps the page cache from
@@ -79,10 +119,13 @@ func StreamWrite(ctx context.Context, r *runner.Runner, o StreamOpts) (decompres
 func streamWrite(ctx context.Context, r *runner.Runner, o StreamOpts) (int64, error) {
 	client := o.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = streamClient()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.URL, nil)
+	// Derived context so stallReader can cancel a hung mid-stream body.
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodGet, o.URL, nil)
 	if err != nil {
 		return 0, fmt.Errorf("abimg: request %s: %w", o.URL, err)
 	}
@@ -105,7 +148,8 @@ func streamWrite(ctx context.Context, r *runner.Runner, o StreamOpts) (int64, er
 	// compressed bytes for the same reason: Content-Length is the
 	// compressed size.
 	hasher := sha256.New()
-	var body io.Reader = &progressReader{r: resp.Body, total: total, fn: o.Progress}
+	stall := &stallReader{r: resp.Body, cancel: cancel, window: 2 * time.Minute}
+	var body io.Reader = &progressReader{r: stall, total: total, fn: o.Progress}
 	body = io.TeeReader(body, hasher)
 
 	// Stage 4→5: count decompressed bytes, then write to the target
