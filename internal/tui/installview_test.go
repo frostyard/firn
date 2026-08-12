@@ -44,6 +44,26 @@ func requireQuit(t *testing.T, cmd tea.Cmd) {
 	}
 }
 
+// requireNoQuit asserts cmd is not the quit command — either nil, or a
+// command that resolves to something other than tea.QuitMsg. Used where
+// the view must stay up (holding the final screen for acknowledgement).
+func requireNoQuit(t *testing.T, cmd tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	got := make(chan tea.Msg, 1)
+	go func() { got <- cmd() }()
+	select {
+	case msg := <-got:
+		if _, ok := msg.(tea.QuitMsg); ok {
+			t.Fatal("expected the view to hold, but it quit")
+		}
+	case <-time.After(2 * time.Second):
+		// A blocking command (e.g. a re-armed channel read) is not a quit.
+	}
+}
+
 func startedModel(t *testing.T) installModel {
 	t.Helper()
 	m := newInstallModel(nil, nil)
@@ -132,10 +152,14 @@ func TestRecoveryKeyGateBlocksUntilKeypress(t *testing.T) {
 	if m.gated {
 		t.Fatal("Enter did not dismiss the gate")
 	}
-	requireQuit(t, cmd)
+	// Dismissing the gate reveals the final screen — it does not quit yet.
+	requireNoQuit(t, cmd)
 	if !m.result.Done || m.result.RecoveryKey != theKey {
 		t.Fatalf("result = %+v, want Done with recovery key", m.result)
 	}
+	// The final screen then dismisses on any key.
+	_, cmd = key(t, m, tea.KeyEnter)
+	requireQuit(t, cmd)
 }
 
 func TestWarningsAndInfoTail(t *testing.T) {
@@ -168,7 +192,13 @@ func TestErrorProducesFailedResult(t *testing.T) {
 	m := startedModel(t)
 	m, _ = apply(t, m, progress.StepStart{Index: 1, Name: "write"})
 	m, cmd := apply(t, m, progress.Error{Step: "write", Code: "disk_full", Message: "no space left on device"})
-	requireQuit(t, cmd)
+	// The failure screen must NOT self-quit: the kiosk restarts firn on
+	// exit, so an auto-quitting failure would bounce back to page 1 before
+	// it could be read (the live bug this guards).
+	requireNoQuit(t, cmd)
+	if !m.finished {
+		t.Fatal("Error should mark the view finished")
+	}
 
 	want := InstallResult{Failed: true, FailedStep: "write", ErrorMessage: "no space left on device"}
 	if m.result.Failed != want.Failed || m.result.FailedStep != want.FailedStep || m.result.ErrorMessage != want.ErrorMessage || m.result.Done {
@@ -178,6 +208,9 @@ func TestErrorProducesFailedResult(t *testing.T) {
 	if !strings.Contains(view, "write") || !strings.Contains(view, "no space left on device") {
 		t.Errorf("failure view missing step or message:\n%s", view)
 	}
+	// A keypress then dismisses it and quits.
+	_, cmd = key(t, m, tea.KeyEnter)
+	requireQuit(t, cmd)
 }
 
 func TestDoneShowsSummary(t *testing.T) {
@@ -186,7 +219,8 @@ func TestDoneShowsSummary(t *testing.T) {
 		{Code: progress.CodeNoTPM, Detail: "recovery key required at boot"},
 	}})
 	m, cmd := apply(t, m, progress.Done{OK: true, BootEntry: "snosi"})
-	requireQuit(t, cmd)
+	// The success screen also holds until acknowledged.
+	requireNoQuit(t, cmd)
 
 	if !m.result.Done || m.result.Failed {
 		t.Fatalf("result = %+v, want Done", m.result)
@@ -197,6 +231,8 @@ func TestDoneShowsSummary(t *testing.T) {
 	if !strings.Contains(m.View(), "recovery key required at boot") {
 		t.Errorf("final view missing summary detail:\n%s", m.View())
 	}
+	_, cmd = key(t, m, tea.KeyEnter)
+	requireQuit(t, cmd)
 }
 
 func TestCtrlCCancelsAndWaits(t *testing.T) {
@@ -222,22 +258,33 @@ func TestCtrlCCancelsAndWaits(t *testing.T) {
 		t.Fatalf("second ctrl+c: calls = %d, quit = %v", calls, cmd != nil)
 	}
 
-	// The pipeline's terminal event finally releases the view.
+	// The pipeline's terminal event lands the final screen (which then
+	// holds for acknowledgement).
 	m, cmd = apply(t, m, progress.Error{Step: "fetch", Code: "canceled", Message: "context canceled"})
-	requireQuit(t, cmd)
+	requireNoQuit(t, cmd)
 	if !m.result.Failed {
 		t.Fatalf("result = %+v, want Failed after canceled install", m.result)
 	}
+	// A keypress dismisses the screen and quits.
+	_, cmd = key(t, m, tea.KeyEnter)
+	requireQuit(t, cmd)
 }
 
-func TestChannelCloseWithoutTerminalEventQuits(t *testing.T) {
+func TestChannelCloseWithoutTerminalEventHolds(t *testing.T) {
 	m := startedModel(t)
 	nm, cmd := m.Update(channelClosedMsg{})
 	m = nm.(installModel)
-	requireQuit(t, cmd)
+	// A channel close with no terminal event still holds the final screen
+	// (rather than vanishing) so the user sees the "did not finish" state.
+	requireNoQuit(t, cmd)
+	if !m.finished {
+		t.Fatal("channel close should mark the view finished")
+	}
 	if m.result.Done || m.result.Failed {
 		t.Fatalf("result = %+v, want neither Done nor Failed", m.result)
 	}
+	_, cmd = key(t, m, tea.KeyEnter)
+	requireQuit(t, cmd)
 }
 
 func TestEventLoopRearmsChannelRead(t *testing.T) {

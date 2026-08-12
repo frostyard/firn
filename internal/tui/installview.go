@@ -128,10 +128,16 @@ func (m installModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Once a terminal event has landed the final screen stays up
+		// until the user dismisses it: the kiosk restarts firn when it
+		// exits, so a self-quitting failure screen would vanish and
+		// bounce straight back to page 1 before it could be read
+		// (observed live: a failed bootc install "blinked back to the
+		// first page", 2026-08-12). Any key dismisses it.
+		if m.finished && !m.gated {
+			return m, tea.Quit
+		}
 		if msg.Type == tea.KeyCtrlC {
-			if m.finished && !m.gated {
-				return m, tea.Quit
-			}
 			// Abort the pipeline but never orphan it: stay alive
 			// until its terminal event (or channel close) arrives.
 			if !m.canceling {
@@ -144,9 +150,6 @@ func (m installModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.gated && msg.Type == tea.KeyEnter {
 			m.gated = false
-			if m.finished {
-				return m, tea.Quit
-			}
 			return m, nil
 		}
 		return m, nil
@@ -156,10 +159,7 @@ func (m installModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case channelClosedMsg:
 		m.finished = true
-		if m.gated {
-			return m, nil
-		}
-		return m, tea.Quit
+		return m, nil
 	}
 	return m, nil
 }
@@ -214,14 +214,14 @@ func (m installModel) handleEvent(e progress.Event) (tea.Model, tea.Cmd) {
 	return m, waitForEvent(m.events)
 }
 
-// finish records the terminal event; if the recovery-key gate is up,
-// quitting waits for its acknowledging keypress.
+// finish records the terminal event and holds the view: the final
+// screen (success or failure) stays up until the user dismisses it with
+// a keypress, so a failure is readable before firn exits and the kiosk
+// restarts it. If the recovery-key gate is still up, that screen shows
+// first; dismissing it reveals the final screen underneath.
 func (m installModel) finish() (tea.Model, tea.Cmd) {
 	m.finished = true
-	if m.gated {
-		return m, nil
-	}
-	return m, tea.Quit
+	return m, nil
 }
 
 func pushTail(tail []tailLine, l tailLine) []tailLine {
@@ -337,5 +337,12 @@ func (m installModel) finalView() string {
 			fmt.Fprintf(&b, "  %s: %s\n", it.Code, it.Detail)
 		}
 	}
+	b.WriteString("\n")
+	if m.result.Failed {
+		b.WriteString(dimStyle.Render("press any key to return to the installer"))
+	} else {
+		b.WriteString(dimStyle.Render("press any key to exit"))
+	}
+	b.WriteString("\n")
 	return b.String()
 }
