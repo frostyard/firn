@@ -1,68 +1,102 @@
-# agentic-template
+# Firn
 
-A GitHub template for projects built and maintained by LLM agents. It contains
-no code — just the documentation structure and agent rules that make one-shot
-agent work reliable, extracted from [bespoke](https://github.com/bketelsen/bespoke),
-where this structure has held up across every coding agent thrown at it.
+Firn is the single installer for every [snosi](https://github.com/frostyard)
+image family — bootc OCI images and native A/B disk images — driven by one
+declarative recipe, with a built-in terminal wizard. It replaces a fleet of
+per-family installers with a single recipe schema and a single progress
+protocol.
 
-## Why this works
+Firn is a GPL-3.0-only, deeply-inspired rewrite of
+[fisherman](https://github.com/frostyard). Attribution to the code it draws
+from lives in [`NOTICE`](NOTICE); the rationale for rewriting rather than
+forking is [ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md).
 
-Agents succeed when the repository answers their questions before they ask:
+## What it does
 
-- **One law, every agent.** `AGENTS.md` is the canonical instruction file;
-  `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` are symlinks
-  to it, so Claude Code, Copilot, Gemini, and whatever comes next all read the
-  same rules. Skills live once in `.agents/skills/` (`.claude/skills` is a
-  symlink). No drift, ever.
-- **Docs split by the question they answer.** `docs/adr/` (why — immutable),
-  `docs/design/` (how — living), `docs/specs/` (what exactly — testable
-  contracts), `docs/plans/` (when — phases with "Done when" outcomes). An agent
-  that needs rationale, mechanism, contract, or sequence knows exactly where to
-  look — and where to write.
-- **Templates as enforcement.** Every category has a `TEMPLATE.md`; every new
-  doc starts from it. Structure you don't have to think about is structure that
-  stays consistent.
-- **Mandatory cross-linking.** ADRs link the designs they shape; designs link
-  their ADRs, specs, and roadmap phase; specs link back. A doc without its
-  links is defined as incomplete, so the graph stays navigable from any entry
-  point.
-- **Live conventions only.** AGENTS.md's code-conventions section describes the
-  code *as it is* — rules graduate in when the enforcing code lands. Agents
-  following stale rules produce broken work; this structure makes stale rules a
-  category error.
-- **Skills over improvisation.** Multi-step procedures that repeat become
-  `.agents/skills/<name>/SKILL.md` files with a frontmatter description agents
-  can select on. Explaining a procedure twice means it should become a skill.
+- **Two image families, one installer.** `family = "bootc"` installs an OCI
+  image straight from a container registry (deployed from the RAM installer
+  over containers-storage, [ADR-0012](docs/adr/0012-bootc-install-from-ram-installer.md));
+  `family = "ab"` streams a signed native A/B whole-disk image and grows it in
+  place. The recipe picks the family; the pipeline splices the right steps in.
+- **Recipe-driven.** A single versioned TOML file
+  ([schema](docs/specs/recipe-schema.md),
+  [ADR-0005](docs/adr/0005-toml-recipe-model.md)) describes the target disk,
+  image, security options, and system configuration. Validation is
+  fail-closed: unknown fields, unknown enum values, and wrong-family fields are
+  errors, never warnings.
+- **Security options.** LUKS `/var` (A/B) or root (bootc) with passphrase or
+  TPM2 auto-unlock; UEFI Secure Boot with MOK enrollment on both families
+  (native A/B, and bootc via secure-install schema-1,
+  [ADR-0014](docs/adr/0014-port-secure-install-schema-1-for-bootc.md)).
+- **Built-in TUI.** The bare `firn` command opens a terminal wizard
+  (single binary, Charm stack, [ADR-0007](docs/adr/0007-tui-only-frontend-single-binary.md))
+  that walks the install and emits a recipe you can reproduce headlessly.
+- **One progress protocol.** Every user-visible signal from the pipeline is a
+  typed progress event ([spec](docs/specs/progress-protocol.md)); `--json-progress`
+  streams it as NDJSON for automation.
 
-## Using this template
+## Usage
 
-1. Click **Use this template** on GitHub (or `gh repo create myproject
-   --template bketelsen/agentic-template`).
-2. In `AGENTS.md`: replace the title and intro, then fill in the commented
-   placeholder sections as your project takes shape — especially the project
-   check command (`just check` / `make check` / …) that gates "done".
-3. Set the dates in `docs/adr/0001` and `0002` to today; they're pre-accepted
-   because this template implements them.
-4. Write your first real ADR (0003) for your first significant choice —
-   language, framework, storage — and keep going from there.
-5. Delete this "Using this template" section and make the README describe your
-   project.
+```sh
+firn                          # open the interactive wizard
+firn validate recipe.toml     # check a recipe against the schema + this machine
+firn install recipe.toml      # run the install (add --confirm for the destructive step)
+firn install --json-progress recipe.toml   # stream typed progress as NDJSON
+```
+
+Detection overrides (`--uefi`, `--secure-boot`, `--tpm`, each `auto|on|off`)
+force the machine-capability probes when you know better than autodetection —
+e.g. in a VM. See [`docs/specs/recipe-schema.md`](docs/specs/recipe-schema.md)
+for a complete recipe.
+
+## Building
+
+Firn is a single Go binary with no CGO. The pipeline and domain packages use
+only the Go standard library plus host tools it shells out to; the sanctioned
+dependencies are a TOML decoder and, in the TUI layer only, the Charm stack
+([ADR-0011](docs/adr/0011-adopt-frostyard-go-conventions.md)).
+
+```sh
+make build     # build ./build/firn
+make check     # fmt + lint + test — the gate for "done"; CI runs the same
+```
+
+End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
+and verify the booted disk over SSH (`test/e2e-ab.sh`, `test/e2e-bootc.sh`,
+`test/e2e-bootc-secure.sh`, `test/e2e-tui.sh`).
 
 ## Layout
 
+Firn's own contracts are the recipe schema and the progress protocol, not a Go
+API, so the pipeline lives under `internal/`:
+
 ```
-AGENTS.md                     canonical agent instructions (the law)
-CLAUDE.md → AGENTS.md         symlink for Claude Code
-GEMINI.md → AGENTS.md         symlink for Gemini CLI
-.github/copilot-instructions.md → AGENTS.md
-.agents/skills/               canonical skills; TEMPLATE/SKILL.md to copy
-.claude/skills → .agents/skills
-docs/README.md                taxonomy + index (every doc gets a line)
-docs/adr/                     why — immutable decisions + TEMPLATE.md
-docs/design/                  how — living architecture docs + TEMPLATE.md
-docs/specs/                   what — testable contracts + TEMPLATE.md
-docs/plans/                   when — phased plans + TEMPLATE.md
+cmd/firn-cli/         clix entry point (main)
+cmd/firn/             cobra command handlers (install, validate, TUI)
+internal/recipe/      TOML recipe model + fail-closed validation
+internal/steps/       pipeline assembly (family backbone + option splices)
+internal/pipeline/    the step engine, cleanup stack, runner seam
+internal/bootcimg/    bootc install (podman/bootc)
+internal/abimg/       native A/B image surgery (stream, grow, LUKS, TPM, MOK)
+internal/secureboot/  UEFI Secure Boot ESP chain + contract (schema-1)
+internal/tui/         the terminal wizard
+internal/progress/    the progress protocol emitters
 ```
 
-Symlinks require Linux/macOS (or `core.symlinks=true` on Windows); GitHub's
-web renderer shows symlinks as their target path, which is cosmetic only.
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md). Docs are split by the question
+they answer: [`adr/`](docs/adr/) (why — immutable decisions), [`design/`](docs/design/)
+(how — living architecture), [`specs/`](docs/specs/) (what exactly — testable
+contracts), [`plans/`](docs/plans/) (when — phased roadmap). Every doc starts
+from its category's `TEMPLATE.md` and cross-links the docs it shapes.
+
+Agent instructions are canonical in [`AGENTS.md`](AGENTS.md); `CLAUDE.md`,
+`GEMINI.md`, and `.github/copilot-instructions.md` are symlinks to it, and
+`.claude/skills` symlinks to `.agents/skills/`
+([ADR-0002](docs/adr/0002-agent-portable-instruction-surface.md)) — every agent
+reads the same law.
+
+## License
+
+GPL-3.0-only. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
