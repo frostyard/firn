@@ -35,6 +35,7 @@ type WizardOpts struct {
 	Machine recipe.Env
 	UEFI    bool
 	Catalog []CatalogEntry
+	Notices []string
 }
 
 // RunWizard walks the user through building a recipe. It returns
@@ -46,9 +47,10 @@ func RunWizard(ctx context.Context, o WizardOpts) (*recipe.Recipe, error) {
 		var warn error
 		catalog, warn = LoadCatalog()
 		if warn != nil {
-			// Built-ins are returned alongside the warning; the wizard
-			// proceeds on those but must not hide the failure.
-			fmt.Fprintln(os.Stderr, warn)
+			// Built-ins are returned alongside the warning. Put the
+			// problem on the welcome page because stderr is journal-only
+			// on the installer kiosk.
+			o.Notices = append(o.Notices, warn.Error())
 		}
 	}
 	w := &wizard{
@@ -249,7 +251,10 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 		}
 		r.Security.PassphraseFile = p
 	}
-	if c.entry.Family == recipe.FamilyAB && c.mok != "" {
+	// MOK enrollment is family-independent under Secure Boot. A/B and
+	// bootc use different pipeline staging implementations, but share the
+	// same recipe fields and one-time MokManager password (ADR-0014).
+	if c.mok != "" {
 		r.Security.Mok = c.mok
 		if c.mok == "enroll" {
 			if c.mokPassword == "" {
@@ -384,9 +389,10 @@ func renderTOML(r *recipe.Recipe) string {
 	}
 	if r.Image.Family == recipe.FamilyAB {
 		kv(&b, "recovery_key_out", r.Security.RecoveryKeyOut)
-		kv(&b, "mok", r.Security.Mok)
-		kv(&b, "mok_password_file", r.Security.MokPasswordFile)
 	}
+	// MOK fields apply to both families under Secure Boot (ADR-0014).
+	kv(&b, "mok", r.Security.Mok)
+	kv(&b, "mok_password_file", r.Security.MokPasswordFile)
 
 	b.WriteString("\n[system]\n")
 	kv(&b, "hostname", r.System.Hostname)

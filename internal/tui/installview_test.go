@@ -7,9 +7,25 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/frostyard/firn/internal/progress"
 )
+
+func TestFailureMessageWrapsToTerminalWidth(t *testing.T) {
+	m := newInstallModel(nil, nil)
+	m.width = 32
+	m.result.Failed = true
+	m.result.FailedStep = "bootc-install"
+	m.result.ErrorMessage = "bootcimg: image ghcr.io/frostyard/snow:latest failed while pinging container registry: i/o timeout"
+	m.finished = true
+
+	for _, line := range strings.Split(m.finalView(), "\n") {
+		if got := ansi.StringWidth(line); got > m.width-1 {
+			t.Errorf("failure line width = %d, want <= %d: %q", got, m.width-1, line)
+		}
+	}
+}
 
 // apply pushes one pipeline event through Update and returns the
 // resulting model and command, as the running Program would.

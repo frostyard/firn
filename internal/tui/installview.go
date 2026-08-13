@@ -15,6 +15,7 @@ import (
 	pbar "github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/frostyard/firn/internal/progress"
 )
@@ -317,13 +318,19 @@ func (m installModel) recoveryView() string {
 
 func (m installModel) finalView() string {
 	var b strings.Builder
+	// Leave one column unused: writing in the terminal's final column can
+	// trigger an automatic wrap plus Bubble Tea cursor movement, producing
+	// a blank line or clipped redraw on physical consoles.
+	textWidth := max(10, m.width-1)
 	if m.result.Failed {
 		b.WriteString(errStyle.Render("install failed"))
 		b.WriteString("\n\n")
 		if m.result.FailedStep != "" {
-			fmt.Fprintf(&b, "step: %s\n", m.result.FailedStep)
+			b.WriteString(ansi.Wrap("step: "+m.result.FailedStep, textWidth, "/:.-"))
+			b.WriteString("\n")
 		}
-		fmt.Fprintf(&b, "%s\n", m.result.ErrorMessage)
+		b.WriteString(ansi.Wrap(m.result.ErrorMessage, textWidth, "/:.-"))
+		b.WriteString("\n")
 	} else if m.result.Done {
 		b.WriteString(okStyle.Render("install complete"))
 		b.WriteString("\n")
@@ -334,14 +341,16 @@ func (m installModel) finalView() string {
 	if len(m.result.Summary) > 0 {
 		b.WriteString("\n")
 		for _, it := range m.result.Summary {
-			fmt.Fprintf(&b, "  %s: %s\n", it.Code, it.Detail)
+			line := fmt.Sprintf("  %s: %s", it.Code, it.Detail)
+			b.WriteString(ansi.Wrap(line, textWidth, "/:.-"))
+			b.WriteString("\n")
 		}
 	}
 	b.WriteString("\n")
 	if m.result.Failed {
-		b.WriteString(dimStyle.Render("press any key to return to the installer"))
+		b.WriteString(dimStyle.Render(ansi.Wrap("press any key to return to the installer", textWidth, "")))
 	} else {
-		b.WriteString(dimStyle.Render("press any key to exit"))
+		b.WriteString(dimStyle.Render(ansi.Wrap("press any key to exit", textWidth, "")))
 	}
 	b.WriteString("\n")
 	return b.String()

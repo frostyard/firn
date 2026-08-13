@@ -42,6 +42,12 @@ type tuiOptions struct {
 const recipeDir = "/run/firn"
 
 func runTUI(parent context.Context, o tuiOptions) error {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	env := &pipeline.Env{
 		Machine: recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
 		Runner:  runner.New(),
@@ -50,36 +56,36 @@ func runTUI(parent context.Context, o tuiOptions) error {
 	}
 	var err error
 	if env.Machine.SecureBoot, err = tristate(o.secureBoot, platform.SecureBoot); err != nil {
-		return fmt.Errorf("--secure-boot: %w", err)
+		return tui.HoldError(ctx, "installer setup failed", fmt.Errorf("--secure-boot: %w", err))
 	}
 	if env.Machine.TPM, err = tristate(o.tpm, platform.TPM); err != nil {
-		return fmt.Errorf("--tpm: %w", err)
+		return tui.HoldError(ctx, "installer setup failed", fmt.Errorf("--tpm: %w", err))
 	}
 	if env.UEFI, err = tristate(o.uefi, platform.UEFI); err != nil {
-		return fmt.Errorf("--uefi: %w", err)
+		return tui.HoldError(ctx, "installer setup failed", fmt.Errorf("--uefi: %w", err))
 	}
 
 	// The catalog is a convenience, not a gate: a load problem is a
 	// note on stderr and the wizard falls back to built-ins.
 	catalog, warn := tui.LoadCatalog()
+	var notices []string
 	if warn != nil {
 		fmt.Fprintf(os.Stderr, "firn: note: %v\n", warn)
+		notices = append(notices, warn.Error())
 	}
-
-	if parent == nil {
-		parent = context.Background()
-	}
-	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	r, err := tui.RunWizard(ctx, tui.WizardOpts{
 		Runner:  env.Runner,
 		Machine: env.Machine,
 		UEFI:    env.UEFI,
 		Catalog: catalog,
+		Notices: notices,
 	})
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return err
+		}
+		return tui.HoldError(ctx, "installer setup failed", err)
 	}
 	if r == nil {
 		return nil // user quit the wizard; nothing was touched
@@ -87,7 +93,7 @@ func runTUI(parent context.Context, o tuiOptions) error {
 
 	path, l, err := writeRecipe(r, env.Machine)
 	if err != nil {
-		return err
+		return tui.HoldError(ctx, "could not prepare the install", err)
 	}
 	env.Recipe = &l.Recipe
 
