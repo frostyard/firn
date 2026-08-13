@@ -36,6 +36,12 @@ func (w *wizard) welcomeForm() *huh.Form {
 		b.WriteString("\nWARNING: this machine did not boot via UEFI. snosi images\n")
 		b.WriteString("require UEFI boot; the install will not produce a bootable system.\n")
 	}
+	if len(w.opts.Notices) > 0 {
+		b.WriteString("\nNOTICES:\n")
+		for _, notice := range w.opts.Notices {
+			fmt.Fprintf(&b, "- %s\n", notice)
+		}
+	}
 	b.WriteString("\nPress enter to begin; esc quits at any point.")
 	return huh.NewForm(huh.NewGroup(
 		huh.NewNote().
@@ -206,8 +212,8 @@ func (w *wizard) filesystemForm() *huh.Form {
 	)
 }
 
-// securityForm covers encryption (always explicit, ADR-0004) and, on
-// A/B installs under Secure Boot, the MOK enrollment choice.
+// securityForm covers encryption (always explicit, ADR-0004) and, for
+// either family under Secure Boot, the MOK enrollment choice (ADR-0014).
 func (w *wizard) securityForm() *huh.Form {
 	tpm := w.opts.Machine.TPM
 	noTPMNote := ""
@@ -235,39 +241,7 @@ func (w *wizard) securityForm() *huh.Form {
 				Options(encOpts...).
 				Value(&w.c.encryption),
 		))
-		if w.opts.Machine.SecureBoot {
-			var mokConfirm string
-			groups = append(groups,
-				huh.NewGroup(
-					huh.NewSelect[string]().
-						Title("Secure Boot key (MOK) enrollment").
-						Description("Secure Boot is active. Enrolling snosi's Machine Owner Key lets\nthe installed system boot without disabling Secure Boot.").
-						Options(
-							huh.NewOption("enroll — enroll the key (one-time password at next boot)", "enroll"),
-							huh.NewOption("skip — do not enroll (manage Secure Boot keys yourself)", "skip"),
-						).
-						Value(&w.c.mok),
-				),
-				huh.NewGroup(
-					huh.NewInput().
-						Title("MOK enrollment password").
-						Description("MokManager asks for this once at the next boot.").
-						EchoMode(huh.EchoModePassword).
-						Value(&w.c.mokPassword).
-						Validate(requireNonEmpty("a MOK password")),
-					huh.NewInput().
-						Title("Confirm MOK password").
-						EchoMode(huh.EchoModePassword).
-						Value(&mokConfirm).
-						Validate(func(s string) error {
-							if s != w.c.mokPassword {
-								return errors.New("passwords do not match")
-							}
-							return nil
-						}),
-				).WithHideFunc(func() bool { return w.c.mok != "enroll" }),
-			)
-		}
+		groups = w.appendMOKGroups(groups)
 		return huh.NewForm(groups...)
 	}
 
@@ -312,7 +286,55 @@ func (w *wizard) securityForm() *huh.Form {
 				}),
 		).WithHideFunc(func() bool { return !needsPassphrase(w.c.encryption) }),
 	)
+	groups = w.appendMOKGroups(groups)
 	return huh.NewForm(groups...)
+}
+
+// appendMOKGroups adds the family-independent Secure Boot choice. The parent
+// secure bootc installer required a MOK password file unconditionally; firn's
+// recipe-driven divergence permits an explicit skip (ADR-0014), identically
+// for bootc and A/B.
+func (w *wizard) appendMOKGroups(groups []*huh.Group) []*huh.Group {
+	if !w.opts.Machine.SecureBoot {
+		return groups
+	}
+	// huh visually focuses the first option when the bound value is empty,
+	// but does not write it unless the cursor moves. Initialize the visible
+	// choice explicitly so accepting it cannot leave security.mok empty.
+	if w.c.mok == "" {
+		w.c.mok = "enroll"
+	}
+	var mokConfirm string
+	return append(groups,
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Secure Boot key (MOK) enrollment").
+				Description("Secure Boot is active. Enrolling snosi's Machine Owner Key lets\nthe installed system boot without disabling Secure Boot.").
+				Options(
+					huh.NewOption("enroll — enroll the key (one-time password at next boot)", "enroll"),
+					huh.NewOption("skip — do not enroll (manage Secure Boot keys yourself)", "skip"),
+				).
+				Value(&w.c.mok),
+		),
+		huh.NewGroup(
+			huh.NewInput().
+				Title("MOK enrollment password").
+				Description("MokManager asks for this once at the next boot.").
+				EchoMode(huh.EchoModePassword).
+				Value(&w.c.mokPassword).
+				Validate(requireNonEmpty("a MOK password")),
+			huh.NewInput().
+				Title("Confirm MOK password").
+				EchoMode(huh.EchoModePassword).
+				Value(&mokConfirm).
+				Validate(func(s string) error {
+					if s != w.c.mokPassword {
+						return errors.New("passwords do not match")
+					}
+					return nil
+				}),
+		).WithHideFunc(func() bool { return w.c.mok != "enroll" }),
+	)
 }
 
 func (w *wizard) systemForm() *huh.Form {

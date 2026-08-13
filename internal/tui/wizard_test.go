@@ -95,6 +95,27 @@ func TestAssembleRecipeMatrix(t *testing.T) {
 			env: recipe.Env{TPM: true},
 		},
 		{
+			name: "bootc secure boot mok enroll",
+			c: func() wizardChoices {
+				c := baseChoices(bootcEntry())
+				c.filesystem = "btrfs"
+				c.mok = "enroll"
+				c.mokPassword = "mok-pw"
+				return c
+			}(),
+			env: recipe.Env{SecureBoot: true},
+		},
+		{
+			name: "bootc secure boot mok skip",
+			c: func() wizardChoices {
+				c := baseChoices(bootcEntry())
+				c.filesystem = "btrfs"
+				c.mok = "skip"
+				return c
+			}(),
+			env: recipe.Env{SecureBoot: true},
+		},
+		{
 			name: "ab none ext4 no secure boot",
 			c: func() wizardChoices {
 				c := baseChoices(abEntry())
@@ -265,6 +286,34 @@ func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 	c = baseChoices(CatalogEntry{Family: "weird", Name: "x"})
 	if _, err := assembleRecipe(c, dir); err == nil {
 		t.Error("unknown family: want error, got nil")
+	}
+}
+
+func TestSecurityFormDefaultsMOKWhenSecureBootIsActive(t *testing.T) {
+	for _, entry := range []CatalogEntry{abEntry(), bootcEntry()} {
+		w := &wizard{
+			opts: WizardOpts{Machine: recipe.Env{SecureBoot: true}},
+			c:    wizardChoices{entry: entry},
+		}
+		w.securityForm()
+		if w.c.mok != "enroll" {
+			t.Errorf("%s Secure Boot MOK default = %q, want enroll", entry.Family, w.c.mok)
+		}
+	}
+
+	// Preserve an explicit choice when rebuilding the form, and do not
+	// populate an irrelevant A/B field when Secure Boot is inactive.
+	w := &wizard{opts: WizardOpts{Machine: recipe.Env{SecureBoot: true}}, c: wizardChoices{entry: abEntry()}}
+	w.c.mok = "skip"
+	w.securityForm()
+	if w.c.mok != "skip" {
+		t.Fatalf("explicit MOK choice changed to %q", w.c.mok)
+	}
+	w.opts.Machine.SecureBoot = false
+	w.c.mok = ""
+	w.securityForm()
+	if w.c.mok != "" {
+		t.Fatalf("MOK defaulted without Secure Boot: %q", w.c.mok)
 	}
 }
 
