@@ -23,7 +23,7 @@ active (human/log output goes to stderr). Every event carries `event`
 | `info` | `message` | Human-readable narration; no machine meaning. |
 | `warning` | `code` (string, stable), `message` | Non-fatal degradation (e.g. `no_tpm`, `flatpak_unreachable`). |
 | `summary` | `items` (array of `{code, detail}`) | Once, before `done`: everything the user must know (unreachable flatpaks, skipped enrollments). |
-| `recovery_key` | `key` | Deliberate secret disclosure of a generated recovery key. The only event ever containing a secret. |
+| `recovery_key` | `key` | Deliberate secret disclosure of a generated recovery key. The only event ever containing a secret; in `--json-progress` mode the literal key is present on stdout. |
 | `done` | `ok` (bool, `true`), `boot_entry` (string, optional) | Successful completion; final event. |
 | `error` | `step` (name or `null`), `code`, `message` | Fatal failure; final event. Exit status is non-zero. |
 
@@ -52,6 +52,29 @@ active (human/log output goes to stderr). Every event carries `event`
    process the stream with a line reader and no buffering lookahead.
 6. Event order is the source of truth for progress; wall-clock pacing
    carries no meaning.
+
+## Recovery-key disclosure
+
+Recovery keys deliberately have different presentation boundaries for the
+two frontends:
+
+- **Interactive:** the `recovery_key` event remains in-process. The TUI shows
+  the literal key on a blocking acknowledgement screen, clears it from the
+  returned result after acknowledgement, and MUST NOT repeat it to stdout,
+  stderr, console scrollback, or ordinary logs after the TUI exits.
+- **Headless with `--json-progress`:** the literal key is the `key` field of
+  the `recovery_key` NDJSON event on stdout. Consumers MUST treat the stream
+  as secret-bearing and keep it out of ordinary logs.
+- **Headless human output:** without `--json-progress`, the human renderer
+  prints the literal key to stderr. This is deliberate because there is no
+  interactive acknowledgement screen; callers are responsible for securing
+  stderr. For A/B recipes, `security.recovery_key_out` may additionally write
+  the key to the explicitly requested 0600 file described by the
+  [recipe schema](recipe-schema.md#security).
+
+These are disclosure surfaces, not narration: no `info`, `warning`,
+`summary`, `error`, recipe diagnostic, or post-TUI reproduction message may
+contain the key.
 
 ## Derived artifacts
 
