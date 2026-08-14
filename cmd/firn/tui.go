@@ -7,6 +7,7 @@ package firn
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -130,24 +131,26 @@ func runTUI(parent context.Context, o tuiOptions) error {
 	}()
 	<-pipeDone
 
+	return reportTUIResult(os.Stderr, res, uiErr, path, l.Recipe.Target.Disk)
+}
+
+// reportTUIResult emits only non-secret diagnostics after Bubble Tea has
+// restored the terminal. Recovery keys are deliberately confined to the
+// gated install view; unlike the headless renderer, this path never repeats
+// them into stderr, console scrollback, or journal-directed logs.
+func reportTUIResult(stderr io.Writer, res tui.InstallResult, uiErr error, path, disk string) error {
 	var runErr error
 	switch {
 	case uiErr != nil:
 		runErr = uiErr
 	case res.Done:
-		if res.RecoveryKey != "" {
-			// Mirror headless printEvent: keep the key in scrollback
-			// after the TUI's alternate screen is gone.
-			fmt.Fprintf(os.Stderr, "RECOVERY KEY (store it safely): %s\n", res.RecoveryKey)
-		}
 	case res.Failed:
 		runErr = fmt.Errorf("install failed at %s: %s", res.FailedStep, res.ErrorMessage)
 	default:
 		runErr = fmt.Errorf("install cancelled")
 	}
-	fmt.Fprintf(os.Stderr, "firn: generated recipe saved at %s\n", path)
-	fmt.Fprintf(os.Stderr, "firn: reproduce headless with: firn install --confirm %s %s\n",
-		l.Recipe.Target.Disk, path)
+	fmt.Fprintf(stderr, "firn: generated recipe saved at %s\n", path)
+	fmt.Fprintf(stderr, "firn: reproduce headless with: firn install --confirm %s %s\n", disk, path)
 	return runErr
 }
 

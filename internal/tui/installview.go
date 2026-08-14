@@ -151,6 +151,10 @@ func (m installModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.gated && msg.Type == tea.KeyEnter {
 			m.gated = false
+			// The recovery key has served its only interactive purpose.
+			// Clear it before RunInstall can return its result to the command
+			// layer, where ordinary diagnostics may be logged.
+			m.result.RecoveryKey = ""
 			return m, nil
 		}
 		return m, nil
@@ -310,7 +314,8 @@ func (m installModel) recoveryView() string {
 	b.WriteString("\n\n\n")
 	b.WriteString("    " + m.result.RecoveryKey + "\n\n\n")
 	b.WriteString("This key unlocks your encrypted disk if all other credentials are lost.\n")
-	b.WriteString("It is shown only once and is not stored anywhere else.\n\n")
+	b.WriteString("It is shown once on this screen and is not copied to ordinary logs.\n")
+	b.WriteString("Save it now; Firn clears it from the TUI after confirmation.\n\n")
 	b.WriteString(titleStyle.Render("Press Enter to confirm: I have saved it"))
 	b.WriteString("\n")
 	return b.String()

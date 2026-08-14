@@ -159,9 +159,13 @@ info, warning, summary items such as unreachable flatpaks, recovery-key
 disclosure, completion with boot-entry info). The TUI consumes it over a
 channel in-process; `--json-progress` serializes the same events as
 versioned NDJSON for automation — the only supported external interface
-(ADR-0007), replacing fisherman's stream and snosi's proto-1. Secrets
-never appear in events; recovery-key disclosure is an explicit,
-deliberate event type the TUI renders with confirmation.
+(ADR-0007), replacing fisherman's stream and snosi's proto-1. No ordinary
+event may contain secrets; recovery-key disclosure is the sole explicit
+exception. The interactive channel renders it once behind a blocking
+confirmation and never repeats it into logs after the TUI exits. Headless
+renderers deliberately expose it on their selected progress stream, whose
+caller must protect it; the exact boundaries are pinned by the
+[progress protocol](../specs/progress-protocol.md#recovery-key-disclosure).
 
 ## Operational notes
 
