@@ -29,23 +29,18 @@ func newInstallCmd() *cobra.Command {
 		Short: "Install a snosi image; with no recipe, launch the wizard",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateInstallMode(len(args) == 1, dryRun, confirm, jsonProgress); err != nil {
+				return err
+			}
 			if len(args) == 0 {
 				// No recipe path: the TUI wizard (ADR-0007) with this
-				// invocation's platform overrides. --dry-run and
-				// --confirm are headless-only concepts and would be
-				// silently meaningless here.
-				if dryRun {
-					return fmt.Errorf("--dry-run requires a recipe path")
-				}
-				if confirm != "" {
-					return fmt.Errorf("--confirm applies to headless installs; the wizard asks for typed confirmation itself")
-				}
+				// invocation's platform overrides. Headless-only flags were
+				// rejected by validateInstallMode before entering the wizard.
 				return runTUI(cmd.Context(), tuiOptions{
-					secureBoot:   probes.secureBoot,
-					tpm:          probes.tpm,
-					uefi:         probes.uefi,
-					jsonProgress: jsonProgress,
-					pubring:      pubring,
+					secureBoot: probes.secureBoot,
+					tpm:        probes.tpm,
+					uefi:       probes.uefi,
+					pubring:    pubring,
 				})
 			}
 
@@ -104,9 +99,29 @@ func newInstallCmd() *cobra.Command {
 	probes.register(cmd, true)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate, assemble, and run preflight only")
 	cmd.Flags().StringVar(&confirm, "confirm", "", "typed confirmation: must equal the recipe's target disk path")
-	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit NDJSON progress events on stdout")
+	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit NDJSON progress events on stdout (requires recipe path)")
 	cmd.Flags().StringVar(&pubring, "pubring", "", "OpenPGP keyring for A/B index verification (default: search known locations)")
 	return cmd
+}
+
+// validateInstallMode keeps flags whose output or safety contract is
+// headless-only from entering the interactive wizard. In particular, the
+// wizard renders terminal frames to stdout, while --json-progress promises
+// that stdout is an NDJSON-only stream under the progress protocol.
+func validateInstallMode(hasRecipe, dryRun bool, confirm string, jsonProgress bool) error {
+	if hasRecipe {
+		return nil
+	}
+	if dryRun {
+		return fmt.Errorf("--dry-run requires a recipe path")
+	}
+	if confirm != "" {
+		return fmt.Errorf("--confirm applies to headless installs; the wizard asks for typed confirmation itself")
+	}
+	if jsonProgress {
+		return fmt.Errorf("--json-progress requires a recipe path; the interactive wizard renders terminal output to stdout")
+	}
+	return nil
 }
 
 // printEvent renders progress events for humans on stderr, keeping
