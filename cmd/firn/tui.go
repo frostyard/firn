@@ -28,11 +28,10 @@ import (
 // all-auto; `firn install` with no recipe path passes its flags through
 // so the same overrides work on both spellings.
 type tuiOptions struct {
-	secureBoot   string // tristate: auto|on|off
-	tpm          string
-	uefi         string
-	jsonProgress bool
-	pubring      string
+	secureBoot string // tristate: auto|on|off
+	tpm        string
+	uefi       string
+	pubring    string
 }
 
 // recipeDir is where the wizard's generated recipe artifact lands.
@@ -102,20 +101,11 @@ func runTUI(parent context.Context, o tuiOptions) error {
 	// same rule the install command enforces via --confirm for headless
 	// runs (docs/design/architecture.md, Operational notes).
 
-	// Two progress consumers (ADR-0007): the in-process channel feeds
-	// the install view; --json-progress additionally mirrors the
-	// spec'd NDJSON stream to stdout for external consumers.
+	// The in-process channel is the interactive flow's only progress
+	// consumer (ADR-0007). NDJSON is headless-only because the TUI owns
+	// stdout for terminal rendering.
 	ch := progress.NewChannel(64)
-	emit := func(e progress.Event) { _ = ch.Emit(e) }
-	if o.jsonProgress {
-		nd := progress.NewNDJSON(os.Stdout)
-		chEmit := emit
-		emit = func(e progress.Event) {
-			_ = nd.Emit(e)
-			chEmit(e)
-		}
-	}
-	env.Emit = emit
+	env.Emit = func(e progress.Event) { _ = ch.Emit(e) }
 
 	ictx, cancel := context.WithCancel(ctx)
 	defer cancel()
