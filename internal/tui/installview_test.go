@@ -168,10 +168,13 @@ func TestRecoveryKeyGateBlocksUntilKeypress(t *testing.T) {
 	if m.gated {
 		t.Fatal("Enter did not dismiss the gate")
 	}
+	if m.result.RecoveryKey != "" {
+		t.Fatal("acknowledged recovery key was retained for the command layer")
+	}
 	// Dismissing the gate reveals the final screen — it does not quit yet.
 	requireNoQuit(t, cmd)
-	if !m.result.Done || m.result.RecoveryKey != theKey {
-		t.Fatalf("result = %+v, want Done with recovery key", m.result)
+	if !m.result.Done {
+		t.Fatalf("result = %+v, want Done", m.result)
 	}
 	// The final screen then dismisses on any key.
 	_, cmd = key(t, m, tea.KeyEnter)
