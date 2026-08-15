@@ -26,6 +26,7 @@ type InstallResult struct {
 	Done         bool
 	Failed       bool
 	FailedStep   string
+	ErrorCode    string
 	ErrorMessage string
 	RecoveryKey  string
 	Summary      []progress.SummaryItem
@@ -63,6 +64,7 @@ const tailLen = 5
 
 type tailLine struct {
 	warning bool
+	code    string
 	text    string
 }
 
@@ -197,7 +199,7 @@ func (m installModel) handleEvent(e progress.Event) (tea.Model, tea.Cmd) {
 		m.tail = pushTail(m.tail, tailLine{text: e.Message})
 
 	case progress.Warning:
-		m.tail = pushTail(m.tail, tailLine{warning: true, text: e.Message})
+		m.tail = pushTail(m.tail, tailLine{warning: true, code: e.Code, text: e.Message})
 
 	case progress.Summary:
 		m.result.Summary = e.Items
@@ -213,6 +215,7 @@ func (m installModel) handleEvent(e progress.Event) (tea.Model, tea.Cmd) {
 	case progress.Error:
 		m.result.Failed = true
 		m.result.FailedStep = e.Step
+		m.result.ErrorCode = e.Code
 		m.result.ErrorMessage = e.Message
 		return m.finish()
 	}
@@ -272,6 +275,7 @@ func (m installModel) View() string {
 
 func (m installModel) runningView() string {
 	var b strings.Builder
+	textWidth := max(10, m.width-1)
 	b.WriteString(titleStyle.Render("firn install"))
 	b.WriteString("\n\n")
 
@@ -288,9 +292,9 @@ func (m installModel) runningView() string {
 
 	for _, l := range m.tail {
 		if l.warning {
-			b.WriteString(warnStyle.Render("warning: " + l.text))
+			b.WriteString(warnStyle.Render(ansi.Wrap(formatWarning(l.code, l.text), textWidth, "/:.-")))
 		} else {
-			b.WriteString(dimStyle.Render(l.text))
+			b.WriteString(dimStyle.Render(ansi.Wrap(l.text, textWidth, "/:.-")))
 		}
 		b.WriteString("\n")
 	}
@@ -334,6 +338,10 @@ func (m installModel) finalView() string {
 			b.WriteString(ansi.Wrap("step: "+m.result.FailedStep, textWidth, "/:.-"))
 			b.WriteString("\n")
 		}
+		if m.result.ErrorCode != "" {
+			b.WriteString(ansi.Wrap("code: "+m.result.ErrorCode, textWidth, "/:.-"))
+			b.WriteString("\n")
+		}
 		b.WriteString(ansi.Wrap(m.result.ErrorMessage, textWidth, "/:.-"))
 		b.WriteString("\n")
 	} else if m.result.Done {
@@ -359,4 +367,14 @@ func (m installModel) finalView() string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+func formatWarning(code, message string) string {
+	if code == progress.CodeFlatpakUnreachable {
+		message = fmt.Sprintf("Flatpak %s could not be reached and was not installed", message)
+	}
+	if code == "" {
+		return "warning: " + message
+	}
+	return fmt.Sprintf("warning [%s]: %s", code, message)
 }

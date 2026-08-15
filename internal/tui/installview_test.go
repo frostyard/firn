@@ -17,6 +17,7 @@ func TestFailureMessageWrapsToTerminalWidth(t *testing.T) {
 	m.width = 32
 	m.result.Failed = true
 	m.result.FailedStep = "bootc-install"
+	m.result.ErrorCode = progress.CodeStepFailed
 	m.result.ErrorMessage = "bootcimg: image ghcr.io/frostyard/snow:latest failed while pinging container registry: i/o timeout"
 	m.finished = true
 
@@ -191,8 +192,19 @@ func TestWarningsAndInfoTail(t *testing.T) {
 	if !strings.Contains(view, "copying files") {
 		t.Errorf("info line missing from view:\n%s", view)
 	}
-	if !strings.Contains(view, "warning: no TPM found") {
-		t.Errorf("warning line missing its warning: prefix in view:\n%s", view)
+	if !strings.Contains(view, "warning [no_tpm]: no TPM found") {
+		t.Errorf("warning line missing its stable code in view:\n%s", view)
+	}
+
+	m, _ = apply(t, m, progress.Warning{Code: progress.CodeFlatpakUnreachable, Message: "org.gnome.Foo"})
+	view = m.View()
+	if !strings.Contains(view, "warning [flatpak_unreachable]") || !strings.Contains(view, "Flatpak org.gnome.Foo") || !strings.Contains(view, "was not installed") {
+		t.Errorf("flatpak warning is not intelligible or lost its stable code:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if got := ansi.StringWidth(line); got > m.width-1 {
+			t.Errorf("running-view line width = %d, want <= %d: %q", got, m.width-1, line)
+		}
 	}
 
 	// Tail scrolls: only the last tailLen lines survive.
@@ -219,13 +231,13 @@ func TestErrorProducesFailedResult(t *testing.T) {
 		t.Fatal("Error should mark the view finished")
 	}
 
-	want := InstallResult{Failed: true, FailedStep: "write", ErrorMessage: "no space left on device"}
-	if m.result.Failed != want.Failed || m.result.FailedStep != want.FailedStep || m.result.ErrorMessage != want.ErrorMessage || m.result.Done {
+	want := InstallResult{Failed: true, FailedStep: "write", ErrorCode: "disk_full", ErrorMessage: "no space left on device"}
+	if m.result.Failed != want.Failed || m.result.FailedStep != want.FailedStep || m.result.ErrorCode != want.ErrorCode || m.result.ErrorMessage != want.ErrorMessage || m.result.Done {
 		t.Fatalf("result = %+v, want %+v", m.result, want)
 	}
 	view := m.View()
-	if !strings.Contains(view, "write") || !strings.Contains(view, "no space left on device") {
-		t.Errorf("failure view missing step or message:\n%s", view)
+	if !strings.Contains(view, "write") || !strings.Contains(view, "code: disk_full") || !strings.Contains(view, "no space left on device") {
+		t.Errorf("failure view missing step, stable code, or message:\n%s", view)
 	}
 	// A keypress then dismisses it and quits.
 	_, cmd = key(t, m, tea.KeyEnter)

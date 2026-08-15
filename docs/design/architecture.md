@@ -202,7 +202,9 @@ info, warning, summary items such as unreachable flatpaks, recovery-key
 disclosure, completion with boot-entry info). The TUI consumes it over a
 channel in-process; `--json-progress` serializes the same events as
 versioned NDJSON for automation — the only supported external interface
-(ADR-0007), replacing fisherman's stream and snosi's proto-1. No ordinary
+(ADR-0007), replacing fisherman's stream and snosi's proto-1. The frontend
+split preserves warning and error information: the TUI keeps and displays
+each stable code alongside a human-readable message. No ordinary
 event may contain secrets; recovery-key disclosure is the sole explicit
 exception. The interactive channel renders it once behind a blocking
 confirmation and never repeats it into logs after the TUI exits. Headless

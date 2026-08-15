@@ -225,7 +225,11 @@ func reportTUIResult(stderr io.Writer, res tui.InstallResult, uiErr error, path,
 		runErr = uiErr
 	case res.Done:
 	case res.Failed:
-		runErr = fmt.Errorf("install failed at %s: %s", res.FailedStep, res.ErrorMessage)
+		if res.ErrorCode == "" {
+			runErr = fmt.Errorf("install failed at %s: %s", res.FailedStep, res.ErrorMessage)
+		} else {
+			runErr = fmt.Errorf("install failed at %s [%s]: %s", res.FailedStep, res.ErrorCode, res.ErrorMessage)
+		}
 	default:
 		runErr = fmt.Errorf("install cancelled")
 	}
