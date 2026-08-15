@@ -135,6 +135,7 @@ func TestValidateRejections(t *testing.T) {
 		{"partition disk", replace(validBootc(), `disk = "/dev/vda"`, `disk = "vda"`), fullEnv, CodeDisk},
 		{"missing filesystem", replace(validBootc(), `filesystem = "btrfs"`, ""), fullEnv, CodeRequired},
 		{"bad filesystem", replace(validBootc(), `filesystem = "btrfs"`, `filesystem = "fat12"`), fullEnv, CodeEnum},
+		{"unsupported zfs filesystem", replace(validBootc(), `filesystem = "btrfs"`, `filesystem = "zfs"`), fullEnv, CodeEnum},
 		{"subvolumes without btrfs", replace(validBootc(), `filesystem = "btrfs"`, `filesystem = "ext4"`), fullEnv, CodeSubvolumes},
 		{"bad bootloader", replace(validBootc(), `filesystem = "btrfs"`, `filesystem = "btrfs"`+"\nbootloader = \"uboot\""), fullEnv, CodeEnum},
 		{"bad var filesystem", replace(validAB(t), `disk = "/dev/nvme0n1"`, `disk = "/dev/nvme0n1"`+"\nvar_filesystem = \"xfs\""), fullEnv, CodeEnum},

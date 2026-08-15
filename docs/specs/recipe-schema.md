@@ -36,7 +36,7 @@ Top level:
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `disk` | string (path) | yes | Whole-disk block device (`/dev/…`, `by-id` paths allowed). Never a partition. |
-| `filesystem` | string | bootc: yes | `"btrfs"`, `"xfs"`, `"ext4"`, or `"zfs"`. bootc-only (the A/B *root* is image-fixed; see `var_filesystem`). |
+| `filesystem` | string | bootc: yes | `"btrfs"`, `"xfs"`, or `"ext4"`. bootc-only (the A/B *root* is image-fixed; see `var_filesystem`). ZFS is not part of schema v1 because the installer does not yet have a complete bootable ZFS path. |
 | `btrfs_subvolumes` | bool | no | bootc + btrfs only: create top-level `@`, `@home`, `@snapshots`. Default `false`. |
 | `bootloader` | string | no | bootc only: `"systemd"` (default) or `"grub2"`. |
 | `var_filesystem` | string | no | ab only: `"ext4"` (default) or `"btrfs"` for the `/var` partition ([ADR-0008](../adr/0008-ab-var-filesystem-choice.md)). |

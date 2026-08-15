@@ -207,8 +207,8 @@ func (w *wizard) filesystemForm() *huh.Form {
 			).WithHideFunc(func() bool { return w.c.varFilesystem != "btrfs" }),
 		)
 	}
-	// bootc. zfs is valid in recipes but deliberately not offered here
-	// (installer-media parity gap); headless recipes can still use it.
+	// bootc. ZFS is deliberately absent: schema v1 rejects it until the
+	// installer has a complete, bootable ZFS path.
 	if w.c.filesystem == "" {
 		w.c.filesystem = "btrfs"
 	}
