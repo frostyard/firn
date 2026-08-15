@@ -16,7 +16,7 @@ import (
 	"github.com/frostyard/firn/internal/tui"
 )
 
-func commandTUIRecipe(t *testing.T) (*recipe.Recipe, *recipe.Loaded) {
+func commandTUIRecipe(t *testing.T) ([]byte, *recipe.Loaded) {
 	t.Helper()
 	l, err := recipe.Parse([]byte(`
 version = 1
@@ -34,7 +34,11 @@ hostname = "frost01"
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &l.Recipe, l
+	reviewed, err := recipe.Marshal(&l.Recipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reviewed, l
 }
 
 func TestRunTUIRejectsNonUEFIBeforeWizardOrPipeline(t *testing.T) {
@@ -49,7 +53,7 @@ func TestRunTUIRejectsNonUEFIBeforeWizardOrPipeline(t *testing.T) {
 			shown = err
 			return displayed
 		},
-		runWizard: func(context.Context, tui.WizardOpts) (*recipe.Recipe, error) {
+		runWizard: func(context.Context, tui.WizardOpts) ([]byte, error) {
 			wizardCalls++
 			return nil, nil
 		},
@@ -79,12 +83,12 @@ func TestRunTUISetupReachesWizardAndQuitStopsBridge(t *testing.T) {
 			t.Fatalf("unexpected held error: %v", err)
 			return err
 		},
-		runWizard: func(_ context.Context, opts tui.WizardOpts) (*recipe.Recipe, error) {
+		runWizard: func(_ context.Context, opts tui.WizardOpts) ([]byte, error) {
 			got = opts
 			return nil, nil // interactive quit
 		},
 		createSession: func() (string, error) { return newTUISession(root) },
-		writeRecipe: func(string, *recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error) {
+		writeRecipe: func(string, []byte, recipe.Env) (string, *recipe.Loaded, error) {
 			t.Fatal("quit wizard persisted a recipe")
 			return "", nil, nil
 		},
@@ -143,15 +147,36 @@ func TestRunTUISetupErrorsUseRuntimeErrorView(t *testing.T) {
 	}
 }
 
-func TestWriteRecipeToPersistsReloadablePrivateArtifact(t *testing.T) {
-	r, _ := commandTUIRecipe(t)
+func TestWriteRecipeToPersistsExactReviewedArtifact(t *testing.T) {
+	reviewed, expected := commandTUIRecipe(t)
+	parsed, err := recipe.Parse(reviewed)
+	if err != nil {
+		t.Fatalf("parse reviewed TOML: %v", err)
+	}
+	if issues := recipe.Validate(parsed, recipe.Env{}); len(issues) != 0 {
+		t.Fatalf("validate reviewed TOML: %v", issues)
+	}
 	dir := filepath.Join(t.TempDir(), "recipes")
-	path, loaded, err := writeRecipeTo(dir, r, recipe.Env{})
+	path, loaded, err := writeRecipeTo(dir, reviewed, recipe.Env{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != filepath.Join(dir, "recipe.toml") || !reflect.DeepEqual(&loaded.Recipe, r) {
+	if path != filepath.Join(dir, "recipe.toml") || !reflect.DeepEqual(&loaded.Recipe, &expected.Recipe) {
 		t.Fatalf("persisted recipe path=%q recipe=%+v", path, loaded.Recipe)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(written, reviewed) {
+		t.Fatalf("written recipe differs from reviewed bytes:\nreviewed:\n%s\nwritten:\n%s", reviewed, written)
+	}
+	reparsed, err := recipe.Load(path)
+	if err != nil {
+		t.Fatalf("reparse written recipe: %v", err)
+	}
+	if !reflect.DeepEqual(&reparsed.Recipe, &parsed.Recipe) {
+		t.Fatalf("write/reparse changed recipe: reviewed=%+v written=%+v", parsed.Recipe, reparsed.Recipe)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -194,7 +219,7 @@ func TestNewTUISessionCreatesUniquePrivateDirectories(t *testing.T) {
 }
 
 func TestRunTUIPropagatesInstallResults(t *testing.T) {
-	r, loaded := commandTUIRecipe(t)
+	reviewed, loaded := commandTUIRecipe(t)
 	uiFailure := errors.New("install view failed")
 	tests := []struct {
 		name    string
@@ -222,15 +247,18 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 					sessionDir, err = newTUISession(root)
 					return sessionDir, err
 				},
-				runWizard: func(_ context.Context, opts tui.WizardOpts) (*recipe.Recipe, error) {
+				runWizard: func(_ context.Context, opts tui.WizardOpts) ([]byte, error) {
 					if opts.SessionDir != sessionDir {
 						t.Fatalf("wizard session = %q, want %q", opts.SessionDir, sessionDir)
 					}
-					return r, nil
+					return reviewed, nil
 				},
-				writeRecipe: func(dir string, _ *recipe.Recipe, _ recipe.Env) (string, *recipe.Loaded, error) {
+				writeRecipe: func(dir string, got []byte, _ recipe.Env) (string, *recipe.Loaded, error) {
 					if dir != sessionDir {
 						t.Fatalf("recipe session = %q, want %q", dir, sessionDir)
+					}
+					if !bytes.Equal(got, reviewed) {
+						t.Fatalf("command bridge changed reviewed bytes:\ngot:\n%s\nwant:\n%s", got, reviewed)
 					}
 					return filepath.Join(dir, "recipe.toml"), loaded, nil
 				},

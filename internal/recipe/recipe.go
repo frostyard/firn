@@ -107,6 +107,14 @@ type Loaded struct {
 	meta   toml.MetaData
 }
 
+// Marshal encodes a recipe using the canonical schema representation. The
+// omitempty tags on family-scoped and optional fields are part of the contract:
+// fail-closed validation distinguishes an absent field from a present zero
+// value.
+func Marshal(r *Recipe) ([]byte, error) {
+	return toml.Marshal(*r)
+}
+
 // IsSet reports whether the given dotted key path appeared in the file.
 func (l *Loaded) IsSet(key ...string) bool { return l.meta.IsDefined(key...) }
 
