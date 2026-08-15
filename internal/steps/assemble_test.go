@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/frostyard/firn/internal/pipeline"
+	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/runner"
@@ -173,8 +174,8 @@ func TestDryRunVerdicts(t *testing.T) {
 	if err := run("/dev/vda", true); err != nil {
 		t.Errorf("clean disk on UEFI should pass dry run: %v", err)
 	}
-	if err := run("/dev/vda", false); err == nil || !strings.Contains(err.Error(), "UEFI") {
-		t.Errorf("BIOS machine must be refused with a UEFI diagnostic, got %v", err)
+	if err := run("/dev/vda", false); !errors.Is(err, platform.ErrUEFIRequired) {
+		t.Errorf("BIOS machine must be refused with the shared UEFI diagnostic, got %v", err)
 	}
 	if err := run("/dev/vdb", true); err == nil || !strings.Contains(err.Error(), "mounted") {
 		t.Errorf("busy disk must be refused, got %v", err)

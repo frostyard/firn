@@ -7,6 +7,7 @@ import (
 
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/pipeline"
+	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/progress"
 )
 
@@ -19,8 +20,8 @@ func preflightSteps(p *pipeline.Pipeline) []pipeline.Step {
 		{
 			Name: "preflight-uefi", Weight: 1, Preflight: true,
 			Run: func(_ context.Context, env *pipeline.Env) error {
-				if !env.UEFI {
-					return fmt.Errorf("this machine did not boot via UEFI; firn supports UEFI machines only (docs/adr/0004-single-installer-scope-and-support-matrix.md)")
+				if err := platform.RequireUEFI(env.UEFI); err != nil {
+					return err
 				}
 				if !env.Machine.TPM {
 					env.Emit(progress.Warning{Code: progress.CodeNoTPM, Message: "no TPM device present"})
