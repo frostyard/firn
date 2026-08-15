@@ -47,6 +47,11 @@ ordered so every phase ends with something demonstrable in a VM.
   approach).
 - **Done when:** a recipe-driven install of a snow bootc image in the
   E2E VM boots to login with hostname, user, and flatpaks applied.
+- **Deferred:** ZFS root support is outside recipe schema v1. Lower-level
+  partitioning and pool helpers exist, but the schema must not accept ZFS
+  until a complete bootable path and nested-VM E2E land together
+  ([design](../design/architecture.md#the-bootc-path),
+  [schema](../specs/recipe-schema.md#target)).
 
 ## Phase 4 — A/B path (large) — ✅ shipped 2026-08-11 (E2E: cayo-ab installed inside a nested VM boots + verifies over SSH. Install runs in a throwaway QEMU guest because the A/B image carries the host's own discoverable-partition layout — see the E2E script header and ADR-0009. Encrypted-var/TPM boot is unit-tested at the argv level; full encrypted boot arrives with the ISO in Phase 7)
 

@@ -111,12 +111,15 @@ before `stream-write` can touch the target disk.
 Carried from fisherman substantially intact (copy-with-attribution,
 ADR-0003): GPT partitioning profiles (grub2 and systemd-boot layouts),
 optional LUKS root (passphrase and/or TPM2 modes), mkfs for
-xfs/ext4/btrfs (including `@`/`@home`/`@snapshots` subvolumes) and ZFS,
+xfs/ext4/btrfs (including `@`/`@home`/`@snapshots` subvolumes),
 mount orchestration, `bootc install to-filesystem` via podman or direct
 with the same argument-building logic, install-time TPM2 enrollment
 against the deployed UKI's signed PCR 11 policy, the secure-install
 (schema-1) contract, and filesystem
 finalization. Fisherman's incident comments come along with the code.
+The port includes lower-level ZFS partitioning and formatting helpers, but
+recipe schema v1 rejects ZFS because the end-to-end bootable install path is
+not implemented.
 
 **Installing from the all-in-RAM ISO** ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)):
 the single installer ISO ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md))
