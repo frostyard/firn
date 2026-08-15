@@ -103,13 +103,14 @@ type wizardChoices struct {
 	keyboard   string
 	rootSSHKey string
 
-	createUser  bool
-	username    string
-	fullname    string
-	password    string // secret
-	groups      []string
-	extraGroups string
-	userSSHKey  string
+	createUser      bool
+	userInitialized bool
+	username        string
+	fullname        string
+	password        string // secret
+	groups          []string
+	extraGroups     string
+	userSSHKey      string
 
 	coreFlatpaks bool
 	flatpaksRaw  string

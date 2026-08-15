@@ -47,6 +47,10 @@ Top level:
 All security choices are explicit
 ([ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md)):
 omitting a required field here is a validation error, never a default.
+The interactive TUI still needs an initial cursor selection: it starts
+`encryption` at `"none"` and, when Secure Boot is active, `mok` at `"enroll"`.
+The screen identifies both initial selections and the user must explicitly
+advance past each prompt; the recipe always serializes the accepted values.
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
@@ -67,6 +71,10 @@ omitting a required field here is a validation error, never a default.
 | `flatpaks` | array of string | no | Flatpak application IDs. |
 | `core_flatpaks` | bool | no | Install the image-defined core set where published. Default `false`. |
 | `root_ssh_authorized_key` / `_file` | string / path | no | At most one. OpenSSH public key line(s). |
+
+The TUI initially offers user creation with the `sudo` group, but initially
+leaves `core_flatpaks` disabled. Rebuilding either form preserves the user's
+accepted values rather than reapplying these initial selections.
 
 ### `[system.user]` (optional table; omit to create no user)
 

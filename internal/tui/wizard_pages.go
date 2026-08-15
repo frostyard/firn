@@ -257,7 +257,7 @@ func (w *wizard) securityForm() *huh.Form {
 		groups = append(groups, huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Disk encryption").
-				Description("Encryption is always an explicit choice; there is no default."+noTPMNote).
+				Description("Choose explicitly. Initial selection: none (no encryption)."+noTPMNote).
 				Options(encOpts...).
 				Value(&w.c.encryption),
 		))
@@ -284,7 +284,7 @@ func (w *wizard) securityForm() *huh.Form {
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Disk encryption").
-				Description("Encryption is always an explicit choice; there is no default."+noTPMNote).
+				Description("Choose explicitly. Initial selection: none (no encryption)."+noTPMNote).
 				Options(encOpts...).
 				Value(&w.c.encryption),
 		),
@@ -329,7 +329,7 @@ func (w *wizard) appendMOKGroups(groups []*huh.Group) []*huh.Group {
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Secure Boot key (MOK) enrollment").
-				Description("Secure Boot is active. Enrolling snosi's Machine Owner Key lets\nthe installed system boot without disabling Secure Boot.").
+				Description("Secure Boot is active. Initial selection: enroll snosi's Machine\nOwner Key; choose skip if you manage Secure Boot keys yourself.").
 				Options(
 					huh.NewOption("enroll — enroll the key (one-time password at next boot)", "enroll"),
 					huh.NewOption("skip — do not enroll (manage Secure Boot keys yourself)", "skip"),
@@ -398,14 +398,21 @@ func (w *wizard) systemForm() *huh.Form {
 }
 
 func (w *wizard) userForm() *huh.Form {
-	w.c.createUser = true
+	// These are TUI initial selections, applied once. Keeping the marker in
+	// wizardChoices distinguishes a first visit from a user who answered No
+	// or removed every group before the form is rebuilt.
+	if !w.c.userInitialized {
+		w.c.createUser = true
+		w.c.groups = []string{"sudo"}
+		w.c.userInitialized = true
+	}
 	var passConfirm string
 	hidden := func() bool { return !w.c.createUser }
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Create a user account?").
-				Description("Without one, only root (via the SSH key, if any) can log in.").
+				Description("Initially Yes. Without one, only root (via the SSH key, if any) can log in.").
 				Value(&w.c.createUser),
 		),
 		huh.NewGroup(
@@ -441,7 +448,7 @@ func (w *wizard) userForm() *huh.Form {
 					"incus, printing, scanning). Any not present in the chosen image\n"+
 					"are skipped at install time.").
 				Options(
-					huh.NewOption("sudo — administrator", "sudo").Selected(true),
+					huh.NewOption("sudo — administrator", "sudo"),
 					huh.NewOption("docker — run containers without sudo", "docker"),
 					huh.NewOption("incus-admin — manage incus VMs/containers", "incus-admin"),
 					huh.NewOption("lpadmin — manage printers", "lpadmin"),
@@ -472,11 +479,10 @@ func (w *wizard) userForm() *huh.Form {
 }
 
 func (w *wizard) flatpaksForm() *huh.Form {
-	w.c.coreFlatpaks = true
 	return huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
 			Title("Install this image's core app set?").
-			Description("The curated Flatpak set published for this image, installed\noffline from the installer medium where available.").
+			Description("Initially No. The curated Flatpak set published for this image,\ninstalled offline from the installer medium where available.").
 			Value(&w.c.coreFlatpaks),
 		huh.NewText().
 			Title("Extra Flatpak apps (optional)").

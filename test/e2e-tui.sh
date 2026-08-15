@@ -248,14 +248,10 @@ type_line 'firn-e2e-pw'                # confirm password
 skip_field                             # groups multi-select (sudo preselected)
 skip_field                             # additional groups
 skip_field                             # user SSH key
-# Flatpaks: core-set confirm + IDs. Enter on a huh confirm accepts the
-# FOCUSED (affirmative) button, so declining needs an explicit toggle
-# (observed live: a bare Enter set core_flatpaks = true).
+# Flatpaks: core-set confirm + IDs. The schema and TUI both default this
+# optional feature to false, so Enter preserves the focused No answer.
 expect_screen 'core app set'
-tmux send-keys -t "$S" Right           # focus the No button
-sleep 0.3
-tmux send-keys -t "$S" Enter           # No to core set (cayo has no runtime)
-sleep 0.4
+skip_field                             # No to core set (cayo has no runtime)
 skip_field                             # no extra apps
 # Review: with a long recipe the page TITLE scrolls off the 24-row pane;
 # gate on the action list, which is always visible at the bottom.
