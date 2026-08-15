@@ -111,6 +111,10 @@ func TestValidateRejections(t *testing.T) {
 	if err := os.WriteFile(cosignKey, []byte("public key"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	badSSHKeyFile := filepath.Join(t.TempDir(), "authorized_keys")
+	if err := os.WriteFile(badSSHKeyFile, []byte("ssh-ed25519 AAAA first@host\nnot a key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name string
@@ -158,6 +162,8 @@ func TestValidateRejections(t *testing.T) {
 		{"bad timezone", replace(validBootc(), `hostname = "frost01"`, `hostname = "frost01"`+"\ntimezone = \"/etc/shadow\""), fullEnv, CodeTimezone},
 		{"bad keyboard", replace(validBootc(), `hostname = "frost01"`, `hostname = "frost01"`+"\nkeyboard = \"us:intl:pc105:extra\""), fullEnv, CodeKeyboard},
 		{"bad root ssh key", replace(validBootc(), `hostname = "frost01"`, `hostname = "frost01"`+"\nroot_ssh_authorized_key = \"not a key\""), fullEnv, CodeSSHKey},
+		{"bad second root ssh key", replace(validBootc(), `hostname = "frost01"`, `hostname = "frost01"`+"\nroot_ssh_authorized_key = \"ssh-ed25519 AAAA first@host\\nnot a key\""), fullEnv, CodeSSHKey},
+		{"bad root ssh key file content", replace(validBootc(), `hostname = "frost01"`, `hostname = "frost01"`+"\nroot_ssh_authorized_key_file = \""+badSSHKeyFile+"\""), fullEnv, CodeSSHKey},
 		{"user without name", validBootc() + "\n[system.user]\nfullname = \"X\"\n", fullEnv, CodeRequired},
 		{"bad username", replace(validAB(t), `name = "bjk"`, `name = "9lives"`), fullEnv, CodeUsername},
 		{"fullname with colon", replace(validAB(t), `name = "bjk"`, `name = "bjk"`+"\nfullname = \"Bad:Name\""), fullEnv, CodeFullname},
@@ -176,6 +182,37 @@ func TestValidateRejections(t *testing.T) {
 				}
 			}
 			t.Errorf("expected an issue with code %q, got %v", tc.code, issues)
+		})
+	}
+}
+
+func TestValidateSSHAuthorizedKeys(t *testing.T) {
+	valid := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKq7 first@host\n" +
+		"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7 second@host\n"
+	if err := ValidateSSHAuthorizedKeys(valid); err != nil {
+		t.Fatalf("valid multiline keys rejected: %v", err)
+	}
+	src := replace(validBootc(), `hostname = "frost01"`, `hostname = "frost01"`+
+		"\nroot_ssh_authorized_key = \"ssh-ed25519 AAAA first@host\\nssh-rsa BBBB second@host\"")
+	if issues := Validate(mustParse(t, src), fullEnv); len(issues) != 0 {
+		t.Fatalf("valid multiline recipe keys rejected: %v", issues)
+	}
+	for _, tc := range []struct {
+		name string
+		keys string
+		line string
+	}{
+		{name: "empty", keys: "", line: "at least one"},
+		{name: "bad second line", keys: "ssh-ed25519 AAAA ok\ngarbage", line: "line 2"},
+		{name: "blank middle line", keys: "ssh-ed25519 AAAA ok\n\nssh-rsa BBBB ok", line: "line 2"},
+		{name: "repeated trailing newline", keys: "ssh-ed25519 AAAA ok\n\n", line: "line 2"},
+		{name: "trailing garbage without comment separator", keys: "ssh-ed25519 AAAA!garbage", line: "line 1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateSSHAuthorizedKeys(tc.keys)
+			if err == nil || !strings.Contains(err.Error(), tc.line) {
+				t.Fatalf("ValidateSSHAuthorizedKeys() error = %v, want %q", err, tc.line)
+			}
 		})
 	}
 }

@@ -70,7 +70,7 @@ advance past each prompt; the recipe always serializes the accepted values.
 | `keyboard` | string | no | `LAYOUT[:VARIANT[:MODEL]]` XKB triplet. Empty or omitted preserves the image default. |
 | `flatpaks` | array of string | no | Flatpak application IDs. |
 | `core_flatpaks` | bool | no | Install the image-defined core set where published. Default `false`. |
-| `root_ssh_authorized_key` / `_file` | string / path | no | At most one. OpenSSH public key line(s). |
+| `root_ssh_authorized_key` / `_file` | string / path | no | At most one. The inline value or referenced file contains one or more newline-separated OpenSSH public-key records; every line MUST be non-empty and match a supported key type, base64 key body, and optional comment. |
 
 The TUI initially offers user creation with the `sudo` group, but initially
 leaves `core_flatpaks` disabled. Rebuilding either form preserves the user's
@@ -85,7 +85,11 @@ accepted values rather than reapplying these initial selections.
 | `password_file` | string (path) | one of these two | 0600 file containing the plaintext password (hashed by firn, SHA-512 crypt). |
 | `password_hash` | string | one of these two | Pre-computed `$…` crypt hash, passed through verbatim. |
 | `groups` | array of string | no | Supplementary groups; each MUST exist in the image or be in firn's known-safe join list. |
-| `ssh_authorized_key` / `_file` | string / path | no | At most one. |
+| `ssh_authorized_key` / `_file` | string / path | no | At most one. Content follows the same per-line public-key rules as `root_ssh_authorized_key`; every configured line is installed in the user's `authorized_keys`. |
+
+Supported SSH key types are `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-*`, and
+OpenSSH `sk-*` security-key types. A final newline is allowed; blank lines,
+`authorized_keys` options, and other non-key content are rejected.
 
 ```toml
 # minimal valid example (A/B install)

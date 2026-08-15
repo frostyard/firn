@@ -389,7 +389,7 @@ func (w *wizard) systemForm() *huh.Form {
 		huh.NewGroup(
 			huh.NewText().
 				Title("Root SSH authorized key (optional)").
-				Description("Paste an OpenSSH public key line, or leave empty.").
+				Description("Paste one or more OpenSSH public key lines, or leave empty.").
 				Lines(3).
 				Value(&w.c.rootSSHKey).
 				Validate(validateSSHKeyInput),
@@ -470,7 +470,7 @@ func (w *wizard) userForm() *huh.Form {
 		huh.NewGroup(
 			huh.NewText().
 				Title("User SSH authorized key (optional)").
-				Description("Paste an OpenSSH public key line, or leave empty.").
+				Description("Paste one or more OpenSSH public key lines, or leave empty.").
 				Lines(3).
 				Value(&w.c.userSSHKey).
 				Validate(validateSSHKeyInput),

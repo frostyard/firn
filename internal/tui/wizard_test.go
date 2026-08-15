@@ -861,6 +861,10 @@ func TestLiveValidators(t *testing.T) {
 	if validateSSHKeyInput("not a key") == nil {
 		t.Error("garbage ssh key accepted, want rejection")
 	}
+	multiline := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKq7 first@host\nnot a key"
+	if err := validateSSHKeyInput(multiline); err == nil || !strings.Contains(err.Error(), "line 2") {
+		t.Errorf("bad second SSH key line error = %v, want line 2 rejection", err)
+	}
 	if validateGroupListInput("sudo, docker") != nil {
 		t.Error("valid group list rejected")
 	}

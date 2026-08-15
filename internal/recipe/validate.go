@@ -1,6 +1,7 @@
 package recipe
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,7 +68,7 @@ var (
 	keyboardRe      = regexp.MustCompile(`^[a-z0-9_-]+(:[a-z0-9_-]+(:[a-z0-9_-]+)?)?$`)
 	usernameRe      = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
 	releaseRe       = regexp.MustCompile(`^[0-9]{14}$`)
-	sshKeyRe        = regexp.MustCompile(`^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9-]+@openssh\.com|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+`)
+	sshKeyRe        = regexp.MustCompile(`^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9-]+@openssh\.com|sk-ssh-ed25519@openssh\.com)[ \t]+[A-Za-z0-9+/]+={0,3}(?:[ \t]+[^\r\n]*)?$`)
 )
 
 // bootc-only and ab-only key paths, for family scoping (spec rule 1).
@@ -359,12 +360,48 @@ func checkSSHKey(inline, file, field string, add func(code, field, format string
 		add(CodeMutex, field, "inline and _file variants are mutually exclusive")
 		return
 	}
-	if inline != "" && !sshKeyRe.MatchString(inline) {
-		add(CodeSSHKey, field, "must be an OpenSSH public key line")
+	if inline != "" {
+		if err := ValidateSSHAuthorizedKeys(inline); err != nil {
+			add(CodeSSHKey, field, "%v", err)
+		}
 	}
 	if file != "" {
-		checkFile(file, field+"_file", false, add)
+		fileField := field + "_file"
+		checkFile(file, fileField, false, add)
+		fi, err := os.Stat(file)
+		if err != nil || !fi.Mode().IsRegular() {
+			return
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			add(CodeFile, fileField, "cannot read %q: %v", file, err)
+			return
+		}
+		if err := ValidateSSHAuthorizedKeys(string(data)); err != nil {
+			add(CodeSSHKey, fileField, "%v", err)
+		}
 	}
+}
+
+// ValidateSSHAuthorizedKeys validates one or more newline-separated OpenSSH
+// public-key records. Unlike snosi-install, which copied a caller-provided
+// file verbatim, firn fails closed at its recipe boundary: blank lines,
+// authorized_keys options, and non-key content are rejected. A trailing
+// newline is permitted.
+func ValidateSSHAuthorizedKeys(keys string) error {
+	// Permit the conventional single final newline without erasing leading
+	// or repeated blank records, which must still fail per the schema.
+	keys = strings.TrimSuffix(keys, "\n")
+	if strings.TrimSpace(keys) == "" {
+		return errors.New("must contain at least one OpenSSH public key line")
+	}
+	for i, line := range strings.Split(keys, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || !sshKeyRe.MatchString(line) {
+			return fmt.Errorf("line %d must be an OpenSSH public key (ssh-ed25519 AAAA...)", i+1)
+		}
+	}
+	return nil
 }
 
 // checkFile enforces spec rule 2: *_file fields reference existing
