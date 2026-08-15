@@ -109,6 +109,10 @@ func TestValidateRejections(t *testing.T) {
 	if err := os.WriteFile(worldReadable, []byte("secret"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	cosignKey := filepath.Join(t.TempDir(), "cosign.pub")
+	if err := os.WriteFile(cosignKey, []byte("public key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name string
@@ -122,6 +126,7 @@ func TestValidateRejections(t *testing.T) {
 		{"product on bootc", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, `ref = "ghcr.io/frostyard/snow:latest"`+"\nproduct = \"snow-ab\""), fullEnv, CodeFamilyScope},
 		{"filesystem on ab", replace(validAB(t), `disk = "/dev/nvme0n1"`, `disk = "/dev/nvme0n1"`+"\nfilesystem = \"btrfs\""), fullEnv, CodeFamilyScope},
 		{"missing ref", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, ""), fullEnv, CodeRequired},
+		{"cosign key with local ref", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, `ref = "containers-storage:ghcr.io/frostyard/snow:latest"`+"\ncosign_pub_key = \""+cosignKey+"\""), fullEnv, CodeEnum},
 		{"missing product", replace(validAB(t), `product = "snow-ab"`, ""), fullEnv, CodeRequired},
 		{"bad product", replace(validAB(t), `product = "snow-ab"`, `product = "../Snow.*-ab"`), fullEnv, CodeProduct},
 		{"bad origin", replace(validAB(t), `product = "snow-ab"`, `product = "snow-ab"`+"\norigin = \"ftp://x\""), fullEnv, CodeOrigin},

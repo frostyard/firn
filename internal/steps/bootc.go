@@ -154,8 +154,15 @@ func runMountTarget(ctx context.Context, env *pipeline.Env) error {
 
 func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 	r := env.Recipe
-	if err := bootcimg.CheckImage(ctx, env.Runner, r.Image.Ref); err != nil {
-		return err
+	sourceRef := env.BootcSourceRef
+	if sourceRef == "" {
+		return fmt.Errorf("bootc image source missing (preflight-image did not run)")
+	}
+	targetRef := r.Image.TargetRef
+	if targetRef == "" {
+		// A verified source is digest-pinned; day-two updates must continue to
+		// track the recipe's original tag rather than that immutable digest.
+		targetRef = r.Image.Ref
 	}
 	bootloader := r.Target.Bootloader
 	if bootloader == "" {
@@ -193,8 +200,8 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 		return fmt.Errorf("creating scratch dir: %w", err)
 	}
 	if err := bootcimg.Install(ctx, env.Runner, bootcimg.Options{
-		Image:        r.Image.Ref,
-		TargetImgref: r.Image.TargetRef,
+		Image:        sourceRef,
+		TargetImgref: targetRef,
 		TargetDir:    targetDir(env),
 		Bootloader:   bootloader,
 		ScratchDir:   scratch,
@@ -219,7 +226,7 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 		if err != nil {
 			return fmt.Errorf("secure image root scratch: %w", err)
 		}
-		if err := secureboot.ExtractSecureImageRoot(ctx, env.Runner, r.Image.Ref, dest); err != nil {
+		if err := secureboot.ExtractSecureImageRoot(ctx, env.Runner, sourceRef, dest); err != nil {
 			return err
 		}
 		env.SecureImageRoot = dest

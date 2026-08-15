@@ -234,6 +234,7 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 	switch c.entry.Family {
 	case recipe.FamilyBootc:
 		r.Image.Ref = c.entry.Ref
+		r.Image.CosignPubKey = c.entry.CosignPubKey
 		r.Target.Filesystem = c.filesystem
 		r.Target.BtrfsSubvolumes = c.btrfsSubvolumes && c.filesystem == "btrfs"
 	case recipe.FamilyAB:

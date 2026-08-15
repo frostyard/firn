@@ -99,6 +99,9 @@ type Emitter interface {
 // Warning and error codes stable enough to be part of the contract are
 // collected here as they are introduced (spec rule 3).
 const (
+	CodeStepFailed         = "step_failed"
+	CodeCleanupFailed      = "cleanup_failed"
+	CodeImageVerifyFailed  = "image_verification_failed"
 	CodeNoTPM              = "no_tpm"
 	CodeFlatpakUnreachable = "flatpak_unreachable"
 )

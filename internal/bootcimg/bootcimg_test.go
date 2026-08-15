@@ -48,7 +48,7 @@ func TestBuildArgs(t *testing.T) {
 			want: []string{
 				"install", "to-filesystem",
 				"--target-imgref", "ghcr.io/tuna-os/yellowfin:gnome50",
-				"--source-imgref", "containers-storage:ghcr.io/tuna-os/yellowfin:gnome50",
+				"--source-imgref", "containers-storage:ghcr.io/tuna-os/yellowfin:gnome-hwe",
 				"--skip-finalize",
 				"/mnt/target",
 			},
@@ -143,8 +143,23 @@ func TestBuildArgs(t *testing.T) {
 				"install", "to-filesystem",
 				"--target-imgref", "img.example/os:stable",
 				"--disable-selinux",
-				"--source-imgref", "containers-storage:img.example/os:stable",
+				"--source-imgref", "containers-storage:img.example/os:1",
 				"--bootloader", "systemd",
+				"--skip-finalize",
+				"/mnt/target",
+			},
+		},
+		{
+			name: "verified digest source retains tracking tag",
+			opts: Options{
+				Image:        "img.example/os@" + remoteDigest,
+				TargetImgref: "img.example/os:stable",
+				TargetDir:    "/mnt/target",
+			},
+			want: []string{
+				"install", "to-filesystem",
+				"--target-imgref", "img.example/os:stable",
+				"--source-imgref", "containers-storage:img.example/os@" + remoteDigest,
 				"--skip-finalize",
 				"/mnt/target",
 			},

@@ -87,6 +87,21 @@ ssh-keygen -t ed25519 -N "" -f "$work/id_e2e" -C firn-e2e >/dev/null
 cp /usr/lib/systemd/import-pubring.gpg "$work/pubring.gpg" 2>/dev/null \
   || cp /usr/lib/snosi/os-update-pubring.gpg "$work/pubring.gpg"
 
+# The production ISO ships cosign plus /usr/lib/snosi/cosign.pub. This Debian
+# guest is only a TUI/pipeline driver, so provide a strict test double that
+# accepts exactly Firn's digest-pinned argv. Unit tests exercise real success,
+# bad-signature and wrong-key outcomes through the runner seam.
+cat >"$work/cosign" <<'COSIGN'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# == 4 && $1 == verify && $2 == --key && -s $3 && $4 =~ @sha256:[0-9a-f]{64}$ ]] || {
+  echo "e2e-tui cosign double: expected verify --key KEY IMAGE@sha256:DIGEST, got: $*" >&2
+  exit 2
+}
+COSIGN
+chmod 0755 "$work/cosign"
+printf '%s\n' 'e2e-tui public-key placeholder' >"$work/cosign.pub"
+
 # The tmux driver script, run INSIDE the guest. Quoted heredoc: nothing
 # here is host-expanded; the pubkey is read in-guest from /tmp/id_e2e.pub.
 cat >"$work/driver.sh" <<'DRIVER'
@@ -297,15 +312,17 @@ done
 ((up)) || { echo "e2e-tui: FAIL — installer VM never reachable over SSH (console: $work/installer-console.log)" >&2; exit 1; }
 
 echo "e2e-tui: staging firn + driver into the installer VM"
-gscp "$work/firn" "$work/pubring.gpg" "$work/id_e2e.pub" "$work/driver.sh" debian@127.0.0.1:/tmp/ >/dev/null
+gscp "$work/firn" "$work/pubring.gpg" "$work/cosign" "$work/cosign.pub" "$work/id_e2e.pub" "$work/driver.sh" debian@127.0.0.1:/tmp/ >/dev/null
 # tmux drives the TUI; xz/gpgv are the A/B pipeline's tools. The
 extra_pkgs=""
 [[ $family == bootc ]] && extra_pkgs="podman skopeo btrfs-progs dosfstools parted"
 # pubring goes to firn's first default search location so the bare
 # `firn` invocation needs no flags at all (as on real installer media).
 gssh "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update -q && apt-get install -y -q tmux xz-utils gpgv $extra_pkgs' \
-  && sudo install -D -m 0644 /tmp/pubring.gpg /usr/lib/snosi/os-update-pubring.gpg" >/dev/null 2>&1 || {
-  echo "e2e-tui: FAIL — could not prepare the guest (tmux/tools/pubring)" >&2; exit 1; }
+  && sudo install -D -m 0644 /tmp/pubring.gpg /usr/lib/snosi/os-update-pubring.gpg \
+  && sudo install -D -m 0644 /tmp/cosign.pub /usr/lib/snosi/cosign.pub \
+  && sudo install -m 0755 /tmp/cosign /usr/local/bin/cosign" >/dev/null 2>&1 || {
+  echo "e2e-tui: FAIL — could not prepare the guest (tmux/tools/trust roots)" >&2; exit 1; }
 
 echo "e2e-tui: driving the TUI wizard inside the VM (tmux, 80x24, family $family)"
 set +e

@@ -14,7 +14,6 @@ package bootcimg
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -119,6 +118,7 @@ func BuildArgs(o Options) []string {
 func buildArgs(o Options, installTarget string, direct bool) []string {
 	args := []string{"install", "to-filesystem"}
 	resolved := o.resolvedTargetImgref()
+	source := bareImageRef(o.Image)
 	if resolved != "" {
 		args = append(args, "--target-imgref", resolved)
 	}
@@ -133,13 +133,15 @@ func buildArgs(o Options, installTarget string, direct bool) []string {
 	if o.Composefs {
 		args = append(args, "--composefs-backend")
 	}
-	if direct && resolved != "" {
+	if direct && source != "" {
 		// Direct mode: bootc runs natively (not in a container) and needs
 		// an explicit --source-imgref.  Use containers-storage transport
-		// to read the image from local storage.  No network pull needed.
+		// to read the exact selected image from local storage. Source and
+		// target refs are deliberately independent: verified installs use an
+		// immutable source digest while retaining a tracking tag for updates.
 		// (In container mode bootc auto-detects the image it runs from,
 		// so no --source-imgref is emitted.)
-		args = append(args, "--source-imgref", "containers-storage:"+resolved)
+		args = append(args, "--source-imgref", "containers-storage:"+source)
 	}
 	if o.Bootloader != "" && o.Bootloader != "grub2" {
 		args = append(args, "--bootloader", o.Bootloader)
@@ -271,34 +273,6 @@ func Install(ctx context.Context, r *runner.Runner, o Options) error {
 // implicitly, so that result is reduced to reachable-or-not.
 // TODO: port NeedsPull/LayerCount if firn grows explicit pull progress.
 func CheckImage(ctx context.Context, r *runner.Runner, image string) error {
-	type manifest struct {
-		Digest string   `json:"Digest"`
-		Layers []string `json:"Layers"`
-	}
-	bare := bareImageRef(image)
-
-	// 1. Fetch remote normalized manifest (resolves fat/multi-arch manifests).
-	_, remoteErr := r.Run(ctx, "skopeo", "inspect", "docker://"+bare)
-
-	// 2. Fetch local digest from containers-storage.
-	localOut, localErr := r.Run(ctx, "skopeo", "inspect", "containers-storage:"+bare)
-
-	// If the image is present locally it is always used — even when the
-	// remote is newer. Fisherman: the installer's job is to deploy the
-	// embedded image; post-install updates are handled by `bootc update`.
-	// Pulling a newer image during install would exceed the live-ISO's
-	// scratch space and defeats the purpose of embedding the image in the
-	// ISO in the first place. This is also the offline fallback: a full
-	// offline install works when the image has been pre-pulled into
-	// podman storage.
-	if localErr == nil {
-		var local manifest
-		if json.Unmarshal(localOut, &local) == nil {
-			return nil
-		}
-	}
-	if remoteErr == nil {
-		return nil
-	}
-	return fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr)
+	_, err := CheckAndPinImage(ctx, r, image, "")
+	return err
 }

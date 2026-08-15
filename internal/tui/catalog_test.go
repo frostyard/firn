@@ -25,8 +25,8 @@ func TestBuiltinCatalog(t *testing.T) {
 	}
 	for _, n := range []string{"snow", "snowfield", "cayo"} {
 		e := names[n]
-		if e.Family != recipe.FamilyBootc || !strings.HasPrefix(e.Ref, "ghcr.io/frostyard/") {
-			t.Errorf("entry %q: want bootc with ghcr.io/frostyard ref, got family=%q ref=%q", n, e.Family, e.Ref)
+		if e.Family != recipe.FamilyBootc || !strings.HasPrefix(e.Ref, "ghcr.io/frostyard/") || e.CosignPubKey != builtinCosignPubKey {
+			t.Errorf("entry %q: want signed frostyard bootc ref, got family=%q ref=%q key=%q", n, e.Family, e.Ref, e.CosignPubKey)
 		}
 	}
 	for _, n := range []string{"snow-ab", "snowfield-ab", "cayo-ab"} {
@@ -72,15 +72,16 @@ func TestLoadCatalogOverrideReplaces(t *testing.T) {
 
 func TestLoadCatalogOverrideErrors(t *testing.T) {
 	cases := map[string]string{
-		"parse error":     `{not json`,
-		"empty list":      `[]`,
-		"missing name":    `[{"family": "bootc", "ref": "r"}]`,
-		"bad family":      `[{"family": "flatcar", "name": "x", "ref": "r"}]`,
-		"bootc no ref":    `[{"family": "bootc", "name": "x"}]`,
-		"ab no product":   `[{"family": "ab", "name": "x"}]`,
-		"ab bad product":  `[{"family": "ab", "name": "x", "product": "../Snow.*-ab"}]`,
-		"ab with ref":     `[{"family": "ab", "name": "x", "product": "p", "ref": "r"}]`,
-		"bootc w product": `[{"family": "bootc", "name": "x", "ref": "r", "product": "p"}]`,
+		"parse error":        `{not json`,
+		"empty list":         `[]`,
+		"missing name":       `[{"family": "bootc", "ref": "r"}]`,
+		"bad family":         `[{"family": "flatcar", "name": "x", "ref": "r"}]`,
+		"bootc no ref":       `[{"family": "bootc", "name": "x"}]`,
+		"ab no product":      `[{"family": "ab", "name": "x"}]`,
+		"ab bad product":     `[{"family": "ab", "name": "x", "product": "../Snow.*-ab"}]`,
+		"ab with ref":        `[{"family": "ab", "name": "x", "product": "p", "ref": "r"}]`,
+		"bootc w product":    `[{"family": "bootc", "name": "x", "ref": "r", "product": "p"}]`,
+		"ab with cosign key": `[{"family": "ab", "name": "x", "product": "p", "cosign_pub_key": "/key.pub"}]`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -214,6 +214,27 @@ func TestAssembleRecipeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAssembleRecipeCarriesCatalogCosignKey(t *testing.T) {
+	key := filepath.Join(t.TempDir(), "cosign.pub")
+	if err := os.WriteFile(key, []byte("public key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry := bootcEntry()
+	entry.CosignPubKey = key
+	c := baseChoices(entry)
+	c.filesystem = "btrfs"
+	rec, err := assembleRecipe(c, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Image.CosignPubKey != key {
+		t.Fatalf("cosign key = %q, want catalog key %q", rec.Image.CosignPubKey, key)
+	}
+	if issues := validateAssembled(rec, recipe.Env{}); len(issues) != 0 {
+		t.Fatalf("catalog trust recipe failed validation: %v", issues)
+	}
+}
+
 func TestAssembleRecipeSecretFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "secrets")
 	c := baseChoices(abEntry())
