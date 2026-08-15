@@ -91,8 +91,9 @@ ADR-0003): GPT partitioning profiles (grub2 and systemd-boot layouts),
 optional LUKS root (passphrase and/or TPM2 modes), mkfs for
 xfs/ext4/btrfs (including `@`/`@home`/`@snapshots` subvolumes) and ZFS,
 mount orchestration, `bootc install to-filesystem` via podman or direct
-with the same argument-building logic, TPM2 first-boot enrollment
-staging, the secure-install (schema-1) contract, and filesystem
+with the same argument-building logic, install-time TPM2 enrollment
+against the deployed UKI's signed PCR 11 policy, the secure-install
+(schema-1) contract, and filesystem
 finalization. Fisherman's incident comments come along with the code.
 
 **Installing from the all-in-RAM ISO** ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)):
@@ -204,10 +205,10 @@ uses the same engine preflight as headless installation.
 - Space-constrained live environments (tmpfs/overlay roots) redirect
   scratch onto the target disk, carried from fisherman's
   `isSpaceConstrained` handling.
-- TPM enrollment happens where each path's constraints demand: A/B
-  enrolls at install time against signed PCR 11 (firmware-independent);
-  bootc stages first-boot enrollment because PCR 7 differs in the live
-  environment (fisherman's documented incident).
+- TPM enrollment for both paths happens at install time against the deployed
+  UKI's signed PCR 11 policy (firmware-independent). Firn deliberately does
+  not use fisherman's PCR 7 first-boot staging: encrypted bootc must unlock
+  before a staged first-boot unit could run.
 
 ## References
 
