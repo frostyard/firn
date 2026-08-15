@@ -98,6 +98,12 @@ path — closing the mount/mapper-leak class of bug documented in
 `snosi-install`. Cleanup warnings are emitted during that unwind, followed by
 any accumulated user-facing summary and then the single terminal event on
 both success and failure.
+Both in-process and NDJSON emitters reject events after the first terminal
+event. If the in-process producer disappears before a terminal event, the TUI
+and command result synthesize the protocol's `stream_truncated` failure rather
+than attributing the crash to user cancellation. The headless human renderer
+also consumes fine-grained `step_progress`, so it and the TUI expose the same
+pipeline movement at different presentation fidelity.
 
 ### Preflight
 
@@ -211,7 +217,7 @@ exception).
 
 `internal/progress` defines one event model (step begin/progress/end,
 info, warning, summary items such as unreachable flatpaks, recovery-key
-disclosure, completion with boot-entry info). The TUI consumes it over a
+disclosure, and terminal completion or failure). The TUI consumes it over a
 channel in-process; `--json-progress` serializes the same events as
 versioned NDJSON for automation — the only supported external interface
 (ADR-0007), replacing fisherman's stream and snosi's proto-1. The frontend
