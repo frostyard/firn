@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/frostyard/firn/internal/progress"
@@ -90,6 +91,49 @@ func TestTerminalEventIsLast(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestFailureEmitsCleanupWarningAndSummaryBeforeError(t *testing.T) {
+	env, events := collectEnv()
+	p := &Pipeline{Steps: []Step{{Name: "configure", Run: func(_ context.Context, e *Env) error {
+		e.AddSummary(progress.CodeFlatpakUnreachable, "org.gnome.Foo")
+		e.Defer("target", func() error { return errors.New("unmount failed") })
+		return errors.New("configuration failed")
+	}}}}
+
+	if err := p.Run(context.Background(), env, false); err == nil {
+		t.Fatal("expected failure")
+	}
+	evs := *events
+	wantKinds := []string{"start", "step_start", "warning", "summary", "error"}
+	if len(evs) != len(wantKinds) {
+		t.Fatalf("events = %v, want kinds %v", eventKinds(evs), wantKinds)
+	}
+	for i, want := range wantKinds {
+		if got := evs[i].Kind(); got != want {
+			t.Fatalf("event %d kind = %q, want %q; all=%v", i, got, want, eventKinds(evs))
+		}
+	}
+	warning, ok := evs[2].(progress.Warning)
+	if !ok || warning.Code != progress.CodeCleanupFailed || !strings.Contains(warning.Message, "unmount failed") {
+		t.Fatalf("cleanup warning = %#v", evs[2])
+	}
+	summary, ok := evs[3].(progress.Summary)
+	if !ok || len(summary.Items) != 1 || summary.Items[0].Code != progress.CodeFlatpakUnreachable || summary.Items[0].Detail != "org.gnome.Foo" {
+		t.Fatalf("summary = %#v", evs[3])
+	}
+	terminal, ok := evs[4].(progress.Error)
+	if !ok || terminal.Step != "configure" || !strings.Contains(terminal.Message, "configuration failed") || !strings.Contains(terminal.Message, "unmount failed") {
+		t.Fatalf("terminal error = %#v", evs[4])
+	}
+}
+
+func eventKinds(events []progress.Event) []string {
+	kinds := make([]string, len(events))
+	for i, event := range events {
+		kinds[i] = event.Kind()
+	}
+	return kinds
 }
 
 func TestDryRunExecutesOnlyPreflight(t *testing.T) {

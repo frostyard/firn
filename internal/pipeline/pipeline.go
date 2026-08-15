@@ -174,9 +174,9 @@ func (p *Pipeline) Tools() []string {
 	return out
 }
 
-// Run executes the pipeline: Start event, steps in order, cleanup
-// unwind on every exit path, then exactly one terminal event (Done or
-// Error, after any cleanup warnings, per the progress protocol spec).
+// Run executes the pipeline: Start event, steps in order, cleanup unwind on
+// every exit path, any cleanup warnings, any accumulated summary, then exactly
+// one terminal event (Done or Error), per the progress protocol spec.
 // In dry-run mode only preflight steps execute; the rest are announced
 // and skipped.
 func (p *Pipeline) Run(ctx context.Context, env *Env, dryRun bool) error {
@@ -187,12 +187,12 @@ func (p *Pipeline) Run(ctx context.Context, env *Env, dryRun bool) error {
 		env.Emit(progress.Warning{Code: progress.CodeCleanupFailed, Message: cerr.Error()})
 		runErr = errors.Join(runErr, cerr)
 	}
+	if len(env.Summary) > 0 {
+		env.Emit(progress.Summary{Items: env.Summary})
+	}
 	if runErr != nil {
 		env.Emit(progress.Error{Step: failedStep, Code: errorCode(runErr), Message: runErr.Error()})
 		return runErr
-	}
-	if len(env.Summary) > 0 {
-		env.Emit(progress.Summary{Items: env.Summary})
 	}
 	env.Emit(progress.Done{OK: true})
 	return nil

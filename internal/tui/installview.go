@@ -344,6 +344,15 @@ func (m installModel) finalView() string {
 		}
 		b.WriteString(ansi.Wrap(m.result.ErrorMessage, textWidth, "/:.-"))
 		b.WriteString("\n")
+		if warnings := warningTail(m.tail); len(warnings) > 0 {
+			b.WriteString("\n")
+			b.WriteString(warnStyle.Render("recent warnings"))
+			b.WriteString("\n")
+			for _, warning := range warnings {
+				b.WriteString(warnStyle.Render(ansi.Wrap("  "+formatWarning(warning.code, warning.text), textWidth, "/:.-")))
+				b.WriteString("\n")
+			}
+		}
 	} else if m.result.Done {
 		b.WriteString(okStyle.Render("install complete"))
 		b.WriteString("\n")
@@ -377,4 +386,14 @@ func formatWarning(code, message string) string {
 		return "warning: " + message
 	}
 	return fmt.Sprintf("warning [%s]: %s", code, message)
+}
+
+func warningTail(tail []tailLine) []tailLine {
+	warnings := make([]tailLine, 0, len(tail))
+	for _, line := range tail {
+		if line.warning {
+			warnings = append(warnings, line)
+		}
+	}
+	return warnings
 }
