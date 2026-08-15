@@ -586,15 +586,30 @@ func TestWizardInteractiveBranchContracts(t *testing.T) {
 	})
 }
 
-func TestSecurityFormDefaultsMOKWhenSecureBootIsActive(t *testing.T) {
-	for _, entry := range []CatalogEntry{abEntry(), bootcEntry()} {
+func TestSecurityFormInitialSelectionsAndRebuild(t *testing.T) {
+	for _, tc := range []struct {
+		entry       CatalogEntry
+		alternative string
+	}{
+		{entry: abEntry(), alternative: "luks"},
+		{entry: bootcEntry(), alternative: "luks-passphrase"},
+	} {
 		w := &wizard{
 			opts: WizardOpts{Machine: recipe.Env{SecureBoot: true}},
-			c:    wizardChoices{entry: entry},
+			c:    wizardChoices{entry: tc.entry},
 		}
 		w.securityForm()
+		if w.c.encryption != "none" {
+			t.Errorf("%s encryption initial selection = %q, want none", tc.entry.Family, w.c.encryption)
+		}
 		if w.c.mok != "enroll" {
-			t.Errorf("%s Secure Boot MOK default = %q, want enroll", entry.Family, w.c.mok)
+			t.Errorf("%s Secure Boot MOK initial selection = %q, want enroll", tc.entry.Family, w.c.mok)
+		}
+		w.c.encryption = tc.alternative
+		w.c.mok = "skip"
+		w.securityForm()
+		if w.c.encryption != tc.alternative || w.c.mok != "skip" {
+			t.Errorf("%s rebuilt security form changed answers: encryption=%q mok=%q", tc.entry.Family, w.c.encryption, w.c.mok)
 		}
 	}
 
@@ -611,6 +626,31 @@ func TestSecurityFormDefaultsMOKWhenSecureBootIsActive(t *testing.T) {
 	w.securityForm()
 	if w.c.mok != "" {
 		t.Fatalf("MOK defaulted without Secure Boot: %q", w.c.mok)
+	}
+}
+
+func TestConfirmFormsPreserveAnswersWhenRebuilt(t *testing.T) {
+	w := &wizard{}
+
+	w.userForm()
+	if !w.c.createUser || !reflect.DeepEqual(w.c.groups, []string{"sudo"}) {
+		t.Fatalf("user initial selections = create=%v groups=%v, want true [sudo]", w.c.createUser, w.c.groups)
+	}
+	w.c.createUser = false
+	w.c.groups = nil
+	w.userForm()
+	if w.c.createUser || len(w.c.groups) != 0 {
+		t.Fatalf("rebuilt user form changed answers: create=%v groups=%v", w.c.createUser, w.c.groups)
+	}
+
+	w.flatpaksForm()
+	if w.c.coreFlatpaks {
+		t.Fatal("core Flatpaks initial selection = true, want schema default false")
+	}
+	w.c.coreFlatpaks = true
+	w.flatpaksForm()
+	if !w.c.coreFlatpaks {
+		t.Fatal("rebuilt Flatpak form changed an affirmative answer")
 	}
 }
 
