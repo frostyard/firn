@@ -169,6 +169,9 @@ authorized keys, flatpak set. Each feature is written through one of two
   root.
 
 A feature is complete only when both writers implement it (ADR-0004).
+Shared recipe validation owns cross-writer input semantics: for example,
+user full names accept empty and Unicode GECOS text but reject passwd field
+and record delimiters before either writer runs.
 Flatpaks follow ADR-0006 on both paths: copy from the medium's seeded
 repo, download the remainder into the mounted target, report (never
 silently drop) what was unreachable.
