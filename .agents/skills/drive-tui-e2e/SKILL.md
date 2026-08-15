@@ -26,8 +26,18 @@ order, or option labels must update the driver in the same change.
    - `choose REGEX` — walks a select with Down until the cursor line
      matches, then Enter. Match on stable substrings of the option
      label.
-   - `type_line TEXT` — clears the focused input (C-u), types, Enter.
-   - `skip_field` — Enter to accept the focused field and advance.
+   - `choose_disk REGEX PATH` — selects the target disk and reports a
+     wizard refusal separately from a missing option or page desync.
+   - `type_input TITLE TEXT` — gates on and clears a focused
+     `huh.NewInput` (C-u), types, then advances with Enter.
+   - `type_textarea TITLE TEXT` — gates on an initially empty
+     `huh.NewText`, types literally, then advances with Enter. With the
+     pinned huh v1.0.0 keymap, Alt+Enter or Ctrl+J inserts a newline;
+     Enter advances, and C-u clears only the current line before the
+     cursor rather than the whole textarea.
+   - `accept_field TITLE` — gates on a named field, then accepts its
+     default or empty value with Enter. Name every skipped field; do
+     not encode page structure as an unexplained count of Enters.
 3. Run one family, read the result, fix, then run the other:
    `sudo test/e2e-tui.sh` (ab) and
    `sudo FIRN_E2E_TUI_FAMILY=bootc FIRN_E2E_TIMEOUT=900 test/e2e-tui.sh`.
@@ -46,8 +56,12 @@ order, or option labels must update the driver in the same change.
 
 - **huh's cursor line starts with a group border** (`┃`/`│`), so match
   cursor lines with `^[┃│|[:space:]]*[>❯›]`, never `^\s*>`.
-- **Enter on a huh Confirm accepts the FOCUSED (affirmative) button**,
-  not the field's default value — declining needs `Right` then Enter.
+- **Enter on a huh Confirm preserves its bound value**. Firn initializes
+  the intended choice before presenting the form; use Left/Right (or
+  Y/N) before Enter when the test needs the other value.
+- **`huh.NewInput` and `huh.NewText` are different contracts**. Keep
+  `type_input` and `type_textarea` distinct even though pinned huh uses
+  Enter to advance both; textarea newline and clearing keys differ.
 - **Long pages scroll their title off the 24-row pane** (e.g. the
   review page's TOML). Gate on text near the BOTTOM of the page (the
   action list), not the title.
