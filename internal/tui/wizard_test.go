@@ -24,6 +24,23 @@ func TestRunWizardRejectsNonUEFIBeforeCatalogOrChoices(t *testing.T) {
 	}
 }
 
+func TestRunWizardRejectsInvalidProvidedCatalogBeforeUI(t *testing.T) {
+	rec, err := RunWizard(context.Background(), WizardOpts{
+		UEFI: true,
+		Catalog: []CatalogEntry{{
+			Family: recipe.FamilyBootc,
+			Name:   "broken",
+			Ref:    "ghcr.io/foo bar:latest",
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "image.ref") {
+		t.Fatalf("RunWizard error = %v, want canonical image.ref rejection", err)
+	}
+	if rec != nil {
+		t.Fatalf("RunWizard returned recipe for invalid catalog: %+v", rec)
+	}
+}
+
 func bootcEntry() CatalogEntry {
 	return CatalogEntry{Family: recipe.FamilyBootc, Name: "snow", Description: "d", Ref: "ghcr.io/frostyard/snow:latest"}
 }
@@ -324,6 +341,26 @@ func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 }
 
 func TestWizardInteractiveBranchContracts(t *testing.T) {
+	t.Run("one-family catalogs skip the family form", func(t *testing.T) {
+		for _, entry := range []CatalogEntry{bootcEntry(), abEntry()} {
+			w := &wizard{catalog: []CatalogEntry{entry}}
+			family, quit, err := w.familyPage(context.Background(), "")
+			if err != nil || quit || family != entry.Family {
+				t.Fatalf("familyPage(%s-only) = (%q, %v, %v)", entry.Family, family, quit, err)
+			}
+		}
+	})
+
+	t.Run("start-over family preference", func(t *testing.T) {
+		families := []string{recipe.FamilyBootc, recipe.FamilyAB}
+		if got := preferredFamily(families, recipe.FamilyAB); got != recipe.FamilyAB {
+			t.Fatalf("preferredFamily() = %q, want prior A/B choice", got)
+		}
+		if got := preferredFamily(families, "missing"); got != recipe.FamilyBootc {
+			t.Fatalf("preferredFamily() fallback = %q, want first represented family", got)
+		}
+	})
+
 	t.Run("review start-over quit and install", func(t *testing.T) {
 		for _, tc := range []struct {
 			action          string

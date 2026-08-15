@@ -48,46 +48,64 @@ func (w *wizard) welcomeForm() *huh.Form {
 	))
 }
 
-// familyPage asks bootc-vs-A/B up front, with honest guidance: bootc
-// is the destination, A/B is the proven interim. The image page then
-// shows only the chosen family's images.
-func (w *wizard) familyPage(ctx context.Context) (quit bool, err error) {
-	family := recipe.FamilyBootc
-	if w.c.entry.Family != "" {
-		family = w.c.entry.Family // preserve on start-over
+// familyPage offers only families represented by the loaded catalog. A
+// one-family catalog proceeds directly to image selection without presenting
+// a choice that cannot lead to a valid recipe.
+func (w *wizard) familyPage(ctx context.Context, preferred string) (family string, quit bool, err error) {
+	families := catalogFamilies(w.catalog)
+	if len(families) == 0 {
+		return "", false, errors.New("tui: image catalog has no families")
+	}
+	if len(families) == 1 {
+		return families[0], false, nil
+	}
+	family = preferredFamily(families, preferred)
+	opts := make([]huh.Option[string], 0, len(families))
+	for _, available := range families {
+		switch available {
+		case recipe.FamilyBootc:
+			opts = append(opts, huh.NewOption("bootc — the long-term path, a little bolder today", available))
+		case recipe.FamilyAB:
+			opts = append(opts, huh.NewOption("A/B  — the proven path, for now", available))
+		}
 	}
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("Update mechanism").
-			Description("Both are image-based and update atomically; they differ in how.\n\n"+
-				"bootc is where frostyard images are headed long-term — updates\n"+
-				"arrive as OCI container pulls. It is still maturing on Debian,\n"+
-				"so it carries a little more risk today.\n\n"+
-				"A/B keeps two complete system copies and flips between them —\n"+
-				"proven and boring, at the cost of extra disk space. It will\n"+
+			Description("Both are image-based and update atomically; they differ in how.\n\n" +
+				"bootc is where frostyard images are headed long-term — updates\n" +
+				"arrive as OCI container pulls. It is still maturing on Debian,\n" +
+				"so it carries a little more risk today.\n\n" +
+				"A/B keeps two complete system copies and flips between them —\n" +
+				"proven and boring, at the cost of extra disk space. It will\n" +
 				"retire once bootc is rock solid.").
-			Options(
-				huh.NewOption("bootc — the long-term path, a little bolder today", recipe.FamilyBootc),
-				huh.NewOption("A/B  — the proven path, for now", recipe.FamilyAB),
-			).
+			Options(opts...).
 			Value(&family),
 	))
 	if quit, err = w.page(ctx, form); quit || err != nil {
-		return quit, err
+		return "", quit, err
 	}
-	w.c.family = family
-	return false, nil
+	return family, false, nil
 }
 
-func (w *wizard) imagePage(ctx context.Context) (quit bool, err error) {
+func preferredFamily(families []string, preferred string) string {
+	for _, family := range families {
+		if family == preferred {
+			return preferred
+		}
+	}
+	return families[0]
+}
+
+func (w *wizard) imagePage(ctx context.Context, family string) (quit bool, err error) {
 	var entries []CatalogEntry
 	for _, e := range w.catalog {
-		if e.Family == w.c.family {
+		if e.Family == family {
 			entries = append(entries, e)
 		}
 	}
 	if len(entries) == 0 {
-		return false, fmt.Errorf("tui: catalog has no %s images", w.c.family)
+		return false, fmt.Errorf("tui: catalog has no %s images", family)
 	}
 	idx := 0
 	opts := make([]huh.Option[int], len(entries))

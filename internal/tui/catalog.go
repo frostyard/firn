@@ -14,7 +14,6 @@ import (
 	"os"
 
 	"github.com/frostyard/firn/internal/recipe"
-	"github.com/frostyard/firn/internal/trust"
 )
 
 // catalogOverridePath, when present, replaces the built-in catalog.
@@ -90,19 +89,10 @@ func checkCatalog(entries []CatalogEntry) error {
 		}
 		switch e.Family {
 		case recipe.FamilyBootc:
-			if e.Ref == "" {
-				return fmt.Errorf("entry %q: bootc entries require ref", e.Name)
-			}
 			if e.Product != "" {
 				return fmt.Errorf("entry %q: product applies only to family %q", e.Name, recipe.FamilyAB)
 			}
 		case recipe.FamilyAB:
-			if e.Product == "" {
-				return fmt.Errorf("entry %q: ab entries require product", e.Name)
-			}
-			if err := trust.ValidateChannel(e.Product); err != nil {
-				return fmt.Errorf("entry %q: product: %w", e.Name, err)
-			}
 			if e.Ref != "" {
 				return fmt.Errorf("entry %q: ref applies only to family %q", e.Name, recipe.FamilyBootc)
 			}
@@ -112,8 +102,29 @@ func checkCatalog(entries []CatalogEntry) error {
 		default:
 			return fmt.Errorf("entry %q: family must be %q or %q, got %q", e.Name, recipe.FamilyBootc, recipe.FamilyAB, e.Family)
 		}
+		img := recipe.Image{
+			Family: e.Family, Ref: e.Ref, CosignPubKey: e.CosignPubKey,
+			Product: e.Product,
+		}
+		if issues := recipe.ValidateImageSelection(img); len(issues) > 0 {
+			return fmt.Errorf("entry %q: %s", e.Name, issues[0])
+		}
 	}
 	return nil
+}
+
+// catalogFamilies returns only families represented by the loaded catalog,
+// in the same stable order as orderedCatalog.
+func catalogFamilies(entries []CatalogEntry) []string {
+	seen := make(map[string]bool, 2)
+	var families []string
+	for _, e := range entries {
+		if !seen[e.Family] {
+			seen[e.Family] = true
+			families = append(families, e.Family)
+		}
+	}
+	return families
 }
 
 // orderedCatalog returns entries grouped by family (bootc first, then

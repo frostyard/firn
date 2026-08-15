@@ -130,8 +130,29 @@ func Validate(l *Loaded, env Env) []Issue {
 	return issues
 }
 
+// ValidateImageSelection applies the canonical, machine-independent image
+// constraints to a prospective image selection. The TUI catalog uses this
+// before displaying an entry; full recipe validation additionally checks
+// field presence/scoping and files on the install machine.
+func ValidateImageSelection(img Image) []Issue {
+	var issues []Issue
+	add := func(code, field, format string, args ...any) {
+		issues = append(issues, Issue{Code: code, Field: field, Message: fmt.Sprintf(format, args...)})
+	}
+	validateImageSelection(&img, add)
+	return issues
+}
+
 func validateImage(l *Loaded, family string, add func(code, field, format string, args ...any)) {
 	img := &l.Recipe.Image
+	validateImageSelection(img, add)
+	if family == FamilyBootc && img.CosignPubKey != "" {
+		checkFile(img.CosignPubKey, "image.cosign_pub_key", false, add)
+	}
+}
+
+func validateImageSelection(img *Image, add func(code, field, format string, args ...any)) {
+	family := img.Family
 	switch family {
 	case FamilyBootc:
 		if img.Ref == "" {
@@ -140,7 +161,6 @@ func validateImage(l *Loaded, family string, add func(code, field, format string
 			add(CodeEnum, "image.ref", "not a valid OCI reference")
 		}
 		if img.CosignPubKey != "" {
-			checkFile(img.CosignPubKey, "image.cosign_pub_key", false, add)
 			if !bootcimg.IsRegistryRef(img.Ref) {
 				add(CodeEnum, "image.ref", "cosign verification requires a registry image reference")
 			}

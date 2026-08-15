@@ -57,6 +57,9 @@ func RunWizard(ctx context.Context, o WizardOpts) (*recipe.Recipe, error) {
 			o.Notices = append(o.Notices, warn.Error())
 		}
 	}
+	if err := checkCatalog(catalog); err != nil {
+		return nil, fmt.Errorf("tui: image catalog: %w", err)
+	}
 	w := &wizard{
 		opts:       o,
 		catalog:    orderedCatalog(catalog),
@@ -79,8 +82,7 @@ type wizard struct {
 // recipe.Recipe so assembly (choices -> recipe + secret files) is a pure
 // function tests drive directly.
 type wizardChoices struct {
-	family string
-	entry  CatalogEntry
+	entry CatalogEntry
 
 	disk string
 
@@ -124,11 +126,13 @@ func (w *wizard) run(ctx context.Context) (*recipe.Recipe, error) {
 	if quit, err := w.page(ctx, w.welcomeForm()); quit || err != nil {
 		return nil, err
 	}
+	preferredFamily := ""
 	for {
-		if quit, err := w.familyPage(ctx); quit || err != nil {
+		family, quit, err := w.familyPage(ctx, preferredFamily)
+		if quit || err != nil {
 			return nil, err
 		}
-		if quit, err := w.imagePage(ctx); quit || err != nil {
+		if quit, err := w.imagePage(ctx, family); quit || err != nil {
 			return nil, err
 		}
 		if quit, err := w.diskPage(ctx); quit || err != nil {
@@ -157,6 +161,7 @@ func (w *wizard) run(ctx context.Context) (*recipe.Recipe, error) {
 		if !startOver { // user quit from review
 			return nil, nil
 		}
+		preferredFamily = w.c.entry.Family
 		w.c = wizardChoices{} // start over: fresh choices, same catalog
 	}
 }
