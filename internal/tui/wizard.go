@@ -179,10 +179,11 @@ func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, rec *recipe.Re
 		if quit || err != nil {
 			return false, nil, err
 		}
-		switch action {
-		case actionStartOver:
+		startOver, quit := reviewAction(action)
+		switch {
+		case startOver:
 			return true, nil, nil
-		case actionQuit:
+		case quit:
 			return false, nil, nil
 		}
 		if quit, err := w.page(ctx, w.confirmForm()); quit || err != nil {
@@ -197,6 +198,10 @@ func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, rec *recipe.Re
 		}
 		retried = true // loop back to review with the issues displayed
 	}
+}
+
+func reviewAction(action string) (startOver, quit bool) {
+	return action == actionStartOver, action == actionQuit
 }
 
 // page runs one huh form, translating a user abort (esc / ctrl-c) into

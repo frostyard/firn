@@ -36,8 +36,11 @@ type tuiOptions struct {
 }
 
 type tuiRuntime struct {
-	holdError func(context.Context, string, error) error
-	runWizard func(context.Context, tui.WizardOpts) (*recipe.Recipe, error)
+	holdError   func(context.Context, string, error) error
+	runWizard   func(context.Context, tui.WizardOpts) (*recipe.Recipe, error)
+	writeRecipe func(*recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error)
+	runInstall  func(context.Context, *pipeline.Env, *recipe.Loaded) (tui.InstallResult, error)
+	stderr      io.Writer
 }
 
 // recipeDir is where the wizard's generated recipe artifact lands.
@@ -48,12 +51,35 @@ const recipeDir = "/run/firn"
 
 func runTUI(parent context.Context, o tuiOptions) error {
 	return runTUIWithRuntime(parent, o, tuiRuntime{
-		holdError: tui.HoldError,
-		runWizard: tui.RunWizard,
+		holdError:   tui.HoldError,
+		runWizard:   tui.RunWizard,
+		writeRecipe: writeRecipe,
+		runInstall:  runTUIInstall,
+		stderr:      os.Stderr,
 	})
 }
 
+func (rt tuiRuntime) withDefaults() tuiRuntime {
+	if rt.holdError == nil {
+		rt.holdError = tui.HoldError
+	}
+	if rt.runWizard == nil {
+		rt.runWizard = tui.RunWizard
+	}
+	if rt.writeRecipe == nil {
+		rt.writeRecipe = writeRecipe
+	}
+	if rt.runInstall == nil {
+		rt.runInstall = runTUIInstall
+	}
+	if rt.stderr == nil {
+		rt.stderr = os.Stderr
+	}
+	return rt
+}
+
 func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) error {
+	rt = rt.withDefaults()
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -68,13 +94,13 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) erro
 	}
 	var err error
 	if env.Machine.SecureBoot, err = tristate(o.secureBoot, platform.SecureBoot); err != nil {
-		return tui.HoldError(ctx, "installer setup failed", fmt.Errorf("--secure-boot: %w", err))
+		return rt.holdError(ctx, "installer setup failed", fmt.Errorf("--secure-boot: %w", err))
 	}
 	if env.Machine.TPM, err = tristate(o.tpm, platform.TPM); err != nil {
-		return tui.HoldError(ctx, "installer setup failed", fmt.Errorf("--tpm: %w", err))
+		return rt.holdError(ctx, "installer setup failed", fmt.Errorf("--tpm: %w", err))
 	}
 	if env.UEFI, err = tristate(o.uefi, platform.UEFI); err != nil {
-		return tui.HoldError(ctx, "installer setup failed", fmt.Errorf("--uefi: %w", err))
+		return rt.holdError(ctx, "installer setup failed", fmt.Errorf("--uefi: %w", err))
 	}
 	if err := platform.RequireUEFI(env.UEFI); err != nil {
 		return rt.holdError(ctx, "unsupported machine", err)
@@ -85,7 +111,7 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) erro
 	catalog, warn := tui.LoadCatalog()
 	var notices []string
 	if warn != nil {
-		fmt.Fprintf(os.Stderr, "firn: note: %v\n", warn)
+		fmt.Fprintf(rt.stderr, "firn: note: %v\n", warn)
 		notices = append(notices, warn.Error())
 	}
 
@@ -100,15 +126,15 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) erro
 		if ctx.Err() != nil {
 			return err
 		}
-		return tui.HoldError(ctx, "installer setup failed", err)
+		return rt.holdError(ctx, "installer setup failed", err)
 	}
 	if r == nil {
 		return nil // user quit the wizard; nothing was touched
 	}
 
-	path, l, err := writeRecipe(r, env.Machine)
+	path, l, err := rt.writeRecipe(r, env.Machine)
 	if err != nil {
-		return tui.HoldError(ctx, "could not prepare the install", err)
+		return rt.holdError(ctx, "could not prepare the install", err)
 	}
 	env.Recipe = &l.Recipe
 
@@ -117,9 +143,16 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) erro
 	// same rule the install command enforces via --confirm for headless
 	// runs (docs/design/architecture.md, Operational notes).
 
-	// The in-process channel is the interactive flow's only progress
-	// consumer (ADR-0007). NDJSON is headless-only because the TUI owns
-	// stdout for terminal rendering.
+	res, uiErr := rt.runInstall(ctx, env, l)
+	return reportTUIResult(rt.stderr, res, uiErr, path, l.Recipe.Target.Disk)
+}
+
+// runTUIInstall bridges the assembled engine to the in-process TUI progress
+// consumer. Kept behind tuiRuntime so command tests can verify setup and result
+// propagation without launching Bubble Tea or running privileged steps.
+func runTUIInstall(ctx context.Context, env *pipeline.Env, l *recipe.Loaded) (tui.InstallResult, error) {
+	// The in-process channel is the interactive flow's only progress consumer
+	// (ADR-0007). NDJSON is headless-only because the TUI owns stdout.
 	ch := progress.NewChannel(64)
 	env.Emit = func(e progress.Event) { _ = ch.Emit(e) }
 
@@ -144,9 +177,11 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) erro
 		for range ch.Events() {
 		}
 	}()
-	<-pipeDone
-
-	return reportTUIResult(os.Stderr, res, uiErr, path, l.Recipe.Target.Disk)
+	pipeErr := <-pipeDone
+	if uiErr == nil && pipeErr != nil && !res.Failed {
+		uiErr = pipeErr
+	}
+	return res, uiErr
 }
 
 // reportTUIResult emits only non-secret diagnostics after Bubble Tea has
@@ -175,14 +210,18 @@ func reportTUIResult(stderr io.Writer, res tui.InstallResult, uiErr error, path,
 // will consume. Any failure here is a firn bug — the wizard generated
 // something the schema rejects — never a user error.
 func writeRecipe(r *recipe.Recipe, machine recipe.Env) (string, *recipe.Loaded, error) {
+	return writeRecipeTo(recipeDir, r, machine)
+}
+
+func writeRecipeTo(dir string, r *recipe.Recipe, machine recipe.Env) (string, *recipe.Loaded, error) {
 	data, err := toml.Marshal(*r)
 	if err != nil {
 		return "", nil, fmt.Errorf("BUG: cannot marshal the wizard's recipe: %w", err)
 	}
-	if err := os.MkdirAll(recipeDir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", nil, err
 	}
-	path := filepath.Join(recipeDir, fmt.Sprintf("recipe-%d.toml", os.Getpid()))
+	path := filepath.Join(dir, fmt.Sprintf("recipe-%d.toml", os.Getpid()))
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", nil, err
 	}
