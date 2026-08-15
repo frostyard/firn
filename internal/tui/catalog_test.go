@@ -78,6 +78,7 @@ func TestLoadCatalogOverrideErrors(t *testing.T) {
 		"bad family":      `[{"family": "flatcar", "name": "x", "ref": "r"}]`,
 		"bootc no ref":    `[{"family": "bootc", "name": "x"}]`,
 		"ab no product":   `[{"family": "ab", "name": "x"}]`,
+		"ab bad product":  `[{"family": "ab", "name": "x", "product": "../Snow.*-ab"}]`,
 		"ab with ref":     `[{"family": "ab", "name": "x", "product": "p", "ref": "r"}]`,
 		"bootc w product": `[{"family": "bootc", "name": "x", "ref": "r", "product": "p"}]`,
 	}

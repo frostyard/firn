@@ -123,6 +123,7 @@ func TestValidateRejections(t *testing.T) {
 		{"filesystem on ab", replace(validAB(t), `disk = "/dev/nvme0n1"`, `disk = "/dev/nvme0n1"`+"\nfilesystem = \"btrfs\""), fullEnv, CodeFamilyScope},
 		{"missing ref", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, ""), fullEnv, CodeRequired},
 		{"missing product", replace(validAB(t), `product = "snow-ab"`, ""), fullEnv, CodeRequired},
+		{"bad product", replace(validAB(t), `product = "snow-ab"`, `product = "../Snow.*-ab"`), fullEnv, CodeProduct},
 		{"bad origin", replace(validAB(t), `product = "snow-ab"`, `product = "snow-ab"`+"\norigin = \"ftp://x\""), fullEnv, CodeOrigin},
 		{"bad release", replace(validAB(t), `product = "snow-ab"`, `product = "snow-ab"`+"\nrelease = \"2026\""), fullEnv, CodeRelease},
 		{"missing disk", replace(validBootc(), `disk = "/dev/vda"`, ""), fullEnv, CodeRequired},

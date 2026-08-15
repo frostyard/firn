@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/frostyard/firn/internal/trust"
 )
 
 // Env carries the install-machine facts validation depends on (spec
@@ -46,6 +48,7 @@ const (
 	CodeUsername    = "username"
 	CodeGroup       = "group"
 	CodeRelease     = "release"
+	CodeProduct     = "product"
 	CodeOrigin      = "origin"
 	CodeSSHKey      = "ssh-key"
 	CodeHash        = "password-hash"
@@ -141,6 +144,8 @@ func validateImage(l *Loaded, family string, add func(code, field, format string
 	case FamilyAB:
 		if img.Product == "" {
 			add(CodeRequired, "image.product", "A/B channel is required for family %q", FamilyAB)
+		} else if err := trust.ValidateChannel(img.Product); err != nil {
+			add(CodeProduct, "image.product", "%v", err)
 		}
 		if img.Origin != "" && !strings.HasPrefix(img.Origin, "https://") && !strings.HasPrefix(img.Origin, "http://") {
 			add(CodeOrigin, "image.origin", "must be an http(s) URL")

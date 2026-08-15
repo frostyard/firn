@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"github.com/frostyard/firn/internal/recipe"
+	"github.com/frostyard/firn/internal/trust"
 )
 
 // catalogOverridePath, when present, replaces the built-in catalog.
@@ -92,6 +93,9 @@ func checkCatalog(entries []CatalogEntry) error {
 		case recipe.FamilyAB:
 			if e.Product == "" {
 				return fmt.Errorf("entry %q: ab entries require product", e.Name)
+			}
+			if err := trust.ValidateChannel(e.Product); err != nil {
+				return fmt.Errorf("entry %q: product: %w", e.Name, err)
 			}
 			if e.Ref != "" {
 				return fmt.Errorf("entry %q: ref applies only to family %q", e.Name, recipe.FamilyBootc)

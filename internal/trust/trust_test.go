@@ -53,6 +53,12 @@ func okRunner(calls *[][]string) *runner.Runner {
 	)
 }
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 // indexServer serves a SHA256SUMS + SHA256SUMS.gpg pair (and any
 // extra objects) under the real published layout
 // os/native/v1/<bareProduct>/x86-64/.
@@ -189,6 +195,51 @@ func TestFetchIndexRequiresProduct(t *testing.T) {
 	var calls [][]string
 	if _, err := FetchIndex(context.Background(), okRunner(&calls), Options{}); err == nil {
 		t.Fatal("empty Product must be an error")
+	}
+}
+
+func TestValidateChannel(t *testing.T) {
+	tests := []struct {
+		name    string
+		channel string
+		valid   bool
+	}{
+		{name: "valid bare name", channel: "cayo", valid: true},
+		{name: "valid ab name", channel: "snowfield-ab", valid: true},
+		{name: "path traversal", channel: "../cayo-ab"},
+		{name: "uppercase", channel: "Cayo-ab"},
+		{name: "whitespace", channel: "cayo ab"},
+		{name: "regex metacharacters", channel: "cayo.*-ab"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateChannel(tt.channel)
+			if tt.valid && err != nil {
+				t.Fatalf("ValidateChannel(%q): %v", tt.channel, err)
+			}
+			if !tt.valid && err == nil {
+				t.Fatalf("ValidateChannel(%q) unexpectedly succeeded", tt.channel)
+			}
+		})
+	}
+}
+
+func TestFetchIndexRejectsInvalidProductBeforeHTTP(t *testing.T) {
+	called := false
+	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, errors.New("unexpected HTTP request")
+	})}
+	var calls [][]string
+	_, err := FetchIndex(context.Background(), okRunner(&calls), Options{
+		Product: "../cayo-ab",
+		Client:  client,
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid channel") {
+		t.Fatalf("FetchIndex invalid product error = %v", err)
+	}
+	if called {
+		t.Fatal("FetchIndex performed HTTP before rejecting an invalid product")
 	}
 }
 
