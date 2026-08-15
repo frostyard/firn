@@ -211,9 +211,9 @@ choose 'none'
 # group; Enter advances field focus in declaration order.
 expect_screen 'Hostname'
 type_line 'frn-tui-e2e'
-skip_field                             # locale (keep image default)
-skip_field                             # timezone
-skip_field                             # keyboard
+skip_field                             # locale (empty: keep image default)
+skip_field                             # timezone (empty: keep image default)
+skip_field                             # keyboard (empty: keep image default)
 type_line "$root_pubkey"               # root SSH authorized key
 # User form: create? (default Yes) → username, full name, password x2,
 # groups multi-select (sudo preselected), extra groups, user SSH key.
@@ -356,6 +356,11 @@ gssh "sudo /tmp/firn validate --secure-boot off --tpm off /tmp/recipe-out.toml" 
 }
 grep -q "family = \"$family\"" "$work/recipe-out.toml" \
   || { echo "e2e-tui: FAIL — generated recipe is not family $family" >&2; exit 1; }
+if grep -Eq '^[[:space:]]*(locale|timezone|keyboard)[[:space:]]*=' "$work/recipe-out.toml"; then
+  echo "e2e-tui: FAIL — skipped system fields must preserve image defaults" >&2
+  cat "$work/recipe-out.toml" >&2
+  exit 1
+fi
 
 gssh sudo poweroff 2>/dev/null || true
 wait "$qemu_pid" 2>/dev/null || true; qemu_pid=""

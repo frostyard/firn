@@ -334,12 +334,6 @@ func (w *wizard) appendMOKGroups(groups []*huh.Group) []*huh.Group {
 }
 
 func (w *wizard) systemForm() *huh.Form {
-	if w.c.locale == "" {
-		w.c.locale = "en_US.UTF-8"
-	}
-	if w.c.keyboard == "" {
-		w.c.keyboard = "us"
-	}
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
@@ -350,18 +344,20 @@ func (w *wizard) systemForm() *huh.Form {
 			huh.NewInput().
 				Title("Locale").
 				Description("Tab completes suggestions; empty keeps the image default.").
+				Placeholder("en_US.UTF-8").
 				Suggestions(commonLocales).
 				Value(&w.c.locale).
 				Validate(validateLocaleInput),
 			huh.NewInput().
 				Title("Timezone").
-				Description("IANA zone name, e.g. America/Chicago; empty keeps UTC.").
+				Description("IANA zone name, e.g. America/Chicago; empty keeps the image default.").
 				Suggestions(timezoneSuggestions(w.opts.Machine.ZoneinfoDir)).
 				Value(&w.c.timezone).
 				Validate(validateTimezoneInput(w.opts.Machine.ZoneinfoDir)),
 			huh.NewInput().
 				Title("Keyboard layout").
-				Description("XKB LAYOUT[:VARIANT[:MODEL]], e.g. us or de:nodeadkeys.").
+				Description("XKB LAYOUT[:VARIANT[:MODEL]], e.g. us or de:nodeadkeys; empty keeps the image default.").
+				Placeholder("us").
 				Suggestions(commonKeyboards).
 				Value(&w.c.keyboard).
 				Validate(validateKeyboardInput),

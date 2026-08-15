@@ -351,6 +351,22 @@ func TestSecurityFormDefaultsMOKWhenSecureBootIsActive(t *testing.T) {
 	}
 }
 
+func TestSystemFormDoesNotSeedOptionalImageDefaults(t *testing.T) {
+	w := &wizard{}
+	w.systemForm()
+	if w.c.locale != "" || w.c.timezone != "" || w.c.keyboard != "" {
+		t.Fatalf("system form seeded optional values: locale=%q timezone=%q keyboard=%q", w.c.locale, w.c.timezone, w.c.keyboard)
+	}
+
+	w.c.locale = "de_DE.UTF-8"
+	w.c.timezone = "Europe/Berlin"
+	w.c.keyboard = "de:nodeadkeys"
+	w.systemForm()
+	if w.c.locale != "de_DE.UTF-8" || w.c.timezone != "Europe/Berlin" || w.c.keyboard != "de:nodeadkeys" {
+		t.Fatalf("system form changed explicit values: %+v", w.c)
+	}
+}
+
 // TestRenderTOMLScoping: only the recipe's own family's fields are
 // emitted, and secrets never appear in the rendered recipe (spec rules
 // 1 and 6 — the review page shows this text).
