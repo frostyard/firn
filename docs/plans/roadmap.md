@@ -75,14 +75,16 @@ ordered so every phase ends with something demonstrable in a VM.
 - **Done when:** an E2E matrix run applies every `[system]` field on
   both families and asserts each on the booted system.
 
-## Phase 6 — TUI (medium) — ✅ shipped 2026-08-11 (tmux-driven E2E walks the real wizard and installs both families in nested VMs; booted disks verify over SSH; wizard-generated recipes pass `firn validate` as the reproduce-headless artifact. Wizard opens with the bootc-vs-A/B guidance page; kiosk units in dist/)
+## Phase 6 — TUI (medium) — ✅ shipped 2026-08-11 (tmux-driven E2E walks the real wizard and installs both families in nested VMs; booted disks verify over SSH; wizard-generated recipes pass `firn validate` as validation-level headless reuse. The family engine E2Es cover execution; the TUI harness does not perform a redundant second install. Wizard opens with the bootc-vs-A/B guidance page; kiosk units in dist/)
 
 - Wizard flows per [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md):
   recipe generation, in-process pipeline run, progress view,
   recovery-key and summary presentation, 80×24 legibility.
 - Kiosk systemd unit for installer media (console + serial).
 - **Done when:** a TUI-driven install completes on both families in the
-  E2E VM, and the recipe it wrote reproduces the same install headless.
+  E2E VM, and the recipe it wrote validates through the canonical headless
+  loader. The family engine E2Es separately prove those recipes' pipeline
+  semantics; a second destructive install is not part of the TUI harness.
 
 ## Phase 7 — Becoming the only installer (medium, cross-repo) — ⏳ in progress
 

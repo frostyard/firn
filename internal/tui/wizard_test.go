@@ -323,6 +323,82 @@ func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 	}
 }
 
+func TestWizardInteractiveBranchContracts(t *testing.T) {
+	t.Run("review start-over quit and install", func(t *testing.T) {
+		for _, tc := range []struct {
+			action          string
+			startOver, quit bool
+		}{
+			{action: actionInstall},
+			{action: actionStartOver, startOver: true},
+			{action: actionQuit, quit: true},
+		} {
+			startOver, quit := reviewAction(tc.action)
+			if startOver != tc.startOver || quit != tc.quit {
+				t.Errorf("reviewAction(%q) = (%v,%v), want (%v,%v)", tc.action, startOver, quit, tc.startOver, tc.quit)
+			}
+		}
+	})
+
+	t.Run("disk refusal and rescan", func(t *testing.T) {
+		reasons := map[string]string{"/dev/vda": "it is the disk this system is running from", "/dev/vdb": ""}
+		if err := diskChoiceError(reasons, "/dev/vda"); err == nil || !strings.Contains(err.Error(), "cannot install") {
+			t.Fatalf("refused disk error = %v", err)
+		}
+		if err := diskChoiceError(reasons, "/dev/vdb"); err != nil {
+			t.Fatalf("acceptable disk rejected: %v", err)
+		}
+		if !isRescanChoice(rescanValue) || isRescanChoice("/dev/vdb") {
+			t.Fatal("rescan sentinel branch is ambiguous with a real disk")
+		}
+	})
+
+	t.Run("no user", func(t *testing.T) {
+		c := baseChoices(abEntry())
+		c.varFilesystem = "ext4"
+		rec, err := assembleRecipe(c, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.System.User != nil {
+			t.Fatalf("declined user creation produced %+v", rec.System.User)
+		}
+	})
+
+	t.Run("alternate filesystem with TPM encryption", func(t *testing.T) {
+		c := baseChoices(bootcEntry())
+		c.filesystem = "xfs"
+		c.encryption = "tpm2-luks"
+		rec, err := assembleRecipe(c, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.Target.Filesystem != "xfs" || rec.Security.Encryption != "tpm2-luks" {
+			t.Fatalf("alternate TPM recipe = %+v", rec)
+		}
+		if issues := validateAssembled(rec, recipe.Env{TPM: true}); len(issues) != 0 {
+			t.Fatalf("alternate TPM recipe failed validation: %v", issues)
+		}
+	})
+
+	t.Run("Secure Boot MOK enrollment", func(t *testing.T) {
+		c := baseChoices(bootcEntry())
+		c.filesystem = "btrfs"
+		c.mok = "enroll"
+		c.mokPassword = "one-time-password"
+		rec, err := assembleRecipe(c, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.Security.Mok != "enroll" || rec.Security.MokPasswordFile == "" {
+			t.Fatalf("MOK enrollment recipe = %+v", rec.Security)
+		}
+		if issues := validateAssembled(rec, recipe.Env{SecureBoot: true}); len(issues) != 0 {
+			t.Fatalf("MOK enrollment recipe failed validation: %v", issues)
+		}
+	})
+}
+
 func TestSecurityFormDefaultsMOKWhenSecureBootIsActive(t *testing.T) {
 	for _, entry := range []CatalogEntry{abEntry(), bootcEntry()} {
 		w := &wizard{

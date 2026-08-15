@@ -142,22 +142,28 @@ func (w *wizard) diskPage(ctx context.Context) (quit bool, err error) {
 				Options(opts...).
 				Value(&choice).
 				Validate(func(v string) error {
-					if r := reasons[v]; r != "" {
-						return fmt.Errorf("cannot install to %s: %s", v, r)
-					}
-					return nil
+					return diskChoiceError(reasons, v)
 				}),
 		))
 		if quit, err = w.page(ctx, form); quit || err != nil {
 			return quit, err
 		}
-		if choice == rescanValue {
+		if isRescanChoice(choice) {
 			continue
 		}
 		w.c.disk = choice
 		return false, nil
 	}
 }
+
+func diskChoiceError(reasons map[string]string, choice string) error {
+	if reason := reasons[choice]; reason != "" {
+		return fmt.Errorf("cannot install to %s: %s", choice, reason)
+	}
+	return nil
+}
+
+func isRescanChoice(choice string) bool { return choice == rescanValue }
 
 func (w *wizard) filesystemForm() *huh.Form {
 	if w.c.entry.Family == recipe.FamilyAB {

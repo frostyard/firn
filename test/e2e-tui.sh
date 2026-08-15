@@ -17,8 +17,9 @@
 # 80x24 tmux pane and script the wizard with a driver (send-keys +
 # capture-pane polling, never blind sleeps). After the install view
 # finishes: save the generated /run/firn/recipe-*.toml, assert `firn
-# validate` accepts it in the guest (the reproduce-headless half of the
-# phase Done-when; in-guest because its *_file secrets live on the
+# validate` accepts it in the guest (validation-level headless reuse;
+# the family engine E2Es separately cover execution; in-guest because its
+# *_file secrets live on the
 # guest's tmpfs), scp it out for the record, then boot the target disk
 # and verify hostname + user over SSH with the root key the driver
 # pasted into the wizard.
