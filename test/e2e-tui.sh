@@ -41,6 +41,17 @@ hostname=frn-tui-e2e
 # Which family the wizard installs: ab (default) or bootc. Run both to
 # satisfy the phase Done-when.
 family=${FIRN_E2E_TUI_FAMILY:-ab}
+case $family in
+  ab|bootc) ;;
+  *) echo "e2e-tui: FIRN_E2E_TUI_FAMILY must be ab or bootc" >&2; exit 2 ;;
+esac
+# A mixed fixture exercises the family picker; a single-family fixture proves
+# the wizard skips that page rather than offering an unavailable family.
+catalog_mode=${FIRN_E2E_TUI_CATALOG:-mixed}
+case $catalog_mode in
+  mixed|single) ;;
+  *) echo "e2e-tui: FIRN_E2E_TUI_CATALOG must be mixed or single" >&2; exit 2 ;;
+esac
 sshport=2225
 inst_port=2226
 base_url=https://cloud.debian.org/images/cloud/trixie/latest
@@ -102,6 +113,13 @@ set -euo pipefail
 COSIGN
 chmod 0755 "$work/cosign"
 printf '%s\n' 'e2e-tui public-key placeholder' >"$work/cosign.pub"
+if [[ $catalog_mode == single && $family == bootc ]]; then
+  printf '%s\n' '[{"family":"bootc","name":"cayo","description":"E2E bootc image","ref":"ghcr.io/frostyard/cayo:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"}]' >"$work/catalog.json"
+elif [[ $catalog_mode == single ]]; then
+  printf '%s\n' '[{"family":"ab","name":"cayo-ab","description":"E2E A/B image","product":"cayo-ab"}]' >"$work/catalog.json"
+else
+  printf '%s\n' '[{"family":"bootc","name":"cayo","description":"E2E bootc image","ref":"ghcr.io/frostyard/cayo:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"},{"family":"ab","name":"cayo-ab","description":"E2E A/B image","product":"cayo-ab"}]' >"$work/catalog.json"
+fi
 
 # The tmux driver script, run INSIDE the guest. Quoted heredoc: nothing
 # here is host-expanded; the pubkey is read in-guest from /tmp/id_e2e.pub.
@@ -119,6 +137,7 @@ set -uo pipefail
 S=firn
 INSTALL_TIMEOUT=${INSTALL_TIMEOUT:-540}
 FAMILY=${FAMILY:-ab}
+CATALOG_MODE=${CATALOG_MODE:-mixed}
 
 cap() { tmux capture-pane -pt "$S" 2>/dev/null || true; }
 
@@ -188,11 +207,13 @@ tmux new-session -d -s "$S" -x 80 -y 24 'sudo /tmp/firn; echo "FIRN-EXIT:$?"; sl
 # page titles and field order must stay in sync) ----
 expect_screen 'snosi installer'        # welcome note
 tmux send-keys -t "$S" Enter
-expect_screen 'Update mechanism'       # family guidance: bootc vs A/B
-if [[ $FAMILY == bootc ]]; then
-  choose 'long-term path'
-else
-  choose 'proven path'
+if [[ $CATALOG_MODE == mixed ]]; then
+  expect_screen 'Update mechanism'     # family guidance: represented families only
+  if [[ $FAMILY == bootc ]]; then
+    choose 'long-term path'
+  else
+    choose 'proven path'
+  fi
 fi
 expect_screen 'What to install'        # image: catalog filtered to family
 choose 'cayo\b'                        # filtered list: no cayo/cayo-ab clash
@@ -291,7 +312,7 @@ gssh() { ssh "${sshopts[@]}" -p "$inst_port" debian@127.0.0.1 "$@"; }
 gscp() { scp "${sshopts[@]}" -P "$inst_port" "$@"; }
 
 cp "$ovmf_vars" "$work/vars.fd"
-echo "e2e-tui: booting installer VM (the TUI installs cayo-ab to the guest's /dev/vdb)"
+echo "e2e-tui: booting installer VM (the TUI installs cayo for family $family to the guest's /dev/vdb)"
 qemu-system-x86_64 \
   -m 4096 -smp 2 -enable-kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$ovmf_code" \
@@ -313,7 +334,7 @@ done
 ((up)) || { echo "e2e-tui: FAIL — installer VM never reachable over SSH (console: $work/installer-console.log)" >&2; exit 1; }
 
 echo "e2e-tui: staging firn + driver into the installer VM"
-gscp "$work/firn" "$work/pubring.gpg" "$work/cosign" "$work/cosign.pub" "$work/id_e2e.pub" "$work/driver.sh" debian@127.0.0.1:/tmp/ >/dev/null
+gscp "$work/firn" "$work/pubring.gpg" "$work/cosign" "$work/cosign.pub" "$work/catalog.json" "$work/id_e2e.pub" "$work/driver.sh" debian@127.0.0.1:/tmp/ >/dev/null
 # tmux drives the TUI; xz/gpgv are the A/B pipeline's tools. The
 extra_pkgs=""
 [[ $family == bootc ]] && extra_pkgs="podman skopeo btrfs-progs dosfstools parted"
@@ -322,12 +343,13 @@ extra_pkgs=""
 gssh "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update -q && apt-get install -y -q tmux xz-utils gpgv $extra_pkgs' \
   && sudo install -D -m 0644 /tmp/pubring.gpg /usr/lib/snosi/os-update-pubring.gpg \
   && sudo install -D -m 0644 /tmp/cosign.pub /usr/lib/snosi/cosign.pub \
+  && sudo install -D -m 0644 /tmp/catalog.json /etc/firn/catalog.json \
   && sudo install -m 0755 /tmp/cosign /usr/local/bin/cosign" >/dev/null 2>&1 || {
   echo "e2e-tui: FAIL — could not prepare the guest (tmux/tools/trust roots)" >&2; exit 1; }
 
-echo "e2e-tui: driving the TUI wizard inside the VM (tmux, 80x24, family $family)"
+echo "e2e-tui: driving the TUI wizard inside the VM (tmux, 80x24, family $family, catalog $catalog_mode)"
 set +e
-gssh "INSTALL_TIMEOUT=$timeout FAMILY=$family bash /tmp/driver.sh" >"$work/driver.log" 2>&1
+gssh "INSTALL_TIMEOUT=$timeout FAMILY=$family CATALOG_MODE=$catalog_mode bash /tmp/driver.sh" >"$work/driver.log" 2>&1
 drc=$?
 set -e
 # Pull debug artifacts regardless of outcome.

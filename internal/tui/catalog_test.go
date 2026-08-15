@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -77,6 +78,7 @@ func TestLoadCatalogOverrideErrors(t *testing.T) {
 		"missing name":       `[{"family": "bootc", "ref": "r"}]`,
 		"bad family":         `[{"family": "flatcar", "name": "x", "ref": "r"}]`,
 		"bootc no ref":       `[{"family": "bootc", "name": "x"}]`,
+		"bootc invalid ref":  `[{"family": "bootc", "name": "x", "ref": "ghcr.io/foo bar:latest"}]`,
 		"ab no product":      `[{"family": "ab", "name": "x"}]`,
 		"ab bad product":     `[{"family": "ab", "name": "x", "product": "../Snow.*-ab"}]`,
 		"ab with ref":        `[{"family": "ab", "name": "x", "product": "p", "ref": "r"}]`,
@@ -95,6 +97,30 @@ func TestLoadCatalogOverrideErrors(t *testing.T) {
 			}
 			if len(entries) != len(builtinCatalog()) {
 				t.Errorf("bad override must fall back to built-ins, got %d entries", len(entries))
+			}
+		})
+	}
+}
+
+func TestCatalogFamiliesRepresented(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []CatalogEntry
+		want    []string
+	}{
+		{name: "bootc only", entries: []CatalogEntry{bootcEntry()}, want: []string{recipe.FamilyBootc}},
+		{name: "A/B only", entries: []CatalogEntry{abEntry()}, want: []string{recipe.FamilyAB}},
+		{
+			name:    "mixed",
+			entries: []CatalogEntry{bootcEntry(), abEntry()},
+			want:    []string{recipe.FamilyBootc, recipe.FamilyAB},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := catalogFamilies(orderedCatalog(tt.entries))
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("catalogFamilies() = %v, want %v", got, tt.want)
 			}
 		})
 	}
