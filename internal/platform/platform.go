@@ -4,9 +4,14 @@
 package platform
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 )
+
+// ErrUEFIRequired is the shared hardware-floor diagnostic for every
+// frontend. Firn supports no legacy-BIOS install path (ADR-0004).
+var ErrUEFIRequired = errors.New("this machine did not boot via UEFI; firn supports UEFI machines only (docs/adr/0004-single-installer-scope-and-support-matrix.md)")
 
 // EFIVarsDir and device paths are variables for tests.
 var (
@@ -19,6 +24,15 @@ var (
 func UEFI() bool {
 	fi, err := os.Stat(efiDir)
 	return err == nil && fi.IsDir()
+}
+
+// RequireUEFI enforces firn's hardware floor after probing or applying a
+// command-line override.
+func RequireUEFI(uefi bool) error {
+	if !uefi {
+		return ErrUEFIRequired
+	}
+	return nil
 }
 
 // SecureBoot reports whether Secure Boot is active. The SecureBoot

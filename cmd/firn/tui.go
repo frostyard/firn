@@ -35,6 +35,11 @@ type tuiOptions struct {
 	pubring    string
 }
 
+type tuiRuntime struct {
+	holdError func(context.Context, string, error) error
+	runWizard func(context.Context, tui.WizardOpts) (*recipe.Recipe, error)
+}
+
 // recipeDir is where the wizard's generated recipe artifact lands.
 // Under /run so it never survives a reboot of the installer
 // environment; 0700/0600 because it can carry a password hash and
@@ -42,6 +47,13 @@ type tuiOptions struct {
 const recipeDir = "/run/firn"
 
 func runTUI(parent context.Context, o tuiOptions) error {
+	return runTUIWithRuntime(parent, o, tuiRuntime{
+		holdError: tui.HoldError,
+		runWizard: tui.RunWizard,
+	})
+}
+
+func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) error {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -64,6 +76,9 @@ func runTUI(parent context.Context, o tuiOptions) error {
 	if env.UEFI, err = tristate(o.uefi, platform.UEFI); err != nil {
 		return tui.HoldError(ctx, "installer setup failed", fmt.Errorf("--uefi: %w", err))
 	}
+	if err := platform.RequireUEFI(env.UEFI); err != nil {
+		return rt.holdError(ctx, "unsupported machine", err)
+	}
 
 	// The catalog is a convenience, not a gate: a load problem is a
 	// note on stderr and the wizard falls back to built-ins.
@@ -74,7 +89,7 @@ func runTUI(parent context.Context, o tuiOptions) error {
 		notices = append(notices, warn.Error())
 	}
 
-	r, err := tui.RunWizard(ctx, tui.WizardOpts{
+	r, err := rt.runWizard(ctx, tui.WizardOpts{
 		Runner:  env.Runner,
 		Machine: env.Machine,
 		UEFI:    env.UEFI,

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,8 +10,19 @@ import (
 	"testing"
 
 	"github.com/frostyard/firn/internal/disk"
+	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/recipe"
 )
+
+func TestRunWizardRejectsNonUEFIBeforeCatalogOrChoices(t *testing.T) {
+	rec, err := RunWizard(context.Background(), WizardOpts{UEFI: false})
+	if !errors.Is(err, platform.ErrUEFIRequired) {
+		t.Fatalf("RunWizard error = %v, want shared UEFI diagnostic", err)
+	}
+	if rec != nil {
+		t.Fatalf("RunWizard returned recipe on unsupported machine: %+v", rec)
+	}
+}
 
 func bootcEntry() CatalogEntry {
 	return CatalogEntry{Family: recipe.FamilyBootc, Name: "snow", Description: "d", Ref: "ghcr.io/frostyard/snow:latest"}

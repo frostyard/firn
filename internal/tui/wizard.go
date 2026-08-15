@@ -20,6 +20,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 
+	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/runner"
 )
@@ -42,6 +43,9 @@ type WizardOpts struct {
 // (nil, nil) when the user quits or aborts; an error only on real
 // failures (I/O, disk enumeration, or an internal wizard bug).
 func RunWizard(ctx context.Context, o WizardOpts) (*recipe.Recipe, error) {
+	if err := platform.RequireUEFI(o.UEFI); err != nil {
+		return nil, err
+	}
 	catalog := o.Catalog
 	if len(catalog) == 0 {
 		var warn error

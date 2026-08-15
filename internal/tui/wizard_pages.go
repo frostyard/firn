@@ -32,10 +32,6 @@ func (w *wizard) welcomeForm() *huh.Form {
 	b.WriteString("then installs. Nothing is written to disk before you confirm.\n\n")
 	fmt.Fprintf(&b, "Machine: UEFI %s, Secure Boot %s, TPM 2.0 %s\n",
 		yesNo(w.opts.UEFI), activeInactive(w.opts.Machine.SecureBoot), presentAbsent(w.opts.Machine.TPM))
-	if !w.opts.UEFI {
-		b.WriteString("\nWARNING: this machine did not boot via UEFI. snosi images\n")
-		b.WriteString("require UEFI boot; the install will not produce a bootable system.\n")
-	}
 	if len(w.opts.Notices) > 0 {
 		b.WriteString("\nNOTICES:\n")
 		for _, notice := range w.opts.Notices {
