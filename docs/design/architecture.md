@@ -44,10 +44,12 @@ after a start-over.
 
 Each interactive run owns a randomly named 0700 directory below `/run/firn`.
 The reviewed recipe references only 0600 secret files in that directory, and
-the persisted artifact is `recipe.toml` beside them. Start-over, quit, abort,
-and pre-persistence errors remove abandoned plaintext; once the recipe is
-persisted, the directory remains available for the printed headless
-reproduction command until the installer environment reboots.
+the wizard's canonical serializer returns the accepted review bytes directly
+to the command layer. That layer writes them unchanged as `recipe.toml` beside
+the secrets, reloads that file, and gives the loaded recipe to the engine.
+Start-over, quit, abort, and pre-persistence errors remove abandoned plaintext;
+once the recipe is persisted, the directory remains available for the printed
+headless reproduction command until the installer environment reboots.
 Encrypted A/B wizard choices set `recovery_key_out` to `recovery-key` in that
 same session, giving the one-time on-screen disclosure a durable private copy.
 
