@@ -87,7 +87,7 @@ contain the key.
 
 | Artifact | Derivation |
 | --- | --- |
-| TUI progress view | Renders the same event structs pre-serialization. |
+| TUI progress view | Renders the same event structs pre-serialization. Warning and error stable codes remain visible alongside their messages; `flatpak_unreachable` is expanded into an intelligible sentence without dropping the code. |
 | E2E test assertions | Tests assert on `code` values and terminal events. |
 
 ## References

@@ -12,6 +12,7 @@ import (
 
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/platform"
+	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/tui"
 )
@@ -229,7 +230,7 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 		isErr   error
 	}{
 		{name: "done", result: tui.InstallResult{Done: true}},
-		{name: "pipeline failure", result: tui.InstallResult{Failed: true, FailedStep: "partition", ErrorMessage: "disk busy"}, wantErr: "install failed at partition: disk busy"},
+		{name: "pipeline failure", result: tui.InstallResult{Failed: true, FailedStep: "partition", ErrorCode: progress.CodeStepFailed, ErrorMessage: "disk busy"}, wantErr: "install failed at partition [step_failed]: disk busy"},
 		{name: "view failure", uiErr: uiFailure, isErr: uiFailure},
 		{name: "cancelled", wantErr: "install cancelled"},
 	}
