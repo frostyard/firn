@@ -73,7 +73,7 @@ omitting a required field here is a validation error, never a default.
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `name` | string | yes | POSIX username, `[a-z_][a-z0-9_-]*`, ≤ 32 chars. |
-| `fullname` | string | no | GECOS comment. |
+| `fullname` | string | no | GECOS comment. Empty and Unicode values are valid; `:`, CR, and LF are rejected so both image-family writers produce the same passwd field. |
 | `password_file` | string (path) | one of these two | 0600 file containing the plaintext password (hashed by firn, SHA-512 crypt). |
 | `password_hash` | string | one of these two | Pre-computed `$…` crypt hash, passed through verbatim. |
 | `groups` | array of string | no | Supplementary groups; each MUST exist in the image or be in firn's known-safe join list. |

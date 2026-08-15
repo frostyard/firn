@@ -765,6 +765,16 @@ func TestLiveValidators(t *testing.T) {
 			t.Errorf("username %q accepted, want rejection", bad)
 		}
 	}
+	for _, valid := range []string{"", "Ada Lovelace", "Zoë 雪"} {
+		if err := validateFullnameInput(valid); err != nil {
+			t.Errorf("full name %q rejected: %v", valid, err)
+		}
+	}
+	for _, bad := range []string{"Bad:Name", "Bad\nName", "Bad\rName"} {
+		if validateFullnameInput(bad) == nil {
+			t.Errorf("full name %q accepted, want rejection", bad)
+		}
+	}
 	if err := validateLocaleInput("en_US.UTF-8"); err != nil {
 		t.Errorf("valid locale rejected: %v", err)
 	}

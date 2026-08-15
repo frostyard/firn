@@ -471,14 +471,11 @@ func TestOverlayCreateUserVariants(t *testing.T) {
 		}
 	})
 
-	t.Run("gecos sanitized", func(t *testing.T) {
+	t.Run("invalid gecos rejected before reading the image", func(t *testing.T) {
 		w := newOverlayWriter(t)
-		if _, err := w.CreateUser(recipe.User{Name: "bob", Fullname: "Bad:Guy\nHere"}); err != nil {
-			t.Fatal(err)
-		}
-		got := readOverlayFile(t, filepath.Join(upperOf(w), "passwd"), 0o644)
-		if !strings.Contains(got, "bob:x:1002:1002:Bad Guy Here:/var/home/bob:/bin/bash\n") {
-			t.Errorf("gecos not sanitized:\n%s", got)
+		w.RootDir = t.TempDir()
+		if _, err := w.CreateUser(recipe.User{Name: "bob", Fullname: "Bad:Guy\nHere"}); err == nil || !strings.Contains(err.Error(), "full name") {
+			t.Fatalf("invalid full name error = %v", err)
 		}
 	})
 

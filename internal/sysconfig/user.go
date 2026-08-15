@@ -42,6 +42,12 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) (missi
 	if u.Name == "" {
 		return nil, nil
 	}
+	// Deliberate convergence from fisherman (which lets useradd reject bad
+	// comments late) and snosi-install (which silently replaces delimiters):
+	// the shared recipe contract rejects them before either writer mutates.
+	if err := recipe.ValidateFullname(u.Fullname); err != nil {
+		return nil, fmt.Errorf("invalid user full name: %w", err)
+	}
 
 	lay, err := w.resolve(ctx)
 	if err != nil {

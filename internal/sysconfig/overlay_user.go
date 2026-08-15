@@ -128,6 +128,12 @@ func (w *OverlayWriter) CreateUser(u recipe.User) (missing []string, err error) 
 	if u.Name == "" {
 		return nil, nil
 	}
+	// Deliberate convergence from fisherman (which lets useradd reject bad
+	// comments late) and snosi-install (which silently replaces delimiters):
+	// the shared recipe contract rejects them before either writer mutates.
+	if err := recipe.ValidateFullname(u.Fullname); err != nil {
+		return nil, fmt.Errorf("invalid user full name: %w", err)
+	}
 	// The pristine /etc baseline ships at the erofs root's top-level
 	// .etc.lower (the overlay's lowerdir; snosi-install seed_first_user
 	// lines 1061-1062), NOT at /etc — the image's runtime /etc is the
@@ -203,16 +209,12 @@ func (w *OverlayWriter) CreateUser(u recipe.User) (missing []string, err error) 
 	}
 	lastchg := overlayNow().Unix() / 86400 // days since epoch, as the bash's $(date +%s)/86400
 
-	// GECOS sanitization ported verbatim: ':' would split the passwd line,
-	// '\n' would split the file.
-	gecos := strings.NewReplacer(":", " ", "\n", " ").Replace(u.Fullname)
-
 	// Field layouts ported from seed_first_user's printf appends. Home is
 	// written as /var/home/<name> — the runtime path — where the bash wrote
 	// /home/<name>; the image ships /home as a symlink to /var/home, so
 	// both resolve identically on the booted system.
 	idStr := strconv.Itoa(id)
-	passwd.lines = append(passwd.lines, []string{u.Name, "x", idStr, idStr, gecos, "/var/home/" + u.Name, "/bin/bash"})
+	passwd.lines = append(passwd.lines, []string{u.Name, "x", idStr, idStr, u.Fullname, "/var/home/" + u.Name, "/bin/bash"})
 	group.lines = append(group.lines, []string{u.Name, "x", idStr, ""})
 	shadow.lines = append(shadow.lines, []string{u.Name, hash, strconv.FormatInt(lastchg, 10), "0", "99999", "7", "", "", ""})
 	if gshadow != nil {

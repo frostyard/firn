@@ -586,6 +586,10 @@ func validateUsernameInput(name string) error {
 	return nil
 }
 
+func validateFullnameInput(fullname string) error {
+	return recipe.ValidateFullname(strings.TrimSpace(fullname))
+}
+
 func validateLocaleInput(locale string) error {
 	locale = strings.TrimSpace(locale)
 	if locale != "" && !localeInputRe.MatchString(locale) {
