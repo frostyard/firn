@@ -27,7 +27,7 @@ Top level:
 | `ref` | string | bootc: yes | OCI image reference. bootc-only field. |
 | `target_ref` | string | no | Post-install upgrade ref; defaults to `ref`. bootc-only. |
 | `cosign_pub_key` | string (path) | no | Enables cosign verification of `ref`. bootc-only. |
-| `product` | string | ab: yes | A/B channel, e.g. `"snow-ab"`. ab-only field. |
+| `product` | string | ab: yes | A/B publication channel matching `^[a-z0-9][a-z0-9._-]*$`; bare names such as `"snow"` and channel names such as `"snow-ab"` are valid. ab-only field. |
 | `origin` | string (URL) | no | Artifact origin; default `https://repository.frostyard.org`. ab-only. |
 | `release` | string | no | Pin an A/B release (14-digit version); default: newest in the signed index. ab-only. |
 

@@ -121,7 +121,11 @@ var (
 	versionRE = regexp.MustCompile(`^[0-9]{14}$`)
 )
 
-func validateChannel(channel string) error {
+// ValidateChannel enforces the frozen publication channel grammar shared by
+// recipe validation, TUI catalogs, and artifact lookup. The parent installer
+// accepted only its fixed VALID_PRODUCTS list; Firn deliberately permits new
+// signed products while retaining the publisher's exact naming boundary.
+func ValidateChannel(channel string) error {
 	if !channelRE.MatchString(channel) {
 		return fmt.Errorf("invalid channel %q (expected lowercase name like cayo-ab)", channel)
 	}
@@ -157,7 +161,7 @@ func (i *Index) Sha256(name string) (string, bool) {
 // snosi-update-status). Errors when the channel has no published
 // manifest (snosi-install line 1518's die).
 func (i *Index) LatestVersion(channel string) (string, error) {
-	if err := validateChannel(channel); err != nil {
+	if err := ValidateChannel(channel); err != nil {
 		return "", err
 	}
 	prefix := channel + "_"
@@ -221,6 +225,9 @@ func FetchIndex(ctx context.Context, r *runner.Runner, o Options) (*Index, error
 	o = o.withDefaults()
 	if o.Product == "" {
 		return nil, errors.New("trust: Options.Product is required")
+	}
+	if err := ValidateChannel(o.Product); err != nil {
+		return nil, err
 	}
 	base := o.baseURL()
 
@@ -368,7 +375,7 @@ func DiskImageName(channel, version string) string {
 // fails closed and leaves any fallback policy to the caller.
 func FetchManifest(ctx context.Context, o Options, i *Index, channel, version string) (*Manifest, error) {
 	o = o.withDefaults()
-	if err := validateChannel(channel); err != nil {
+	if err := ValidateChannel(channel); err != nil {
 		return nil, err
 	}
 	if err := validateVersion(version); err != nil {
@@ -443,7 +450,7 @@ const MinimumVarBytes int64 = 4294967296 // 4 GiB
 // derivation and get a clear error rather than a guess.
 func MinimumDiskBytes(ctx context.Context, o Options, i *Index, channel, version string) (int64, error) {
 	o = o.withDefaults()
-	if err := validateChannel(channel); err != nil {
+	if err := ValidateChannel(channel); err != nil {
 		return 0, err
 	}
 	if err := validateVersion(version); err != nil {
