@@ -26,7 +26,7 @@ Top level:
 | `family` | string | yes | `"bootc"` or `"ab"`. Never inferred. |
 | `ref` | string | bootc: yes | OCI image reference. bootc-only field. |
 | `target_ref` | string | no | Post-install upgrade ref; defaults to `ref`. bootc-only. |
-| `cosign_pub_key` | string (path) | no | Enables cosign verification of `ref`. bootc-only. |
+| `cosign_pub_key` | string (path) | no | Enables independent cosign verification of a registry `ref`. Before any destructive step, Firn selects the source it would install (preferring a valid embedded containers-storage image), resolves it to an immutable `sha256` digest, runs `cosign verify --key` against that digest, and installs that same digest. Verification failure emits `image_verification_failed`. bootc-only. |
 | `product` | string | ab: yes | A/B publication channel matching `^[a-z0-9][a-z0-9._-]*$`; bare names such as `"snow"` and channel names such as `"snow-ab"` are valid. ab-only field. |
 | `origin` | string (URL) | no | Artifact origin; default `https://repository.frostyard.org`. ab-only. |
 | `release` | string | no | Pin an A/B release (14-digit version); default: newest in the signed index. ab-only. |

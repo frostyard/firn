@@ -66,7 +66,7 @@ func TestAssemblySplicesByOptions(t *testing.T) {
 		notWant []string
 	}{
 		{"bootc unencrypted", strings.Replace(bootcBase, "%s", "none", 1),
-			[]string{"preflight-uefi", "preflight-tools", "preflight-disk", "partition", "bootc-install", "retag-root", "finalize"},
+			[]string{"preflight-uefi", "preflight-tools", "preflight-image", "preflight-disk", "partition", "bootc-install", "retag-root", "finalize"},
 			[]string{"luks-format", "tpm-enroll", "stream-write", "esp-stage", "mok-stage"}},
 		{"bootc tpm2", strings.Replace(bootcBase, "%s", "tpm2-luks", 1),
 			[]string{"luks-format", "tpm-enroll", "retag-root"},
@@ -105,7 +105,7 @@ func TestAssemblySplicesByOptions(t *testing.T) {
 
 func TestPreflightStepsComeFirstAndDeclareTools(t *testing.T) {
 	p := Assemble(load(t, strings.Replace(bootcBase, "%s", "none", 1)))
-	for i, s := range p.Steps[:3] {
+	for i, s := range p.Steps[:4] {
 		if !s.Preflight {
 			t.Errorf("step %d (%s) should be preflight", i, s.Name)
 		}
@@ -120,6 +120,11 @@ func TestPreflightStepsComeFirstAndDeclareTools(t *testing.T) {
 	// demanded by preflight (server images / flatpak-less installers).
 	if slices.Contains(tools, "flatpak") {
 		t.Errorf("flatpak demanded without any flatpaks in the recipe: %v", tools)
+	}
+	withCosign := strings.Replace(strings.Replace(bootcBase, "%s", "none", 1),
+		`ref = "ghcr.io/frostyard/snow:latest"`, "ref = \"ghcr.io/frostyard/snow:latest\"\ncosign_pub_key = \"/key.pub\"", 1)
+	if !slices.Contains(Assemble(load(t, withCosign)).Tools(), "cosign") {
+		t.Error("cosign tool must be demanded when image verification is requested")
 	}
 	withFlatpaks := strings.Replace(strings.Replace(bootcBase, "%s", "none", 1),
 		`hostname = "h"`, "hostname = \"h\"\nflatpaks = [\"org.gnome.Calculator\"]", 1)
@@ -155,6 +160,8 @@ func TestDryRunVerdicts(t *testing.T) {
 				return []byte(lsblkJSON), nil
 			case "findmnt":
 				return []byte("overlay\n"), nil
+			case "skopeo":
+				return []byte(`{"schemaVersion":2}`), nil
 			}
 			return nil, errors.New("unexpected " + name)
 		},

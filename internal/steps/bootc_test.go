@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/runner"
 )
+
+const verifiedBootcDigest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
 
 // TestBootcPipelineEndToEnd drives the fully wired bootc pipeline
 // against a fake runner and a fixture composefs target tree: no real
@@ -35,6 +38,10 @@ func TestBootcPipelineEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(ukiDir, "7.1.3-amd64.efi"), []byte("fake-uki"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cosignKey := filepath.Join(t.TempDir(), "cosign.pub")
+	if err := os.WriteFile(cosignKey, []byte("public key"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// retag-root's WaitForPartition stats /dev/vda2, absent in this
@@ -68,7 +75,9 @@ func TestBootcPipelineEndToEnd(t *testing.T) {
 			case "env": // FLATPAK_SYSTEM_DIR download path
 				return nil, errors.New("network unreachable")
 			case "skopeo":
-				return []byte(`{"schemaVersion": 2}`), nil
+				return []byte(`{"Digest":"` + verifiedBootcDigest + `"}`), nil
+			case "cosign":
+				return nil, nil
 			case "objcopy":
 				// abimg.EnrollTPMFromUKI dumps the UKI's .pcrpkey; write a
 				// non-empty file so its extraction check passes.
@@ -95,11 +104,12 @@ func TestBootcPipelineEndToEnd(t *testing.T) {
 		},
 	)
 
-	src := `
+	src := fmt.Sprintf(`
 version = 1
 [image]
 family = "bootc"
 ref = "ghcr.io/frostyard/snow:latest"
+cosign_pub_key = %q
 [target]
 disk = "/dev/vda"
 filesystem = "btrfs"
@@ -116,7 +126,7 @@ flatpaks = ["org.mozilla.firefox"]
 name = "bjk"
 password_hash = "$6$salt$hash"
 groups = ["wheel"]
-`
+`, cosignKey)
 	l := load(t, src)
 	var events []progress.Event
 	env := &pipeline.Env{
@@ -177,21 +187,24 @@ groups = ["wheel"]
 	}
 	all := strings.Join(joined, "\n")
 	for _, want := range []string{
-		"sfdisk",                         // partitioning
-		"mkfs.fat -F32",                  // ESP
-		"luksFormat",                     // encryption
-		"mkfs.btrfs",                     // root
-		"btrfs subvolume create",         // subvolumes
-		"podman run --rm --privileged",   // bootc via podman
-		"--composefs-backend",            // snosi images require it
-		"useradd",                        // user creation
-		"sfdisk --part-type /dev/vda 2",  // retag-root -> DPS root GUID (encrypted too)
-		"cryptsetup luksOpen",            // retag reopens the mapper after retype
-		"systemd-cryptenroll",            // install-time TPM enrollment
-		"--tpm2-public-key-pcrs=11",      // bound to the UKI's signed PCR 11
-		"cryptsetup luksClose firn-root", // cleanup unwound
-		"umount",                         // target unmounted
-		"fstrim",                         // finalize
+		"sfdisk",                       // partitioning
+		"mkfs.fat -F32",                // ESP
+		"luksFormat",                   // encryption
+		"mkfs.btrfs",                   // root
+		"btrfs subvolume create",       // subvolumes
+		"podman run --rm --privileged", // bootc via podman
+		"cosign verify --key",          // preflight verifies a digest
+		"ghcr.io/frostyard/snow@" + verifiedBootcDigest, // verified source is installed
+		"--target-imgref ghcr.io/frostyard/snow:latest", // day-two tag retained
+		"--composefs-backend",                           // snosi images require it
+		"useradd",                                       // user creation
+		"sfdisk --part-type /dev/vda 2",                 // retag-root -> DPS root GUID (encrypted too)
+		"cryptsetup luksOpen",                           // retag reopens the mapper after retype
+		"systemd-cryptenroll",                           // install-time TPM enrollment
+		"--tpm2-public-key-pcrs=11",                     // bound to the UKI's signed PCR 11
+		"cryptsetup luksClose firn-root",                // cleanup unwound
+		"umount",                                        // target unmounted
+		"fstrim",                                        // finalize
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("expected %q in command sequence:\n%s", want, all)
@@ -202,6 +215,67 @@ groups = ["wheel"]
 	for _, line := range joined {
 		if env.LuksKey != "" && strings.Contains(line, env.LuksKey) {
 			t.Fatalf("recovery key leaked onto argv: %s", line)
+		}
+	}
+}
+
+func TestBootcVerificationFailureLeavesTargetUntouched(t *testing.T) {
+	key := filepath.Join(t.TempDir(), "cosign.pub")
+	if err := os.WriteFile(key, []byte("wrong public key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := fmt.Sprintf(`
+version = 1
+[image]
+family = "bootc"
+ref = "ghcr.io/frostyard/snow:latest"
+cosign_pub_key = %q
+[target]
+disk = "/dev/vda"
+filesystem = "btrfs"
+[security]
+encryption = "none"
+[system]
+hostname = "frost01"
+`, key)
+	l := load(t, src)
+	var commands []string
+	fake := runner.NewFake(
+		func(_ context.Context, name string, args ...string) ([]byte, error) {
+			commands = append(commands, strings.Join(append([]string{name}, args...), " "))
+			switch name {
+			case "skopeo":
+				if strings.HasPrefix(args[1], "docker://") {
+					return []byte(`{"Digest":"` + verifiedBootcDigest + `"}`), nil
+				}
+				return nil, errors.New("not cached")
+			case "cosign":
+				return nil, errors.New("no matching signatures")
+			default:
+				t.Fatalf("command %s ran after a preflight verification failure", name)
+				return nil, nil
+			}
+		},
+		func(name string) (string, error) { return "/usr/bin/" + name, nil },
+	)
+	var events []progress.Event
+	env := &pipeline.Env{
+		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
+		Emit: func(e progress.Event) { events = append(events, e) },
+	}
+	err := Assemble(l).Run(context.Background(), env, false)
+	if err == nil || !strings.Contains(err.Error(), "no matching signatures") {
+		t.Fatalf("pipeline verification error = %v", err)
+	}
+	terminal, ok := events[len(events)-1].(progress.Error)
+	if !ok || terminal.Step != "preflight-image" || terminal.Code != progress.CodeImageVerifyFailed {
+		t.Fatalf("terminal verification event = %#v", events[len(events)-1])
+	}
+	for _, command := range commands {
+		for _, destructive := range []string{"sfdisk", "wipefs", "mkfs", "cryptsetup", "bootc", "podman"} {
+			if strings.HasPrefix(command, destructive+" ") {
+				t.Fatalf("target-modifying command ran after failed verification: %s", command)
+			}
 		}
 	}
 }

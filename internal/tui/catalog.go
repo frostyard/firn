@@ -20,23 +20,29 @@ import (
 // catalogOverridePath, when present, replaces the built-in catalog.
 const catalogOverridePath = "/etc/firn/catalog.json"
 
+// The single installer ISO ships the snosi image-signing public key here.
+// Built-in bootc entries carry it into the generated recipe so interactive
+// installs take the same explicit trust path as headless recipes.
+const builtinCosignPubKey = "/usr/lib/snosi/cosign.pub"
+
 // CatalogEntry is one installable image the wizard offers. Ref is set
 // for bootc entries, Product for ab entries — never both.
 type CatalogEntry struct {
-	Family      string `json:"family"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Ref         string `json:"ref,omitempty"`
-	Product     string `json:"product,omitempty"`
+	Family       string `json:"family"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Ref          string `json:"ref,omitempty"`
+	CosignPubKey string `json:"cosign_pub_key,omitempty"`
+	Product      string `json:"product,omitempty"`
 }
 
 // builtinCatalog is the default snosi image catalog. Descriptions match
 // the snosi README's image table.
 func builtinCatalog() []CatalogEntry {
 	return []CatalogEntry{
-		{Family: recipe.FamilyBootc, Name: "snow", Description: "GNOME desktop with backports kernel", Ref: "ghcr.io/frostyard/snow:latest"},
-		{Family: recipe.FamilyBootc, Name: "snowfield", Description: "GNOME desktop with linux-surface kernel for Surface devices", Ref: "ghcr.io/frostyard/snowfield:latest"},
-		{Family: recipe.FamilyBootc, Name: "cayo", Description: "Headless server with podman and backports kernel", Ref: "ghcr.io/frostyard/cayo:latest"},
+		{Family: recipe.FamilyBootc, Name: "snow", Description: "GNOME desktop with backports kernel", Ref: "ghcr.io/frostyard/snow:latest", CosignPubKey: builtinCosignPubKey},
+		{Family: recipe.FamilyBootc, Name: "snowfield", Description: "GNOME desktop with linux-surface kernel for Surface devices", Ref: "ghcr.io/frostyard/snowfield:latest", CosignPubKey: builtinCosignPubKey},
+		{Family: recipe.FamilyBootc, Name: "cayo", Description: "Headless server with podman and backports kernel", Ref: "ghcr.io/frostyard/cayo:latest", CosignPubKey: builtinCosignPubKey},
 		{Family: recipe.FamilyAB, Name: "snow-ab", Description: "Native A/B GNOME desktop with backports kernel", Product: "snow-ab"},
 		{Family: recipe.FamilyAB, Name: "snowfield-ab", Description: "Native A/B GNOME desktop with linux-surface kernel", Product: "snowfield-ab"},
 		{Family: recipe.FamilyAB, Name: "cayo-ab", Description: "Native A/B headless server with podman", Product: "cayo-ab"},
@@ -99,6 +105,9 @@ func checkCatalog(entries []CatalogEntry) error {
 			}
 			if e.Ref != "" {
 				return fmt.Errorf("entry %q: ref applies only to family %q", e.Name, recipe.FamilyBootc)
+			}
+			if e.CosignPubKey != "" {
+				return fmt.Errorf("entry %q: cosign_pub_key applies only to family %q", e.Name, recipe.FamilyBootc)
 			}
 		default:
 			return fmt.Errorf("entry %q: family must be %q or %q, got %q", e.Name, recipe.FamilyBootc, recipe.FamilyAB, e.Family)

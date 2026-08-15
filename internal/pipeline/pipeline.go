@@ -54,6 +54,10 @@ type Env struct {
 	LuksKey    string // transient unlock key (first-boot TPM staging / A/B enrollment)
 	TargetDir  string // where the target filesystem tree is mounted
 	ScratchDir string // disk-backed scratch space (podman tmp etc.)
+	// BootcSourceRef is the source selected by preflight-image. When
+	// cosign verification is requested, it is the verified immutable digest;
+	// the original recipe ref remains the day-two tracking reference.
+	BootcSourceRef string
 	// SecureImageRoot is an extracted tree of the secure image's
 	// usr/lib/{snosi,shim} subtrees (secureboot.ExtractSecureImageRoot),
 	// populated by bootc-install for a secure bootc install and consumed by
@@ -115,6 +119,31 @@ type Pipeline struct {
 	Steps []Step
 }
 
+type codedError struct {
+	code string
+	err  error
+}
+
+func (e codedError) Error() string { return e.err.Error() }
+func (e codedError) Unwrap() error { return e.err }
+
+// WithErrorCode marks err with the stable progress-protocol code the terminal
+// error event should carry. Step context is still added by Pipeline.Run.
+func WithErrorCode(code string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return codedError{code: code, err: err}
+}
+
+func errorCode(err error) string {
+	var coded codedError
+	if errors.As(err, &coded) {
+		return coded.code
+	}
+	return progress.CodeStepFailed
+}
+
 // ProgressSteps returns the step list in progress-protocol form.
 func (p *Pipeline) ProgressSteps() []progress.Step {
 	out := make([]progress.Step, len(p.Steps))
@@ -150,11 +179,11 @@ func (p *Pipeline) Run(ctx context.Context, env *Env, dryRun bool) error {
 
 	failedStep, runErr := p.runSteps(ctx, env, dryRun)
 	for _, cerr := range env.unwind() {
-		env.Emit(progress.Warning{Code: "cleanup_failed", Message: cerr.Error()})
+		env.Emit(progress.Warning{Code: progress.CodeCleanupFailed, Message: cerr.Error()})
 		runErr = errors.Join(runErr, cerr)
 	}
 	if runErr != nil {
-		env.Emit(progress.Error{Step: failedStep, Code: "step_failed", Message: runErr.Error()})
+		env.Emit(progress.Error{Step: failedStep, Code: errorCode(runErr), Message: runErr.Error()})
 		return runErr
 	}
 	if len(env.Summary) > 0 {

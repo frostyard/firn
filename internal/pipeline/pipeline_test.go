@@ -118,6 +118,23 @@ func TestNilRunStepFailsOutsideDryRun(t *testing.T) {
 	}
 }
 
+func TestCodedErrorSetsTerminalProgressCode(t *testing.T) {
+	env, events := collectEnv()
+	p := &Pipeline{Steps: []Step{{Name: "verify", Run: func(_ context.Context, _ *Env) error {
+		return WithErrorCode(progress.CodeImageVerifyFailed, errors.New("bad signature"))
+	}}}}
+	if err := p.Run(context.Background(), env, false); err == nil {
+		t.Fatal("expected verification failure")
+	}
+	terminal, ok := (*events)[len(*events)-1].(progress.Error)
+	if !ok {
+		t.Fatalf("terminal event = %T, want progress.Error", (*events)[len(*events)-1])
+	}
+	if terminal.Step != "verify" || terminal.Code != progress.CodeImageVerifyFailed {
+		t.Fatalf("terminal error = %+v", terminal)
+	}
+}
+
 func TestToolsDeduplicated(t *testing.T) {
 	p := &Pipeline{Steps: []Step{
 		{Name: "a", Tools: []string{"sfdisk", "mount"}},

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/trust"
 )
 
@@ -140,6 +141,9 @@ func validateImage(l *Loaded, family string, add func(code, field, format string
 		}
 		if img.CosignPubKey != "" {
 			checkFile(img.CosignPubKey, "image.cosign_pub_key", false, add)
+			if !bootcimg.IsRegistryRef(img.Ref) {
+				add(CodeEnum, "image.ref", "cosign verification requires a registry image reference")
+			}
 		}
 	case FamilyAB:
 		if img.Product == "" {

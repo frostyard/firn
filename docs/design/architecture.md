@@ -79,6 +79,10 @@ both installers' rules: mounted anywhere, RAID/LVM member, the installer's
 own boot medium, undersized. For the A/B path, minimum sizes are computed
 from the image's published manifest/repart artifacts, not from a
 hand-copied constant table (fixing a documented `snosi-install` hazard).
+For bootc recipes that set `image.cosign_pub_key`, preflight selects the
+same embedded-or-remote source the install will consume, resolves it to an
+immutable digest, verifies that digest with cosign, and carries the pinned
+reference into both native-bootc and podman installation paths.
 
 ### The bootc path
 
@@ -145,12 +149,20 @@ silently drop) what was unreachable.
 
 ### Trust
 
-`internal/trust` speaks both systems: cosign verification of OCI image
-references (bootc, carried from fisherman including digest pinning for
-secure installs) and OpenPGP verification of the A/B artifact index via
-`gpgv` against the shipped pubring. Nothing is installed from an
-unverified source; verification failures abort before destructive steps
-where possible (see Operational notes for the A/B stream exception).
+Bootc cosign trust is implemented in `internal/bootcimg`, carried from
+fisherman with digest pinning: `image.cosign_pub_key` makes Firn resolve and
+verify the immutable source digest before disk writes, while retaining the
+recipe tag only as the installed system's day-two update reference. The
+built-in TUI bootc catalog supplies the installer medium's
+`/usr/lib/snosi/cosign.pub`; override catalogs may supply their own key path.
+Headless recipes that omit the field rely on the host container policy and
+cached-image provenance; Firn does not claim independent cosign verification
+for that case.
+
+`internal/trust` performs OpenPGP verification of the A/B artifact index via
+`gpgv` against the shipped pubring. Verification failures abort before
+destructive steps where possible (see Operational notes for the A/B stream
+exception).
 
 ### Progress and frontends
 
@@ -166,6 +178,9 @@ confirmation and never repeats it into logs after the TUI exits. Headless
 renderers deliberately expose it on their selected progress stream, whose
 caller must protect it; the exact boundaries are pinned by the
 [progress protocol](../specs/progress-protocol.md#recovery-key-disclosure).
+Catalog-selected bootc images carry their cosign public-key path into the
+same generated recipe reviewed by the user, so the interactive trust path
+uses the same engine preflight as headless installation.
 
 ## Operational notes
 

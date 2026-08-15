@@ -23,12 +23,16 @@ func Assemble(l *recipe.Loaded) *pipeline.Pipeline {
 	}
 
 	p := &pipeline.Pipeline{Steps: work}
-	p.Steps = append(preflightSteps(p), work...)
+	p.Steps = append(preflightSteps(p, r), work...)
 	return p
 }
 
 func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 	encrypted := r.Security.Encryption != "none"
+	bootcTools := []string{"podman", "skopeo", "mount", "umount"}
+	if r.Image.CosignPubKey != "" {
+		bootcTools = append(bootcTools, "cosign")
+	}
 	steps := []pipeline.Step{
 		{Name: "partition", Weight: 5, Destructive: true,
 			Tools: []string{"sfdisk", "wipefs", "partprobe", "udevadm"}, Run: runPartition},
@@ -45,7 +49,7 @@ func bootcSteps(r *recipe.Recipe) []pipeline.Step {
 		pipeline.Step{Name: "mount-target", Weight: 1, Destructive: false,
 			Tools: []string{"mount", "umount"}, Run: runMountTarget},
 		pipeline.Step{Name: "bootc-install", Weight: 55, Destructive: true,
-			Tools: []string{"podman", "skopeo", "mount", "umount"}, Run: runBootcInstall},
+			Tools: bootcTools, Run: runBootcInstall},
 	)
 	if r.Security.Encryption == "tpm2-luks" || r.Security.Encryption == "tpm2-luks-passphrase" {
 		// Enroll a TPM2 token at install time bound to the deployed UKI's

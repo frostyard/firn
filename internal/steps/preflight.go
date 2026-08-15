@@ -5,18 +5,20 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/progress"
+	"github.com/frostyard/firn/internal/recipe"
 )
 
 // preflightSteps builds the checks that run before anything
 // destructive — in dry-run mode they are the only steps that execute.
 // The tool check is derived from p's assembled work steps
 // (docs/design/architecture.md, "Preflight").
-func preflightSteps(p *pipeline.Pipeline) []pipeline.Step {
-	return []pipeline.Step{
+func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
+	steps := []pipeline.Step{
 		{
 			Name: "preflight-uefi", Weight: 1, Preflight: true,
 			Run: func(_ context.Context, env *pipeline.Env) error {
@@ -46,26 +48,46 @@ func preflightSteps(p *pipeline.Pipeline) []pipeline.Step {
 				return nil
 			},
 		},
-		{
-			Name: "preflight-disk", Weight: 1, Preflight: true,
+	}
+	if r.Image.Family == recipe.FamilyBootc {
+		steps = append(steps, pipeline.Step{
+			Name: "preflight-image", Weight: 1, Preflight: true,
 			Run: func(ctx context.Context, env *pipeline.Env) error {
-				devices, err := disk.List(ctx, env.Runner)
+				pinned, err := bootcimg.CheckAndPinImage(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey)
 				if err != nil {
+					if env.Recipe.Image.CosignPubKey != "" {
+						return pipeline.WithErrorCode(progress.CodeImageVerifyFailed, err)
+					}
 					return err
 				}
-				target := env.Recipe.Target.Disk
-				dev, ok := disk.Find(devices, target)
-				if !ok {
-					return fmt.Errorf("target disk %s not found (whole disks present: %s)", target, diskPaths(devices))
+				env.BootcSourceRef = pinned
+				if env.Recipe.Image.CosignPubKey != "" {
+					env.Emit(progress.Info{Message: "bootc image signature verified at immutable digest"})
 				}
-				if reason := disk.RefusalReason(dev, disk.RootDevice(ctx, env.Runner)); reason != "" {
-					return fmt.Errorf("refusing to install to %s: %s", target, reason)
-				}
-				env.Emit(progress.Info{Message: fmt.Sprintf("target disk %s acceptable (%d bytes)", dev.Path, dev.Size)})
 				return nil
 			},
-		},
+		})
 	}
+	steps = append(steps, pipeline.Step{
+		Name: "preflight-disk", Weight: 1, Preflight: true,
+		Run: func(ctx context.Context, env *pipeline.Env) error {
+			devices, err := disk.List(ctx, env.Runner)
+			if err != nil {
+				return err
+			}
+			target := env.Recipe.Target.Disk
+			dev, ok := disk.Find(devices, target)
+			if !ok {
+				return fmt.Errorf("target disk %s not found (whole disks present: %s)", target, diskPaths(devices))
+			}
+			if reason := disk.RefusalReason(dev, disk.RootDevice(ctx, env.Runner)); reason != "" {
+				return fmt.Errorf("refusing to install to %s: %s", target, reason)
+			}
+			env.Emit(progress.Info{Message: fmt.Sprintf("target disk %s acceptable (%d bytes)", dev.Path, dev.Size)})
+			return nil
+		},
+	})
+	return steps
 }
 
 func diskPaths(devices []disk.Device) string {
