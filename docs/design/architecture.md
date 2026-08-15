@@ -42,6 +42,16 @@ one-family catalog skips the family page. The selected catalog entry is the
 sole family state used by every later page and by recipe assembly, including
 after a start-over.
 
+After image selection, an opt-in advanced page exposes the engine's update
+and release controls without separating image identity from its catalog trust
+policy: bootc can set `target_ref` and (when Secure Boot is inactive)
+`bootloader`, while A/B can set `origin` and `release`. Custom `ref`/`product`
+and bootc `cosign_pub_key` values travel together through the catalog override.
+Installer-environment SSH key paths and precomputed user password hashes stay
+headless-only; the wizard instead accepts pasted keys and creates its own
+private password files. The exact parity/delta table lives in the
+[recipe schema](../specs/recipe-schema.md#interactive-wizard-parity).
+
 Each interactive run owns a randomly named 0700 directory below `/run/firn`.
 The reviewed recipe references only 0600 secret files in that directory, and
 the wizard's canonical serializer returns the accepted review bytes directly
