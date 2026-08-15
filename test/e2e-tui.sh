@@ -179,20 +179,57 @@ choose() {
   fail "never highlighted '$want' in a select list"
 }
 
-# type_line TEXT: clear the focused text input (ctrl-u) and type TEXT,
-# then Enter. -l sends TEXT literally (no key-name interpretation).
-type_line() {
+# choose_disk REGEX PATH: select the target and distinguish a wizard refusal
+# from an ordinary page-gate desync. A refused huh Select stays on this page
+# and renders diskChoiceError below the picker.
+choose_disk() {
+  local want=$1 path=$2 i
+  for ((i = 0; i < 30; i++)); do
+    if cap | grep -Eiq "^[┃│|[:space:]]*[>❯›].*${want}"; then
+      tmux send-keys -t "$S" Enter
+      for ((i = 0; i < 20; i++)); do
+        sleep 0.25
+        if cap | grep -Eiq "cannot install to[[:space:]]+${path}(:|[[:space:]]|$)"; then
+          fail "wizard refused target disk $path; verify the nested VM disk layout and refusal reason above"
+        fi
+        cap | grep -Eiq 'Target disk' || return 0
+      done
+      fail "target disk $path was selected but the wizard did not leave the disk page"
+    fi
+    tmux send-keys -t "$S" Down
+    sleep 0.3
+  done
+  fail "target disk $path was not selectable; verify the nested VM exposes the expected blank virtio disk"
+}
+
+# type_input TITLE TEXT: gate on a huh.NewInput title, clear the focused
+# single-line input (ctrl-u), type TEXT literally, then Enter.
+type_input() {
+  expect_screen "$1"
   tmux send-keys -t "$S" C-u
-  tmux send-keys -t "$S" -l "$1"
+  tmux send-keys -t "$S" -l "$2"
   tmux send-keys -t "$S" Enter
   sleep 0.5
 }
 
 root_pubkey=$(cat /tmp/id_e2e.pub) || fail "missing /tmp/id_e2e.pub"
 
-# skip_field: accept the focused field's default (Enter advances huh's
-# focus to the next field in a multi-field group).
-skip_field() {
+# type_textarea TITLE TEXT: gate on a huh.NewText title and type into its
+# initially empty textarea. In the pinned huh v1.0.0 keymap Enter advances;
+# Alt+Enter or Ctrl+J inserts a newline. Do not treat it as NewInput: ctrl-u
+# only clears before the cursor on the current textarea line.
+type_textarea() {
+  expect_screen "$1"
+  tmux send-keys -t "$S" -l "$2"
+  tmux send-keys -t "$S" Enter
+  sleep 0.5
+}
+
+# accept_field TITLE: pin every default/empty-field acceptance by its visible
+# title. This makes field insertion or reordering fail at a named contract
+# boundary instead of silently shifting a skip count.
+accept_field() {
+  expect_screen "$1"
   tmux send-keys -t "$S" Enter
   sleep 0.4
 }
@@ -206,6 +243,11 @@ tmux new-session -d -s "$S" -x 80 -y 24 'sudo /tmp/firn; echo "FIRN-EXIT:$?"; sl
 # ---- wizard page script (contract with internal/tui/wizard_pages.go;
 # page titles and field order must stay in sync) ----
 expect_screen 'snosi installer'        # welcome note
+# This harness intentionally uses non-Secure-Boot OVMF and therefore does not
+# exercise the conditional MOK page. Assert the engine's probe result before
+# sending the first key so a firmware/configuration change fails actionably.
+cap | grep -Eiq 'Secure Boot inactive' \
+  || fail 'e2e-tui requires Secure Boot inactive; the welcome page reported a different state (MOK flow is not scripted)'
 tmux send-keys -t "$S" Enter
 if [[ $CATALOG_MODE == mixed ]]; then
   expect_screen 'Update mechanism'     # family guidance: represented families only
@@ -215,16 +257,20 @@ if [[ $CATALOG_MODE == mixed ]]; then
     choose 'proven path'
   fi
 fi
-expect_screen 'What to install'        # image: catalog filtered to family
-choose 'cayo\b'                        # filtered list: no cayo/cayo-ab clash
+expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$' # stable image-page title
+if [[ $FAMILY == bootc ]]; then
+  choose 'cayo[[:space:]]+\(bootc image\)'
+else
+  choose 'cayo-ab[[:space:]]+\(A/B image\)'
+fi
 expect_screen 'Advanced image options'
-skip_field                             # keep catalog/default image policy
+accept_field 'Advanced image options' # keep catalog/default image policy
 expect_screen 'Target disk'            # vda=installer, vdb=blank target, vdc=seed
-choose 'vdb'
+choose_disk 'vdb' '/dev/vdb'
 if [[ $FAMILY == bootc ]]; then
   expect_screen 'Root filesystem'
   choose 'btrfs'
-  skip_field                           # btrfs subvolumes confirm: Enter = Yes
+  accept_field 'Create btrfs subvolumes' # initially Yes
 else
   expect_screen '/var filesystem'      # A/B: only /var is variable
   choose 'ext4'
@@ -232,36 +278,33 @@ fi
 expect_screen 'Disk encryption'        # SB inactive in this VM: no MOK group
 choose 'none'
 # System form: Hostname, Locale, Timezone, Keyboard, Root SSH key — one
-# group; Enter advances field focus in declaration order.
-expect_screen 'Hostname'
-type_line 'frn-tui-e2e'
-skip_field                             # locale (empty: keep image default)
-skip_field                             # timezone (empty: keep image default)
-skip_field                             # keyboard (empty: keep image default)
-type_line "$root_pubkey"               # root SSH authorized key
+# form; named gates pin its declaration order.
+type_input 'Hostname' 'frn-tui-e2e'
+accept_field 'Locale'                  # empty: keep image default
+accept_field 'Timezone'                # empty: keep image default
+accept_field 'Keyboard layout'         # empty: keep image default
+type_textarea 'Root SSH authorized key' "$root_pubkey"
 # User form: create? (default Yes) → username, full name, password x2,
 # groups multi-select (sudo preselected), extra groups, user SSH key.
-expect_screen 'Create a user account'
-skip_field                             # accept Yes
-type_line 'e2e'                        # username
-skip_field                             # full name
-type_line 'firn-e2e-pw'                # password
-type_line 'firn-e2e-pw'                # confirm password
-skip_field                             # groups multi-select (sudo preselected)
-skip_field                             # additional groups
-skip_field                             # user SSH key
+accept_field 'Create a user account'  # initially Yes
+type_input 'Username' 'e2e'
+accept_field 'Full name'               # optional
+type_input '^.*Password' 'firn-e2e-pw'
+type_input 'Confirm password' 'firn-e2e-pw'
+accept_field '^.*Groups'               # sudo preselected
+accept_field 'Additional groups'
+accept_field 'User SSH authorized key' # empty huh.NewText
 # Flatpaks: core-set confirm + IDs. The schema and TUI both default this
 # optional feature to false, so Enter preserves the focused No answer.
-expect_screen 'core app set'
-skip_field                             # No to core set (cayo has no runtime)
-skip_field                             # no extra apps
+accept_field 'core app set'            # No (cayo has no runtime)
+accept_field 'Extra Flatpak apps'      # empty huh.NewText
 # Review: with a long recipe the page TITLE scrolls off the 24-row pane;
 # gate on the action list, which is always visible at the bottom.
 expect_screen 'Quit without installing'
 tmux send-keys -t "$S" Enter           # Install is the focused first action
 sleep 0.5
 expect_screen 'Point of no return'     # typed disk confirmation
-type_line '/dev/vdb'
+type_input 'Point of no return' '/dev/vdb'
 
 # The install view deliberately holds secret disclosure and terminal
 # screens. A recovery-key install must acknowledge the key first; only
