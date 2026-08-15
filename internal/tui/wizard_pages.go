@@ -415,7 +415,9 @@ func (w *wizard) userForm() *huh.Form {
 				Validate(validateUsernameInput),
 			huh.NewInput().
 				Title("Full name (optional)").
-				Value(&w.c.fullname),
+				Description("Unicode is supported; ':' and line breaks are not.").
+				Value(&w.c.fullname).
+				Validate(validateFullnameInput),
 			huh.NewInput().
 				Title("Password").
 				EchoMode(huh.EchoModePassword).

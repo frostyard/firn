@@ -162,6 +162,8 @@ func TestValidateRejections(t *testing.T) {
 		{"bad root ssh key", replace(validBootc(), `hostname = "frost01"`, `hostname = "frost01"`+"\nroot_ssh_authorized_key = \"not a key\""), fullEnv, CodeSSHKey},
 		{"user without name", validBootc() + "\n[system.user]\nfullname = \"X\"\n", fullEnv, CodeRequired},
 		{"bad username", replace(validAB(t), `name = "bjk"`, `name = "9lives"`), fullEnv, CodeUsername},
+		{"fullname with colon", replace(validAB(t), `name = "bjk"`, `name = "bjk"`+"\nfullname = \"Bad:Name\""), fullEnv, CodeFullname},
+		{"fullname with newline", replace(validAB(t), `name = "bjk"`, `name = "bjk"`+"\nfullname = \"Bad\\nName\""), fullEnv, CodeFullname},
 		{"password both", replace(validAB(t), `groups = ["wheel"]`, `groups = ["wheel"]`+"\npassword_hash = \"$6$x\""), fullEnv, CodeMutex},
 		{"bad hash", swapLine(validAB(t), "password_file = ", `password_hash = "plaintext"`), fullEnv, CodeHash},
 		{"bad group", replace(validAB(t), `groups = ["wheel"]`, `groups = ["whe el"]`), fullEnv, CodeGroup},

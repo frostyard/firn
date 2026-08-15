@@ -47,6 +47,7 @@ const (
 	CodeTimezone    = "timezone"
 	CodeKeyboard    = "keyboard"
 	CodeUsername    = "username"
+	CodeFullname    = "fullname"
 	CodeGroup       = "group"
 	CodeRelease     = "release"
 	CodeProduct     = "product"
@@ -330,6 +331,9 @@ func validateSystem(l *Loaded, env Env, add func(code, field, format string, arg
 			add(CodeUsername, "system.user.name", "must match [a-z_][a-z0-9_-]* and be at most 32 chars")
 		}
 		if u != nil {
+			if err := ValidateFullname(u.Fullname); err != nil {
+				add(CodeFullname, "system.user.fullname", "%v", err)
+			}
 			hasFile, hasHash := u.PasswordFile != "", u.PasswordHash != ""
 			if hasFile == hasHash { // both or neither
 				add(CodeMutex, "system.user.password_file", "exactly one of password_file or password_hash is required")
