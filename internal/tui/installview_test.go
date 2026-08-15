@@ -266,6 +266,31 @@ func TestDoneShowsSummary(t *testing.T) {
 	requireQuit(t, cmd)
 }
 
+func TestFailureShowsSummaryAndRecentWarnings(t *testing.T) {
+	m := startedModel(t)
+	m, _ = apply(t, m, progress.Info{Message: "ordinary narration"})
+	m, _ = apply(t, m, progress.Warning{Code: progress.CodeCleanupFailed, Message: "cleanup target: device busy"})
+	m, _ = apply(t, m, progress.Summary{Items: []progress.SummaryItem{
+		{Code: progress.CodeFlatpakUnreachable, Detail: "org.gnome.Foo"},
+	}})
+	m, _ = apply(t, m, progress.Error{Step: "configure", Code: progress.CodeStepFailed, Message: "configuration failed"})
+
+	view := m.finalView()
+	for _, want := range []string{
+		"recent warnings",
+		"warning [cleanup_failed]: cleanup target: device busy",
+		"flatpak_unreachable: org.gnome.Foo",
+		"code: step_failed",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("failure view missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "ordinary narration") {
+		t.Errorf("failure view should show warnings, not stale info narration:\n%s", view)
+	}
+}
+
 func TestCtrlCCancelsAndWaits(t *testing.T) {
 	calls := 0
 	m := newInstallModel(nil, func() { calls++ })

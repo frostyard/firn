@@ -22,7 +22,7 @@ active (human/log output goes to stderr). Every event carries `event`
 | `step_progress` | `index`, `fraction` (0.0–1.0) and/or `bytes`, `total_bytes` | Optional fine-grained progress within a step (e.g. image streaming). |
 | `info` | `message` | Human-readable narration; no machine meaning. |
 | `warning` | `code` (string, stable), `message` | Non-fatal degradation (e.g. `no_tpm`, `flatpak_unreachable`). |
-| `summary` | `items` (array of `{code, detail}`) | Once, before `done`: everything the user must know (unreachable flatpaks, skipped enrollments). |
+| `summary` | `items` (array of `{code, detail}`) | Once when non-empty, after cleanup warnings and immediately before either terminal event: everything the user must know (unreachable flatpaks, skipped enrollments), on success or failure. |
 | `recovery_key` | `key` | Deliberate secret disclosure of a generated recovery key. The only event ever containing a secret; in `--json-progress` mode the literal key is present on stdout. |
 | `done` | `ok` (bool, `true`), `boot_entry` (string, optional) | Successful completion; final event. |
 | `error` | `step` (name or `null`), `code`, `message` | Fatal failure; final event. Exit status is non-zero. |
@@ -38,7 +38,9 @@ active (human/log output goes to stderr). Every event carries `event`
 
 1. Exactly one `start` event, first; exactly one terminal event (`done`
    or `error`), last. A stream without a terminal event means firn died:
-   consumers MUST treat it as failure.
+   consumers MUST treat it as failure. Cleanup warnings precede a non-empty
+   `summary`, and that summary immediately precedes the terminal event on both
+   success and failure.
 2. Consumers MUST ignore unknown event types and unknown fields;
    producers MAY add both within protocol 1. Removing or re-typing an
    existing field requires incrementing `protocol`.

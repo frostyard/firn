@@ -56,7 +56,7 @@ type SummaryItem struct {
 	Detail string `json:"detail"`
 }
 
-// Summary is emitted once, before Done.
+// Summary is emitted once when non-empty, immediately before Done or Error.
 type Summary struct {
 	Items []SummaryItem `json:"items"`
 }

@@ -85,7 +85,9 @@ fisherman's 1,200-line `main()`.
 Teardown mirrors assembly: every step that mounts, opens, or maps
 something registers an undo on a cleanup stack that runs on any exit
 path — closing the mount/mapper-leak class of bug documented in
-`snosi-install`.
+`snosi-install`. Cleanup warnings are emitted during that unwind, followed by
+any accumulated user-facing summary and then the single terminal event on
+both success and failure.
 
 ### Preflight
 
