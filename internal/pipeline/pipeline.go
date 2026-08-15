@@ -74,6 +74,11 @@ type Env struct {
 	VarPart   string        // var partition node
 	VarMount  string        // where the target /var filesystem is mounted
 	RootMount string        // where the read-only erofs root is mounted
+	// Recovery-key output reservation is created by A/B preflight before any
+	// target write and retained only after the atomic key commit.
+	RecoveryKeyOut     string
+	RecoveryKeyTemp    string
+	RecoveryKeyWritten bool
 
 	// CurrentStep is the 0-based index of the running step, for
 	// StepProgress events emitted from inside step Runs.

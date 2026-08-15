@@ -39,6 +39,81 @@ const abLayoutJSON = `{"partitiontable":{"label":"gpt","device":"DISK","unit":"s
   {"node":"/dev/fake5","start":19924992,"size":16777216,"name":"_empty"},
   {"node":"/dev/fake6","start":36702208,"size":8388608,"name":"var"}]}}`
 
+func TestWriteRecoveryKeyAtomically(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "recovery-key")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	tmp, err := stageRecoveryKey(path, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := commitRecoveryKey(path, tmp); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != key {
+		t.Fatalf("recovery key = %q, want byte-exact %q (%v)", data, key, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("recovery key mode = %o, want 600", got)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, ".recovery-key.tmp-*"))
+	if err != nil || len(matches) != 0 {
+		t.Fatalf("atomic write left temporary files %v (%v)", matches, err)
+	}
+}
+
+func TestRecoveryKeyPreflightCommitsThroughLuksStep(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery-key")
+	r := &recipe.Recipe{}
+	r.Security.Encryption = "luks"
+	r.Security.RecoveryKeyOut = path
+	fake := runner.NewFake(
+		func(_ context.Context, name string, _ ...string) ([]byte, error) {
+			if name != "cryptsetup" {
+				return nil, fmt.Errorf("unexpected command %s", name)
+			}
+			return nil, nil
+		},
+		nil,
+	)
+	var events []progress.Event
+	env := &pipeline.Env{
+		Recipe: r, Runner: fake, VarPart: "/dev/fake6", Version: "test",
+		Emit: func(e progress.Event) { events = append(events, e) },
+	}
+	p := &pipeline.Pipeline{Steps: []pipeline.Step{
+		{Name: "preflight-recovery-key", Preflight: true, Run: runPrepareRecoveryKeyOut},
+		{Name: "luks-var", Destructive: true, Run: runLuksVar},
+	}}
+	if err := p.Run(context.Background(), env, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != env.LuksKey || len(data) != 64 {
+		t.Fatalf("committed recovery key = %q, env key = %q (%v)", data, env.LuksKey, err)
+	}
+	if !env.RecoveryKeyWritten || env.RecoveryKeyTemp != "" {
+		t.Fatalf("recovery output state = written:%v temp:%q", env.RecoveryKeyWritten, env.RecoveryKeyTemp)
+	}
+	found := false
+	for _, event := range events {
+		if disclosed, ok := event.(progress.RecoveryKey); ok && disclosed.Key == env.LuksKey {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("committed recovery key was not disclosed through progress")
+	}
+}
+
 func TestABPipelineEndToEnd(t *testing.T) {
 	restore := sysconfig.SetChownForTesting(func(string, int, int) error { return nil })
 	defer restore()

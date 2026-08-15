@@ -52,7 +52,7 @@ omitting a required field here is a validation error, never a default.
 | --- | --- | --- | --- |
 | `encryption` | string | yes | bootc: `"none"`, `"luks-passphrase"`, `"tpm2-luks"`, `"tpm2-luks-passphrase"`. ab: `"none"`, `"luks"` (recovery key only), `"tpm2-luks"` (recovery key + TPM). |
 | `passphrase` / `passphrase_file` | string / path | conditional | Exactly one MUST be set when `encryption` includes `passphrase`; MUST NOT be set otherwise. |
-| `recovery_key_out` | string (path) | no | ab only: also write the generated recovery key to this path (0600). The key is always disclosed via the progress protocol. |
+| `recovery_key_out` | string (path) | no | ab only with `encryption = "luks"` or `"tpm2-luks"`: also write the generated recovery key to this non-empty path. Preflight refuses an existing path and reserves a new 0600 file before any destructive step (including in dry-run); the final byte-exact key is committed by same-directory atomic rename. The key is always disclosed via the progress protocol. |
 | `mok` | string | ab or bootc: yes when Secure Boot is active | `"enroll"` or `"skip"`. With `"enroll"`, `mok_password_file` MUST be set. bootc uses it for the secure-install schema-1 path ([ADR-0014](../adr/0014-port-secure-install-schema-1-for-bootc.md)). |
 | `mok_password_file` | string (path) | conditional | 0600 file; content is the one-time MokManager password. |
 

@@ -48,6 +48,8 @@ the persisted artifact is `recipe.toml` beside them. Start-over, quit, abort,
 and pre-persistence errors remove abandoned plaintext; once the recipe is
 persisted, the directory remains available for the printed headless
 reproduction command until the installer environment reboots.
+Encrypted A/B wizard choices set `recovery_key_out` to `recovery-key` in that
+same session, giving the one-time on-screen disclosure a durable private copy.
 
 ## Design
 
@@ -97,6 +99,12 @@ For bootc recipes that set `image.cosign_pub_key`, preflight selects the
 same embedded-or-remote source the install will consume, resolves it to an
 immutable digest, verifies that digest with cosign, and carries the pinned
 reference into both native-bootc and podman installation paths.
+For encrypted A/B recipes with `security.recovery_key_out`, preflight refuses
+an existing destination, exclusively reserves a 0600 placeholder, and fsyncs
+the complete generated key to a private same-directory staging file. Dry-run
+exercises and removes both files. A real install later commits the staged key
+by atomic rename, so path, permission, allocation, and write failures occur
+before `stream-write` can touch the target disk.
 
 ### The bootc path
 

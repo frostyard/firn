@@ -282,6 +282,9 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 	}
 
 	r.Security.Encryption = c.encryption
+	if c.entry.Family == recipe.FamilyAB && c.encryption != "none" {
+		r.Security.RecoveryKeyOut = filepath.Join(secretsDir, "recovery-key")
+	}
 	if c.entry.Family == recipe.FamilyBootc && needsPassphrase(c.encryption) {
 		if strings.TrimSpace(c.passphrase) == "" {
 			return nil, fmt.Errorf("tui: encryption %q selected without a passphrase (wizard bug)", c.encryption)

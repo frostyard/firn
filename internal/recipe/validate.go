@@ -258,6 +258,14 @@ func validateSecurity(l *Loaded, env Env, family string, add func(code, field, f
 	if hasFile && family == FamilyBootc {
 		checkFile(s.PassphraseFile, "security.passphrase_file", true, add)
 	}
+	if family == FamilyAB && l.IsSet("security", "recovery_key_out") {
+		switch {
+		case s.RecoveryKeyOut == "":
+			add(CodeFile, "security.recovery_key_out", "path must not be empty when set")
+		case s.Encryption == "none":
+			add(CodeFile, "security.recovery_key_out", "does not apply when encryption = %q", "none")
+		}
+	}
 
 	// MOK enrollment applies to BOTH families under Secure Boot: A/B stages it
 	// via mokutil for shim's MokManager, and bootc does the same for its

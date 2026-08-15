@@ -2,11 +2,14 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
+	"github.com/frostyard/firn/internal/luks"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/progress"
@@ -68,6 +71,12 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 			},
 		})
 	}
+	if r.Image.Family == recipe.FamilyAB && r.Security.Encryption != "none" && r.Security.RecoveryKeyOut != "" {
+		steps = append(steps, pipeline.Step{
+			Name: "preflight-recovery-key", Weight: 1, Preflight: true,
+			Run: runPrepareRecoveryKeyOut,
+		})
+	}
 	steps = append(steps, pipeline.Step{
 		Name: "preflight-disk", Weight: 1, Preflight: true,
 		Run: func(ctx context.Context, env *pipeline.Env) error {
@@ -88,6 +97,56 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 		},
 	})
 	return steps
+}
+
+func runPrepareRecoveryKeyOut(_ context.Context, env *pipeline.Env) error {
+	// snosi-install refuses an existing recovery-key path before streaming the
+	// disk image. Firn additionally creates the exclusive placeholder and
+	// fsyncs the complete key to a same-directory staging file here, closing
+	// the parent's late create/write failure window while preserving its
+	// refuse-to-overwrite policy.
+	path := env.Recipe.Security.RecoveryKeyOut
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("recovery key output already exists (refusing to overwrite): %s", path)
+		}
+		return fmt.Errorf("reserve recovery key output %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("reserve recovery key output %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("secure recovery key output %s: %w", path, err)
+	}
+	key, err := luks.GenerateRecoveryKey()
+	if err != nil {
+		_ = os.Remove(path)
+		return err
+	}
+	tmp, err := stageRecoveryKey(path, key)
+	if err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("stage recovery key output %s: %w", path, err)
+	}
+	env.LuksKey = key
+	env.RecoveryKeyOut = path
+	env.RecoveryKeyTemp = tmp
+	env.Defer("remove unused recovery key reservation", func() error {
+		if env.RecoveryKeyTemp != "" {
+			_ = os.Remove(env.RecoveryKeyTemp)
+		}
+		if env.RecoveryKeyWritten {
+			return nil
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	})
+	return nil
 }
 
 func diskPaths(devices []disk.Device) string {
