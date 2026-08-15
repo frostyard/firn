@@ -128,6 +128,7 @@ func TestValidateRejections(t *testing.T) {
 		{"product on bootc", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, `ref = "ghcr.io/frostyard/snow:latest"`+"\nproduct = \"snow-ab\""), fullEnv, CodeFamilyScope},
 		{"filesystem on ab", replace(validAB(t), `disk = "/dev/nvme0n1"`, `disk = "/dev/nvme0n1"`+"\nfilesystem = \"btrfs\""), fullEnv, CodeFamilyScope},
 		{"missing ref", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, ""), fullEnv, CodeRequired},
+		{"bad target ref", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, `ref = "ghcr.io/frostyard/snow:latest"`+"\ntarget_ref = \"ghcr.io/frostyard/snow: bad\""), fullEnv, CodeEnum},
 		{"cosign key with local ref", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, `ref = "containers-storage:ghcr.io/frostyard/snow:latest"`+"\ncosign_pub_key = \""+cosignKey+"\""), fullEnv, CodeEnum},
 		{"missing product", replace(validAB(t), `product = "snow-ab"`, ""), fullEnv, CodeRequired},
 		{"bad product", replace(validAB(t), `product = "snow-ab"`, `product = "../Snow.*-ab"`), fullEnv, CodeProduct},

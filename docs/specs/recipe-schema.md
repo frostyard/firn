@@ -91,6 +91,28 @@ Supported SSH key types are `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-*`, and
 OpenSSH `sk-*` security-key types. A final newline is allowed; blank lines,
 `authorized_keys` options, and other non-key content are rejected.
 
+### Interactive wizard parity
+
+The wizard exposes the common schema plus an opt-in **Advanced image options**
+page. For bootc that page sets `target_ref` and `bootloader`; for A/B it sets
+`origin` and `release`. The wizard offers GRUB 2 only when Secure Boot is
+inactive because Firn's MOK enrollment path stages a signed systemd-boot
+chain. Image identity (`ref` or `product`) and bootc
+`cosign_pub_key` come from the selected catalog entry; operators customize
+that tuple together through `/etc/firn/catalog.json` rather than entering an
+untrusted reference independently of its trust policy.
+
+The following equivalent or deliberately headless-only representations keep
+the interactive secret/path surface smaller:
+
+| Schema field | Wizard policy |
+| --- | --- |
+| `passphrase` / `passphrase_file` | Collect the passphrase and write a session-owned 0600 `passphrase_file`; never serialize it inline. |
+| `mok_password_file` | Collect the one-time password and write a session-owned 0600 file. |
+| `recovery_key_out` | For encrypted A/B installs, reserve `recovery-key` in the private wizard session. |
+| SSH inline / `_file` variants | Accept validated inline pasted keys. Installer-environment file paths are headless-only. |
+| User `password_file` / `password_hash` | Collect a password into a session-owned 0600 file. Precomputed hashes are headless-only. |
+
 ```toml
 # minimal valid example (A/B install)
 version = 1

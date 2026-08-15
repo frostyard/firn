@@ -82,6 +82,14 @@ type wizard struct {
 // function tests drive directly.
 type wizardChoices struct {
 	entry CatalogEntry
+	// Advanced image/target fields. When advancedImage is false these are
+	// ignored, so disabling the page after a revisit restores catalog/default
+	// behavior without destroying the prior answers.
+	advancedImage bool
+	targetRef     string
+	bootloader    string
+	origin        string
+	release       string
 
 	disk string
 
@@ -116,9 +124,9 @@ type wizardChoices struct {
 	flatpaksRaw  string
 }
 
-// run drives the page flow: welcome, then a collection pass
-// (image, disk, filesystem, security, system, user, flatpaks), then the
-// review / typed-confirmation / validation loop.
+// run drives the page flow: welcome, then a collection pass (image, advanced
+// image options, disk, filesystem, security, system, user, flatpaks), then
+// the review / typed-confirmation / validation loop.
 func (w *wizard) run(ctx context.Context) ([]byte, error) {
 	if len(w.catalog) == 0 {
 		return nil, errors.New("tui: image catalog is empty")
@@ -133,6 +141,9 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 			return nil, err
 		}
 		if quit, err := w.imagePage(ctx, family); quit || err != nil {
+			return nil, err
+		}
+		if quit, err := w.page(ctx, w.advancedImageForm()); quit || err != nil {
 			return nil, err
 		}
 		if quit, err := w.diskPage(ctx); quit || err != nil {
@@ -278,10 +289,18 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 		r.Image.CosignPubKey = c.entry.CosignPubKey
 		r.Target.Filesystem = c.filesystem
 		r.Target.BtrfsSubvolumes = c.btrfsSubvolumes && c.filesystem == "btrfs"
+		if c.advancedImage {
+			r.Image.TargetRef = strings.TrimSpace(c.targetRef)
+			r.Target.Bootloader = c.bootloader
+		}
 	case recipe.FamilyAB:
 		r.Image.Product = c.entry.Product
 		r.Target.VarFilesystem = c.varFilesystem
 		r.Target.VarSubvolumes = c.varSubvolumes && c.varFilesystem == "btrfs"
+		if c.advancedImage {
+			r.Image.Origin = strings.TrimSpace(c.origin)
+			r.Image.Release = strings.TrimSpace(c.release)
+		}
 	default:
 		return nil, fmt.Errorf("tui: catalog entry %q has unknown family %q", c.entry.Name, c.entry.Family)
 	}
@@ -322,6 +341,10 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 	r.System.Timezone = strings.TrimSpace(c.timezone)
 	r.System.Keyboard = strings.TrimSpace(c.keyboard)
 	r.System.RootSSHAuthorizedKey = strings.TrimSpace(c.rootSSHKey)
+	// The wizard deliberately uses inline SSH-key fields: users paste keys
+	// into the current TTY instead of naming paths whose contents belong to
+	// the ephemeral installer environment. The *_file variants remain
+	// available to headless recipes.
 	r.System.CoreFlatpaks = c.coreFlatpaks
 	r.System.Flatpaks = splitList(c.flatpaksRaw)
 
@@ -332,6 +355,8 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 			Groups:           mergeGroups(c.groups, c.extraGroups),
 			SSHAuthorizedKey: strings.TrimSpace(c.userSSHKey),
 		}
+		// The wizard collects a password and writes its own private 0600 file;
+		// password_hash is intentionally a headless-only automation surface.
 		if strings.TrimSpace(c.password) == "" {
 			return nil, errors.New("tui: user creation selected without a password (wizard bug)")
 		}
@@ -449,6 +474,7 @@ var (
 	timezoneInputRe      = regexp.MustCompile(`^[A-Za-z_+-]+(/[A-Za-z0-9_+-]+)*$`)
 	keyboardInputRe      = regexp.MustCompile(`^[a-z0-9_-]+(:[a-z0-9_-]+(:[a-z0-9_-]+)?)?$`)
 	usernameInputRe      = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
+	releaseInputRe       = regexp.MustCompile(`^[0-9]{14}$`)
 )
 
 func validateHostnameInput(h string) error {
@@ -523,6 +549,30 @@ func validateSSHKeyInput(key string) error {
 		return nil
 	}
 	return recipe.ValidateSSHAuthorizedKeys(key)
+}
+
+func validateTargetRefInput(ref string) error {
+	ref = strings.TrimSpace(ref)
+	if ref != "" && strings.ContainsAny(ref, " \t\r\n") {
+		return errors.New("must be an OCI image reference without whitespace")
+	}
+	return nil
+}
+
+func validateOriginInput(origin string) error {
+	origin = strings.TrimSpace(origin)
+	if origin != "" && !strings.HasPrefix(origin, "https://") && !strings.HasPrefix(origin, "http://") {
+		return errors.New("must be an HTTP(S) URL")
+	}
+	return nil
+}
+
+func validateReleaseInput(release string) error {
+	release = strings.TrimSpace(release)
+	if release != "" && !releaseInputRe.MatchString(release) {
+		return errors.New("must be a 14-digit release version")
+	}
+	return nil
 }
 
 func validateGroupListInput(raw string) error {

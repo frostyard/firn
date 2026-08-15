@@ -126,6 +126,63 @@ func (w *wizard) imagePage(ctx context.Context, family string) (quit bool, err e
 	return false, nil
 }
 
+// advancedImageForm exposes engine-supported image and target overrides while
+// keeping the common catalog-driven path short. Image identity itself remains
+// catalog-controlled; /etc/firn/catalog.json is the custom ref/product escape
+// hatch and carries the matching trust metadata with the selection.
+func (w *wizard) advancedImageForm() *huh.Form {
+	hidden := func() bool { return !w.c.advancedImage }
+	groups := []*huh.Group{huh.NewGroup(
+		huh.NewConfirm().
+			Title("Advanced image options?").
+			Description("Override update tracking, release selection, or bootloader. Initially No.").
+			Value(&w.c.advancedImage),
+	)}
+	if w.c.entry.Family == recipe.FamilyBootc {
+		if w.c.bootloader == "" {
+			w.c.bootloader = "systemd"
+		}
+		bootloaderOptions := []huh.Option[string]{
+			huh.NewOption("systemd-boot (default)", "systemd"),
+		}
+		bootloaderDescription := "GRUB 2 is also available when Secure Boot is inactive."
+		if !w.opts.Machine.SecureBoot {
+			bootloaderOptions = append(bootloaderOptions, huh.NewOption("GRUB 2", "grub2"))
+		} else {
+			bootloaderDescription = "systemd-boot is required for Firn's Secure Boot enrollment path."
+		}
+		groups = append(groups, huh.NewGroup(
+			huh.NewInput().
+				Title("Post-install upgrade reference (optional)").
+				Description("Leave empty to track the selected install reference.").
+				Placeholder(w.c.entry.Ref).
+				Value(&w.c.targetRef).
+				Validate(validateTargetRefInput),
+			huh.NewSelect[string]().
+				Title("Bootloader").
+				Description(bootloaderDescription).
+				Options(bootloaderOptions...).
+				Value(&w.c.bootloader),
+		).WithHideFunc(hidden))
+	} else {
+		groups = append(groups, huh.NewGroup(
+			huh.NewInput().
+				Title("Artifact origin (optional)").
+				Description("HTTP(S) repository root; empty uses the frostyard origin.").
+				Placeholder("https://repository.frostyard.org").
+				Value(&w.c.origin).
+				Validate(validateOriginInput),
+			huh.NewInput().
+				Title("Pinned release (optional)").
+				Description("14-digit release version; empty installs the newest signed release.").
+				Placeholder("20260814010203").
+				Value(&w.c.release).
+				Validate(validateReleaseInput),
+		).WithHideFunc(hidden))
+	}
+	return huh.NewForm(groups...)
+}
+
 // diskPage enumerates disks, showing refused ones inline with the
 // reason; selecting a refused disk re-prompts with that reason, and the
 // rescan entry re-enumerates (e.g. after unplugging or unmounting).
