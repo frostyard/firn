@@ -73,6 +73,7 @@ func TestRunTUIRejectsNonUEFIBeforeWizardOrPipeline(t *testing.T) {
 
 func TestRunTUISetupReachesWizardAndQuitStopsBridge(t *testing.T) {
 	var got tui.WizardOpts
+	root := t.TempDir()
 	rt := tuiRuntime{
 		holdError: func(_ context.Context, _ string, err error) error {
 			t.Fatalf("unexpected held error: %v", err)
@@ -82,7 +83,8 @@ func TestRunTUISetupReachesWizardAndQuitStopsBridge(t *testing.T) {
 			got = opts
 			return nil, nil // interactive quit
 		},
-		writeRecipe: func(*recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error) {
+		createSession: func() (string, error) { return newTUISession(root) },
+		writeRecipe: func(string, *recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error) {
 			t.Fatal("quit wizard persisted a recipe")
 			return "", nil, nil
 		},
@@ -103,6 +105,12 @@ func TestRunTUISetupReachesWizardAndQuitStopsBridge(t *testing.T) {
 	}
 	if got.Machine.ZoneinfoDir != "/usr/share/zoneinfo" || len(got.Catalog) == 0 {
 		t.Fatalf("wizard missing environment/catalog setup: %+v", got)
+	}
+	if got.SessionDir == "" || filepath.Dir(got.SessionDir) != root {
+		t.Fatalf("wizard session dir = %q, want unique child of %q", got.SessionDir, root)
+	}
+	if _, err := os.Stat(got.SessionDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("quit wizard retained abandoned session %q: %v", got.SessionDir, err)
 	}
 }
 
@@ -142,7 +150,7 @@ func TestWriteRecipeToPersistsReloadablePrivateArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(path) != dir || !reflect.DeepEqual(&loaded.Recipe, r) {
+	if path != filepath.Join(dir, "recipe.toml") || !reflect.DeepEqual(&loaded.Recipe, r) {
 		t.Fatalf("persisted recipe path=%q recipe=%+v", path, loaded.Recipe)
 	}
 	info, err := os.Stat(path)
@@ -158,6 +166,30 @@ func TestWriteRecipeToPersistsReloadablePrivateArtifact(t *testing.T) {
 	}
 	if got := dirInfo.Mode().Perm(); got != 0o700 {
 		t.Fatalf("recipe dir mode = %o, want 700", got)
+	}
+}
+
+func TestNewTUISessionCreatesUniquePrivateDirectories(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "firn")
+	first, err := newTUISession(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newTUISession(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatalf("sequential wizard sessions reused %q", first)
+	}
+	for _, dir := range []string{root, first, second} {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o700 {
+			t.Fatalf("session path %s mode = %o, want 700", dir, got)
+		}
 	}
 }
 
@@ -179,13 +211,28 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var stderr bytes.Buffer
+			root := t.TempDir()
+			var sessionDir string
 			err := runTUIWithRuntime(context.Background(), tuiOptions{
 				secureBoot: "off", tpm: "off", uefi: "on", pubring: "/keys/update.gpg",
 			}, tuiRuntime{
 				holdError: func(_ context.Context, _ string, err error) error { return err },
-				runWizard: func(context.Context, tui.WizardOpts) (*recipe.Recipe, error) { return r, nil },
-				writeRecipe: func(*recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error) {
-					return "/run/firn/recipe-test.toml", loaded, nil
+				createSession: func() (string, error) {
+					var err error
+					sessionDir, err = newTUISession(root)
+					return sessionDir, err
+				},
+				runWizard: func(_ context.Context, opts tui.WizardOpts) (*recipe.Recipe, error) {
+					if opts.SessionDir != sessionDir {
+						t.Fatalf("wizard session = %q, want %q", opts.SessionDir, sessionDir)
+					}
+					return r, nil
+				},
+				writeRecipe: func(dir string, _ *recipe.Recipe, _ recipe.Env) (string, *recipe.Loaded, error) {
+					if dir != sessionDir {
+						t.Fatalf("recipe session = %q, want %q", dir, sessionDir)
+					}
+					return filepath.Join(dir, "recipe.toml"), loaded, nil
 				},
 				runInstall: func(_ context.Context, env *pipeline.Env, got *recipe.Loaded) (tui.InstallResult, error) {
 					if got != loaded || env.Recipe != &loaded.Recipe || env.Trust.PubringPath != "/keys/update.gpg" {
@@ -203,8 +250,11 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 			case tc.isErr == nil && tc.wantErr == "" && err != nil:
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !strings.Contains(stderr.String(), "/run/firn/recipe-test.toml") || !strings.Contains(stderr.String(), "/dev/vda") {
+			if !strings.Contains(stderr.String(), filepath.Join(sessionDir, "recipe.toml")) || !strings.Contains(stderr.String(), "/dev/vda") || !strings.Contains(stderr.String(), "until this installer environment reboots") {
 				t.Fatalf("bridge output lost reproduction details: %q", stderr.String())
+			}
+			if _, err := os.Stat(sessionDir); err != nil {
+				t.Fatalf("persisted wizard session was removed: %v", err)
 			}
 		})
 	}
@@ -213,7 +263,7 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 func TestReportTUIResultDoesNotLogRecoveryKey(t *testing.T) {
 	const (
 		theKey = "1234-ABCD-5678-EFGH"
-		path   = "/run/firn/recipe-test.toml"
+		path   = "/run/firn/session-test/recipe.toml"
 		disk   = "/dev/vda"
 	)
 	var stderr bytes.Buffer
@@ -229,7 +279,7 @@ func TestReportTUIResultDoesNotLogRecoveryKey(t *testing.T) {
 	if strings.Contains(got, theKey) || strings.Contains(got, "RECOVERY KEY") {
 		t.Fatalf("TUI command path logged the recovery key after RunInstall returned: %q", got)
 	}
-	if !strings.Contains(got, path) || !strings.Contains(got, disk) {
+	if !strings.Contains(got, path) || !strings.Contains(got, disk) || !strings.Contains(got, "until this installer environment reboots") {
 		t.Fatalf("TUI command path lost non-secret reproduction details: %q", got)
 	}
 }

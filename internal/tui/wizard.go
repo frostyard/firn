@@ -25,18 +25,14 @@ import (
 	"github.com/frostyard/firn/internal/runner"
 )
 
-// defaultSecretsDir is where interactive secrets (passphrases, the MOK
-// password, the user password) land as 0600 files; the recipe carries
-// only the *_file paths (spec rule 6). /run is tmpfs on the installer.
-const defaultSecretsDir = "/run/firn"
-
 // WizardOpts carries what the wizard needs from the caller.
 type WizardOpts struct {
-	Runner  *runner.Runner
-	Machine recipe.Env
-	UEFI    bool
-	Catalog []CatalogEntry
-	Notices []string
+	Runner     *runner.Runner
+	Machine    recipe.Env
+	UEFI       bool
+	Catalog    []CatalogEntry
+	Notices    []string
+	SessionDir string
 }
 
 // RunWizard walks the user through building a recipe. It returns
@@ -60,11 +56,14 @@ func RunWizard(ctx context.Context, o WizardOpts) (*recipe.Recipe, error) {
 	if err := checkCatalog(catalog); err != nil {
 		return nil, fmt.Errorf("tui: image catalog: %w", err)
 	}
+	if o.SessionDir == "" {
+		return nil, errors.New("tui: wizard session directory is required")
+	}
 	w := &wizard{
 		opts:       o,
 		catalog:    orderedCatalog(catalog),
 		theme:      huh.ThemeBase16(), // ANSI 16-color: safe on consoles and serial terminals
-		secretsDir: defaultSecretsDir,
+		secretsDir: o.SessionDir,
 	}
 	return w.run(ctx)
 }
@@ -171,7 +170,15 @@ func (w *wizard) run(ctx context.Context) (*recipe.Recipe, error) {
 // point is a wizard bug: it is displayed on a second review pass, and if
 // it persists the issues are returned as an error (spec rule 5 says this
 // must be unreachable).
-func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, rec *recipe.Recipe, err error) {
+func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, result *recipe.Recipe, err error) {
+	defer func() {
+		if result != nil {
+			return
+		}
+		if cleanupErr := cleanupSecretFiles(w.secretsDir); cleanupErr != nil {
+			err = errors.Join(err, cleanupErr)
+		}
+	}()
 	var issues []recipe.Issue
 	retried := false
 	for {
@@ -203,6 +210,25 @@ func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, rec *recipe.Re
 		}
 		retried = true // loop back to review with the issues displayed
 	}
+}
+
+const (
+	passphraseSecretName = "passphrase"
+	mokSecretName        = "mok-password"
+	userSecretName       = "user-password"
+)
+
+var generatedSecretNames = []string{passphraseSecretName, mokSecretName, userSecretName}
+
+func cleanupSecretFiles(dir string) error {
+	var errs []error
+	for _, name := range generatedSecretNames {
+		path := filepath.Join(dir, name)
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("tui: removing abandoned secret %s: %w", path, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func reviewAction(action string) (startOver, quit bool) {
@@ -257,10 +283,10 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 
 	r.Security.Encryption = c.encryption
 	if c.entry.Family == recipe.FamilyBootc && needsPassphrase(c.encryption) {
-		if c.passphrase == "" {
+		if strings.TrimSpace(c.passphrase) == "" {
 			return nil, fmt.Errorf("tui: encryption %q selected without a passphrase (wizard bug)", c.encryption)
 		}
-		p, err := writeSecretFile(secretsDir, "passphrase", c.passphrase)
+		p, err := writeSecretFile(secretsDir, passphraseSecretName, c.passphrase)
 		if err != nil {
 			return nil, err
 		}
@@ -272,10 +298,10 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 	if c.mok != "" {
 		r.Security.Mok = c.mok
 		if c.mok == "enroll" {
-			if c.mokPassword == "" {
+			if strings.TrimSpace(c.mokPassword) == "" {
 				return nil, errors.New("tui: MOK enrollment selected without a MOK password (wizard bug)")
 			}
-			p, err := writeSecretFile(secretsDir, "mok-password", c.mokPassword)
+			p, err := writeSecretFile(secretsDir, mokSecretName, c.mokPassword)
 			if err != nil {
 				return nil, err
 			}
@@ -298,10 +324,10 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 			Groups:           mergeGroups(c.groups, c.extraGroups),
 			SSHAuthorizedKey: strings.TrimSpace(c.userSSHKey),
 		}
-		if c.password == "" {
+		if strings.TrimSpace(c.password) == "" {
 			return nil, errors.New("tui: user creation selected without a password (wizard bug)")
 		}
-		p, err := writeSecretFile(secretsDir, "user-password", c.password)
+		p, err := writeSecretFile(secretsDir, userSecretName, c.password)
 		if err != nil {
 			return nil, err
 		}
