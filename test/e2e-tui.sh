@@ -228,10 +228,22 @@ sleep 0.5
 expect_screen 'Point of no return'     # typed disk confirmation
 type_line '/dev/vdb'
 
-# Install view runs to completion; the wrapper prints the exit status.
-expect_screen 'FIRN-EXIT:' "$INSTALL_TIMEOUT"
+# The install view deliberately holds secret disclosure and terminal
+# screens. A recovery-key install must acknowledge the key first; only
+# then can the success/failure screen be dismissed. Every keypress is
+# gated on the screen it acts on so a slow pipeline cannot be skipped.
+expect_screen 'RECOVERY KEY|install (complete|failed)' "$INSTALL_TIMEOUT"
+if cap | grep -Eiq 'RECOVERY KEY'; then
+  tmux send-keys -t "$S" Enter         # confirm the key was saved
+  sleep 0.5
+fi
+expect_screen 'install (complete|failed)' "$INSTALL_TIMEOUT"
 cap >/tmp/tui-final-screen.txt
-grep -q 'FIRN-EXIT:0' /tmp/tui-final-screen.txt || fail "firn exited nonzero"
+tmux send-keys -t "$S" Enter           # dismiss the held terminal screen
+
+# The wrapper can print the exit status only after the final screen exits.
+expect_screen 'FIRN-EXIT:' 40
+cap | grep -q 'FIRN-EXIT:0' || fail "firn exited nonzero"
 
 # Save the generated recipe BEFORE the guest goes away — the host
 # asserts `firn validate` accepts this exact artifact.
