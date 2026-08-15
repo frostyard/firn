@@ -159,8 +159,6 @@ func rootFsTools(fs string) []string {
 		return []string{"mkfs.btrfs", "btrfs"}
 	case "xfs":
 		return []string{"mkfs.xfs"}
-	case "zfs":
-		return []string{"zpool", "zfs"}
 	default:
 		return []string{"mkfs.ext4"}
 	}

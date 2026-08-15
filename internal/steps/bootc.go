@@ -44,7 +44,7 @@ func runPartition(ctx context.Context, env *pipeline.Env) error {
 	var err error
 	switch {
 	case r.Target.Filesystem == "zfs":
-		return fmt.Errorf("zfs root is not implemented yet (fisherman parity gap, tracked in docs/plans/roadmap.md)")
+		return fmt.Errorf("zfs root is unsupported by recipe schema version 1")
 	case r.Target.Bootloader == "grub2":
 		layout, err = disk.PartitionGrub2(ctx, env.Runner, r.Target.Disk)
 	default: // systemd-boot is the recipe default (specs/recipe-schema.md)

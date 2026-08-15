@@ -191,11 +191,11 @@ func validateTarget(l *Loaded, family string, add func(code, field, format strin
 	switch family {
 	case FamilyBootc:
 		switch t.Filesystem {
-		case "btrfs", "xfs", "ext4", "zfs":
+		case "btrfs", "xfs", "ext4":
 		case "":
 			add(CodeRequired, "target.filesystem", "root filesystem is required for family %q", FamilyBootc)
 		default:
-			add(CodeEnum, "target.filesystem", "must be btrfs, xfs, ext4, or zfs; got %q", t.Filesystem)
+			add(CodeEnum, "target.filesystem", "must be btrfs, xfs, or ext4; got %q", t.Filesystem)
 		}
 		if t.BtrfsSubvolumes && t.Filesystem != "btrfs" {
 			add(CodeSubvolumes, "target.btrfs_subvolumes", "requires filesystem = %q", "btrfs")
