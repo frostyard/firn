@@ -449,7 +449,6 @@ var (
 	timezoneInputRe      = regexp.MustCompile(`^[A-Za-z_+-]+(/[A-Za-z0-9_+-]+)*$`)
 	keyboardInputRe      = regexp.MustCompile(`^[a-z0-9_-]+(:[a-z0-9_-]+(:[a-z0-9_-]+)?)?$`)
 	usernameInputRe      = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
-	sshKeyInputRe        = regexp.MustCompile(`^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9-]+@openssh\.com|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+`)
 )
 
 func validateHostnameInput(h string) error {
@@ -520,11 +519,10 @@ func validateKeyboardInput(kb string) error {
 }
 
 func validateSSHKeyInput(key string) error {
-	key = strings.TrimSpace(key)
-	if key != "" && !sshKeyInputRe.MatchString(key) {
-		return errors.New("must be an OpenSSH public key line (ssh-ed25519 AAAA...)")
+	if strings.TrimSpace(key) == "" {
+		return nil
 	}
-	return nil
+	return recipe.ValidateSSHAuthorizedKeys(key)
 }
 
 func validateGroupListInput(raw string) error {
