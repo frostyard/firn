@@ -322,6 +322,22 @@ func TestAssembleRecipeSecretFiles(t *testing.T) {
 	checkSecret(recb.Security.PassphraseFile, "s3cret")
 }
 
+func TestAssembleRecipeDefaultsABRecoveryKeyToSession(t *testing.T) {
+	dir := t.TempDir()
+	for _, encryption := range []string{"luks", "tpm2-luks"} {
+		c := baseChoices(abEntry())
+		c.varFilesystem = "ext4"
+		c.encryption = encryption
+		rec, err := assembleRecipe(c, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(dir, "recovery-key"); rec.Security.RecoveryKeyOut != want {
+			t.Fatalf("%s recovery_key_out = %q, want %q", encryption, rec.Security.RecoveryKeyOut, want)
+		}
+	}
+}
+
 func TestAssembleRecipeSessionsDoNotOverwriteSecrets(t *testing.T) {
 	root := t.TempDir()
 	assemble := func(name, secret string) *recipe.Recipe {

@@ -147,6 +147,8 @@ func TestValidateRejections(t *testing.T) {
 		{"passphrase both", replace(validBootc(), `encryption = "none"`, `encryption = "luks-passphrase"`+"\npassphrase = \"x\"\npassphrase_file = \"/nope\""), fullEnv, CodePassphrase},
 		{"passphrase on none", replace(validBootc(), `encryption = "none"`, `encryption = "none"`+"\npassphrase = \"x\""), fullEnv, CodePassphrase},
 		{"passphrase on ab", replace(validAB(t), `encryption = "tpm2-luks"`, `encryption = "luks"`+"\npassphrase = \"x\""), fullEnv, CodePassphrase},
+		{"recovery output without encryption", replace(validAB(t), `encryption = "tpm2-luks"`, `encryption = "none"`+"\nrecovery_key_out = \"/tmp/key\""), fullEnv, CodeFile},
+		{"empty recovery output", replace(validAB(t), `encryption = "tpm2-luks"`, `encryption = "tpm2-luks"`+"\nrecovery_key_out = \"\""), fullEnv, CodeFile},
 		{"mok missing under sb", replace(validAB(t), `mok = "enroll"`, ""), fullEnv, CodeRequired},
 		{"mok without sb", validAB(t), Env{SecureBoot: false, TPM: true}, CodeMok},
 		{"mok skip with password", replace(validAB(t), `mok = "enroll"`, `mok = "skip"`), fullEnv, CodeMok},

@@ -127,18 +127,30 @@ func varFilesystem(r *recipe.Recipe) string {
 }
 
 func runLuksVar(ctx context.Context, env *pipeline.Env) error {
-	key, err := luks.GenerateRecoveryKey()
-	if err != nil {
-		return err
+	key := env.LuksKey
+	if key == "" {
+		var err error
+		key, err = luks.GenerateRecoveryKey()
+		if err != nil {
+			return err
+		}
+		env.LuksKey = key
 	}
-	env.LuksKey = key
 	env.Emit(progress.RecoveryKey{Key: key})
 	if out := env.Recipe.Security.RecoveryKeyOut; out != "" {
 		// No trailing newline: the hex string is byte-exactly the
 		// passphrase (snosi-install's printf '%s' rule).
-		if err := os.WriteFile(out, []byte(key), 0o600); err != nil {
+		if out != env.RecoveryKeyOut {
+			return fmt.Errorf("recovery key output %s was not reserved by preflight", out)
+		}
+		if env.RecoveryKeyTemp == "" {
+			return fmt.Errorf("recovery key output %s has no staged key from preflight", out)
+		}
+		if err := commitRecoveryKey(out, env.RecoveryKeyTemp); err != nil {
 			return fmt.Errorf("writing recovery key file: %w", err)
 		}
+		env.RecoveryKeyTemp = ""
+		env.RecoveryKeyWritten = true
 	}
 	if err := luks.Format(ctx, env.Runner, env.VarPart, key); err != nil {
 		return err
@@ -151,6 +163,59 @@ func runLuksVar(ctx context.Context, env *pipeline.Env) error {
 	env.Defer("close var LUKS mapper", func() error {
 		return luks.Close(context.Background(), env.Runner, varMapper)
 	})
+	return nil
+}
+
+func stageRecoveryKey(path, key string) (string, error) {
+	// Staging in the destination directory makes the later rename atomic and
+	// allocation-free after destructive work begins.
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+	keep := false
+	defer func() {
+		_ = tmp.Close()
+		if !keep {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		return "", err
+	}
+	if _, err := tmp.WriteString(key); err != nil {
+		return "", err
+	}
+	if err := tmp.Sync(); err != nil {
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	keep = true
+	return tmpPath, nil
+}
+
+func commitRecoveryKey(path, tmpPath string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("checking reserved output: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || info.Size() != 0 {
+		return fmt.Errorf("reserved output changed before key write")
+	}
+	tmpInfo, err := os.Stat(tmpPath)
+	if err != nil {
+		return fmt.Errorf("checking staged key: %w", err)
+	}
+	if !tmpInfo.Mode().IsRegular() || tmpInfo.Mode().Perm() != 0o600 || tmpInfo.Size() != 64 || filepath.Dir(tmpPath) != filepath.Dir(path) {
+		return fmt.Errorf("staged recovery key changed before commit")
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
 	return nil
 }
 
