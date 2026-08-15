@@ -41,6 +41,19 @@ func TestRunWizardRejectsInvalidProvidedCatalogBeforeUI(t *testing.T) {
 	}
 }
 
+func TestRunWizardRequiresSessionDirectoryBeforeUI(t *testing.T) {
+	rec, err := RunWizard(context.Background(), WizardOpts{
+		UEFI:    true,
+		Catalog: []CatalogEntry{bootcEntry()},
+	})
+	if err == nil || !strings.Contains(err.Error(), "session directory is required") {
+		t.Fatalf("RunWizard error = %v, want session-directory rejection", err)
+	}
+	if rec != nil {
+		t.Fatalf("RunWizard returned recipe without session ownership: %+v", rec)
+	}
+}
+
 func bootcEntry() CatalogEntry {
 	return CatalogEntry{Family: recipe.FamilyBootc, Name: "snow", Description: "d", Ref: "ghcr.io/frostyard/snow:latest"}
 }
@@ -309,6 +322,82 @@ func TestAssembleRecipeSecretFiles(t *testing.T) {
 	checkSecret(recb.Security.PassphraseFile, "s3cret")
 }
 
+func TestAssembleRecipeSessionsDoNotOverwriteSecrets(t *testing.T) {
+	root := t.TempDir()
+	assemble := func(name, secret string) *recipe.Recipe {
+		t.Helper()
+		c := baseChoices(bootcEntry())
+		c.filesystem = "btrfs"
+		c.encryption = "luks-passphrase"
+		c.passphrase = secret + "-passphrase"
+		c.mok = "enroll"
+		c.mokPassword = secret + "-mok"
+		c.createUser = true
+		c.username = name
+		c.password = secret + "-user"
+		rec, err := assembleRecipe(c, filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rec
+	}
+	first := assemble("first", "alpha")
+	second := assemble("second", "beta")
+	checks := []struct {
+		path, dir, want string
+	}{
+		{first.Security.PassphraseFile, "first", "alpha-passphrase"},
+		{first.Security.MokPasswordFile, "first", "alpha-mok"},
+		{first.System.User.PasswordFile, "first", "alpha-user"},
+		{second.Security.PassphraseFile, "second", "beta-passphrase"},
+		{second.Security.MokPasswordFile, "second", "beta-mok"},
+		{second.System.User.PasswordFile, "second", "beta-user"},
+	}
+	for _, check := range checks {
+		if filepath.Dir(check.path) != filepath.Join(root, check.dir) {
+			t.Fatalf("secret path %q escaped session %q", check.path, check.dir)
+		}
+		data, err := os.ReadFile(check.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != check.want {
+			t.Fatalf("secret %s = %q, want %q", check.path, data, check.want)
+		}
+	}
+}
+
+func TestCleanupSecretFilesRemovesAbandonedReviewSecrets(t *testing.T) {
+	dir := t.TempDir()
+	c := baseChoices(bootcEntry())
+	c.filesystem = "btrfs"
+	c.encryption = "luks-passphrase"
+	c.passphrase = "abandoned-passphrase"
+	c.mok = "enroll"
+	c.mokPassword = "abandoned-mok"
+	c.createUser = true
+	c.username = "abandoned"
+	c.password = "abandoned-user"
+	if _, err := assembleRecipe(c, dir); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(dir, "catalog-note")
+	if err := os.WriteFile(keep, []byte("not a secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanupSecretFiles(dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range generatedSecretNames {
+		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("abandoned secret %q remains: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("cleanup removed unrelated session file: %v", err)
+	}
+}
+
 func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 	dir := t.TempDir()
 
@@ -337,6 +426,31 @@ func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 	c = baseChoices(CatalogEntry{Family: "weird", Name: "x"})
 	if _, err := assembleRecipe(c, dir); err == nil {
 		t.Error("unknown family: want error, got nil")
+	}
+
+	c = baseChoices(bootcEntry())
+	c.filesystem = "btrfs"
+	c.encryption = "luks-passphrase"
+	c.passphrase = " \t "
+	if _, err := assembleRecipe(c, dir); err == nil {
+		t.Error("whitespace-only passphrase: want error, got nil")
+	}
+
+	c = baseChoices(abEntry())
+	c.varFilesystem = "ext4"
+	c.mok = "enroll"
+	c.mokPassword = " \t "
+	if _, err := assembleRecipe(c, dir); err == nil {
+		t.Error("whitespace-only MOK password: want error, got nil")
+	}
+
+	c = baseChoices(abEntry())
+	c.varFilesystem = "ext4"
+	c.createUser = true
+	c.username = "bjk"
+	c.password = " \t "
+	if _, err := assembleRecipe(c, dir); err == nil {
+		t.Error("whitespace-only user password: want error, got nil")
 	}
 }
 
@@ -616,6 +730,9 @@ func TestTimezoneSuggestions(t *testing.T) {
 // so bad input is caught on the field; recipe.Validate remains the
 // final authority via TestAssembleRecipeMatrix.
 func TestLiveValidators(t *testing.T) {
+	if err := requireNonEmpty("a password")(" \t "); err == nil {
+		t.Error("whitespace-only secret accepted")
+	}
 	if err := validateHostnameInput("frost01.example.org"); err != nil {
 		t.Errorf("valid hostname rejected: %v", err)
 	}

@@ -559,7 +559,7 @@ func humanSize(b int64) string {
 
 func requireNonEmpty(what string) func(string) error {
 	return func(s string) error {
-		if s == "" {
+		if strings.TrimSpace(s) == "" {
 			return errors.New("enter " + what)
 		}
 		return nil

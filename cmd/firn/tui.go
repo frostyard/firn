@@ -1,11 +1,12 @@
 // TUI entry point: bare `firn` (or `firn install` with no recipe path)
-// runs the wizard, writes the generated recipe to /run/firn, and drives
-// the install pipeline in-process with progress over a Go channel
-// (ADR-0007 — no subprocess seam, one binary).
+// runs the wizard, writes its recipe and secrets to one private session
+// under /run/firn, and drives the install pipeline in-process with progress
+// over a Go channel (ADR-0007 — no subprocess seam, one binary).
 package firn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,26 +37,28 @@ type tuiOptions struct {
 }
 
 type tuiRuntime struct {
-	holdError   func(context.Context, string, error) error
-	runWizard   func(context.Context, tui.WizardOpts) (*recipe.Recipe, error)
-	writeRecipe func(*recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error)
-	runInstall  func(context.Context, *pipeline.Env, *recipe.Loaded) (tui.InstallResult, error)
-	stderr      io.Writer
+	holdError     func(context.Context, string, error) error
+	createSession func() (string, error)
+	removeSession func(string) error
+	runWizard     func(context.Context, tui.WizardOpts) (*recipe.Recipe, error)
+	writeRecipe   func(string, *recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error)
+	runInstall    func(context.Context, *pipeline.Env, *recipe.Loaded) (tui.InstallResult, error)
+	stderr        io.Writer
 }
 
-// recipeDir is where the wizard's generated recipe artifact lands.
-// Under /run so it never survives a reboot of the installer
-// environment; 0700/0600 because it can carry a password hash and
-// SSH keys.
+// recipeDir owns the wizard's unique session directories. Under /run so no
+// recipe or plaintext secret survives a reboot of the installer environment.
 const recipeDir = "/run/firn"
 
 func runTUI(parent context.Context, o tuiOptions) error {
 	return runTUIWithRuntime(parent, o, tuiRuntime{
-		holdError:   tui.HoldError,
-		runWizard:   tui.RunWizard,
-		writeRecipe: writeRecipe,
-		runInstall:  runTUIInstall,
-		stderr:      os.Stderr,
+		holdError:     tui.HoldError,
+		createSession: createTUISession,
+		removeSession: os.RemoveAll,
+		runWizard:     tui.RunWizard,
+		writeRecipe:   writeRecipeTo,
+		runInstall:    runTUIInstall,
+		stderr:        os.Stderr,
 	})
 }
 
@@ -63,11 +66,17 @@ func (rt tuiRuntime) withDefaults() tuiRuntime {
 	if rt.holdError == nil {
 		rt.holdError = tui.HoldError
 	}
+	if rt.createSession == nil {
+		rt.createSession = createTUISession
+	}
+	if rt.removeSession == nil {
+		rt.removeSession = os.RemoveAll
+	}
 	if rt.runWizard == nil {
 		rt.runWizard = tui.RunWizard
 	}
 	if rt.writeRecipe == nil {
-		rt.writeRecipe = writeRecipe
+		rt.writeRecipe = writeRecipeTo
 	}
 	if rt.runInstall == nil {
 		rt.runInstall = runTUIInstall
@@ -78,7 +87,7 @@ func (rt tuiRuntime) withDefaults() tuiRuntime {
 	return rt
 }
 
-func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) error {
+func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) (retErr error) {
 	rt = rt.withDefaults()
 	if parent == nil {
 		parent = context.Background()
@@ -114,13 +123,32 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) erro
 		fmt.Fprintf(rt.stderr, "firn: note: %v\n", warn)
 		notices = append(notices, warn.Error())
 	}
+	sessionDir, err := rt.createSession()
+	if err != nil {
+		return rt.holdError(ctx, "installer setup failed", fmt.Errorf("create wizard session: %w", err))
+	}
+	keepSession := false
+	// snosi-install uses a unique mktemp workdir and an EXIT trap that always
+	// removes it. Firn mirrors that cleanup before persistence, but deliberately
+	// retains a successful session because its UI promises a reproducible
+	// headless recipe until reboot; Go's lexical defer also avoids the parent's
+	// documented shell trap-scope failure (snosi-install main, 2026-07-15).
+	defer func() {
+		if keepSession {
+			return
+		}
+		if err := rt.removeSession(sessionDir); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("remove abandoned wizard session %s: %w", sessionDir, err))
+		}
+	}()
 
 	r, err := rt.runWizard(ctx, tui.WizardOpts{
-		Runner:  env.Runner,
-		Machine: env.Machine,
-		UEFI:    env.UEFI,
-		Catalog: catalog,
-		Notices: notices,
+		Runner:     env.Runner,
+		Machine:    env.Machine,
+		UEFI:       env.UEFI,
+		Catalog:    catalog,
+		Notices:    notices,
+		SessionDir: sessionDir,
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -132,10 +160,14 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) erro
 		return nil // user quit the wizard; nothing was touched
 	}
 
-	path, l, err := rt.writeRecipe(r, env.Machine)
+	path, l, err := rt.writeRecipe(sessionDir, r, env.Machine)
 	if err != nil {
 		return rt.holdError(ctx, "could not prepare the install", err)
 	}
+	// A persisted recipe owns this session from here through installer reboot,
+	// including when the install itself fails and the reproduction artifact is
+	// most useful.
+	keepSession = true
 	env.Recipe = &l.Recipe
 
 	// No typed --confirm on this path: the wizard's typed-confirmation
@@ -201,6 +233,7 @@ func reportTUIResult(stderr io.Writer, res tui.InstallResult, uiErr error, path,
 	}
 	fmt.Fprintf(stderr, "firn: generated recipe saved at %s\n", path)
 	fmt.Fprintf(stderr, "firn: reproduce headless with: firn install --confirm %s %s\n", disk, path)
+	fmt.Fprintln(stderr, "firn: recipe and secret files remain available until this installer environment reboots")
 	return runErr
 }
 
@@ -209,8 +242,18 @@ func reportTUIResult(stderr io.Writer, res tui.InstallResult, uiErr error, path,
 // 5), and it is exactly what the printed reproduce-headless command
 // will consume. Any failure here is a firn bug — the wizard generated
 // something the schema rejects — never a user error.
-func writeRecipe(r *recipe.Recipe, machine recipe.Env) (string, *recipe.Loaded, error) {
-	return writeRecipeTo(recipeDir, r, machine)
+func createTUISession() (string, error) {
+	return newTUISession(recipeDir)
+}
+
+func newTUISession(root string) (string, error) {
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(root, "session-")
 }
 
 func writeRecipeTo(dir string, r *recipe.Recipe, machine recipe.Env) (string, *recipe.Loaded, error) {
@@ -221,7 +264,10 @@ func writeRecipeTo(dir string, r *recipe.Recipe, machine recipe.Env) (string, *r
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", nil, err
 	}
-	path := filepath.Join(dir, fmt.Sprintf("recipe-%d.toml", os.Getpid()))
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return "", nil, err
+	}
+	path := filepath.Join(dir, "recipe.toml")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", nil, err
 	}
@@ -233,7 +279,7 @@ func writeRecipeTo(dir string, r *recipe.Recipe, machine recipe.Env) (string, *r
 		for _, is := range issues {
 			fmt.Fprintf(os.Stderr, "%v\n", is)
 		}
-		return "", nil, fmt.Errorf("BUG: the wizard generated an invalid recipe (%d issue(s), kept at %s)", len(issues), path)
+		return "", nil, fmt.Errorf("BUG: the wizard generated an invalid recipe (%d issue(s))", len(issues))
 	}
 	return path, l, nil
 }

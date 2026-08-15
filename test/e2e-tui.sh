@@ -16,7 +16,7 @@
 # virtio disk; install tmux; run `sudo /tmp/firn` (bare — the TUI) in an
 # 80x24 tmux pane and script the wizard with a driver (send-keys +
 # capture-pane polling, never blind sleeps). After the install view
-# finishes: save the generated /run/firn/recipe-*.toml, assert `firn
+# finishes: save the generated /run/firn/session-*/recipe.toml, assert `firn
 # validate` accepts it in the guest (validation-level headless reuse;
 # the family engine E2Es separately cover execution; in-guest because its
 # *_file secrets live on the
@@ -282,10 +282,19 @@ tmux send-keys -t "$S" Enter           # dismiss the held terminal screen
 expect_screen 'FIRN-EXIT:' 40
 cap | grep -q 'FIRN-EXIT:0' || fail "firn exited nonzero"
 
-# Save the generated recipe BEFORE the guest goes away — the host
-# asserts `firn validate` accepts this exact artifact.
-sudo sh -c 'cp /run/firn/recipe-*.toml /tmp/recipe-out.toml && chmod 644 /tmp/recipe-out.toml' \
-  || fail "no generated recipe under /run/firn"
+# Save the generated recipe BEFORE the guest goes away — the host asserts
+# `firn validate` accepts this exact artifact. The user password is guaranteed
+# by this flow, so also pin the per-session containment and permission contract.
+recipe=$(sudo find /run/firn -mindepth 2 -maxdepth 2 -type f -name recipe.toml -print -quit)
+[[ -n $recipe ]] || fail "no generated recipe under /run/firn/session-*"
+session=${recipe%/*}
+secret=$(sudo sed -n 's/^[[:space:]]*password_file = "\(.*\)"$/\1/p' "$recipe" | head -1)
+[[ $secret == "$session/"* ]] || fail "recipe secret $secret escaped session $session"
+[[ $(sudo stat -c %a "$session") == 700 ]] || fail "session directory is not mode 0700"
+[[ $(sudo stat -c %a "$recipe") == 600 ]] || fail "generated recipe is not mode 0600"
+[[ $(sudo stat -c %a "$secret") == 600 ]] || fail "generated secret is not mode 0600"
+sudo cp "$recipe" /tmp/recipe-out.toml && sudo chmod 644 /tmp/recipe-out.toml \
+  || fail "could not save generated recipe"
 
 tmux kill-server 2>/dev/null || true
 echo "driver: OK"
