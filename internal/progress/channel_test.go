@@ -1,6 +1,7 @@
 package progress
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -20,7 +21,9 @@ func TestChannelPreservesOrder(t *testing.T) {
 			t.Fatalf("Emit(%s) = %v, want nil", e.Kind(), err)
 		}
 	}
-	c.Close()
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close = %v, want terminal stream", err)
+	}
 
 	var got []Event
 	for e := range c.Events() {
@@ -41,7 +44,9 @@ func TestChannelCloseSemantics(t *testing.T) {
 	if err := c.Emit(Info{Message: "buffered"}); err != nil {
 		t.Fatalf("Emit = %v, want nil", err)
 	}
-	c.Close()
+	if err := c.Close(); !errors.Is(err, ErrStreamTruncated) {
+		t.Fatalf("Close = %v, want ErrStreamTruncated", err)
+	}
 
 	// Buffered events are still drainable after Close, then the
 	// channel reports closed.
@@ -62,19 +67,41 @@ func TestChannelCloseSemantics(t *testing.T) {
 	}
 
 	// Close is idempotent.
-	c.Close()
+	if err := c.Close(); !errors.Is(err, ErrStreamTruncated) {
+		t.Fatalf("second Close = %v, want ErrStreamTruncated", err)
+	}
 }
 
 func TestChannelEmitAfterCloseDoesNotPanic(t *testing.T) {
 	c := NewChannel(1)
-	c.Close()
+	_ = c.Close()
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("Emit after Close panicked: %v", r)
 		}
 	}()
-	if err := c.Emit(Info{Message: "late"}); err != nil {
-		t.Fatalf("Emit after Close = %v, want nil", err)
+	if err := c.Emit(Info{Message: "late"}); !errors.Is(err, ErrEmitterClosed) {
+		t.Fatalf("Emit after Close = %v, want ErrEmitterClosed", err)
+	}
+}
+
+func TestChannelRejectsEventsAfterTerminal(t *testing.T) {
+	c := NewChannel(2)
+	if err := c.Emit(Done{OK: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Emit(Error{Code: CodeStepFailed, Message: "duplicate"}); !errors.Is(err, ErrAfterTerminal) {
+		t.Fatalf("duplicate terminal error = %v, want ErrAfterTerminal", err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var got []Event
+	for event := range c.Events() {
+		got = append(got, event)
+	}
+	if len(got) != 1 {
+		t.Fatalf("delivered %d events, want only terminal", len(got))
 	}
 }
 

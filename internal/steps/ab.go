@@ -341,8 +341,8 @@ func runSysconfigAB(ctx context.Context, env *pipeline.Env) error {
 		}
 		for _, g := range missing {
 			msg := fmt.Sprintf("group %q does not exist in the image; user %s not joined to it", g, sys.User.Name)
-			env.Emit(progress.Warning{Code: "group_missing", Message: msg})
-			env.AddSummary("group_missing", msg)
+			env.Emit(progress.Warning{Code: progress.CodeGroupMissing, Message: msg})
+			env.AddSummary(progress.CodeGroupMissing, msg)
 		}
 		if key, err := resolveKey(sys.User.SSHAuthorizedKey, sys.User.SSHAuthorizedKeyFile); err != nil {
 			return err
@@ -367,8 +367,8 @@ func runFlatpaksAB(ctx context.Context, env *pipeline.Env) error {
 		}
 		if !ok {
 			msg := "core_flatpaks: this image publishes no core set"
-			env.Emit(progress.Warning{Code: "no_core_set", Message: msg})
-			env.AddSummary("no_core_set", msg)
+			env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg})
+			env.AddSummary(progress.CodeNoCoreSet, msg)
 		}
 		apps = append(apps, core...)
 	}

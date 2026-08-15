@@ -8,13 +8,13 @@ import "sync"
 // non-nil error.
 //
 // Ownership: the sender (pipeline) side calls Emit and, when the run
-// is over, Close. Emit after Close is a silent no-op rather than a
-// panic, so a straggling emit during teardown cannot crash the
-// installer.
+// is over, Close. Protocol-order violations return errors rather than
+// panicking, so callers can fail closed without crashing the installer.
 type Channel struct {
-	mu     sync.Mutex
-	ch     chan Event
-	closed bool
+	mu       sync.Mutex
+	ch       chan Event
+	closed   bool
+	terminal bool
 }
 
 // NewChannel returns a Channel whose stream is buffered to buf events.
@@ -23,15 +23,21 @@ func NewChannel(buf int) *Channel {
 }
 
 // Emit delivers e to the receive side in order. It blocks when the
-// buffer is full and the receiver has not caught up. After Close it
-// drops the event. The returned error is always nil (Emitter shape).
+// buffer is full and the receiver has not caught up. Events after a terminal
+// event or Close are rejected and never delivered.
 func (c *Channel) Emit(e Event) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
-		return nil
+		return ErrEmitterClosed
+	}
+	if c.terminal {
+		return ErrAfterTerminal
 	}
 	c.ch <- e
+	if isTerminal(e) {
+		c.terminal = true
+	}
 	return nil
 }
 
@@ -39,12 +45,17 @@ func (c *Channel) Emit(e Event) error {
 // Close after any buffered events are drained by the receiver.
 func (c *Channel) Events() <-chan Event { return c.ch }
 
-// Close ends the stream. Safe to call more than once.
-func (c *Channel) Close() {
+// Close ends the stream. Safe to call more than once. It reports a truncated
+// producer stream when no terminal event was emitted before the first close.
+func (c *Channel) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.closed {
 		c.closed = true
 		close(c.ch)
 	}
+	if !c.terminal {
+		return ErrStreamTruncated
+	}
+	return nil
 }

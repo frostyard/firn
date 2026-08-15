@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -16,11 +17,12 @@ func TestNDJSONStream(t *testing.T) {
 		Start{Protocol: Protocol, Firn: "0.1.0", Steps: []Step{{Name: "preflight", Weight: 2}, {Name: "partition", Weight: 5}}},
 		StepStart{Index: 0, Name: "preflight"},
 		Warning{Code: CodeNoTPM, Message: "no TPM device; skipping enrollment"},
+		StepProgress{Index: 1},
 		StepProgress{Index: 1, Fraction: 0.5, Bytes: 512, TotalBytes: 1024},
 		Info{Message: "writing image"},
 		Summary{Items: []SummaryItem{{Code: CodeFlatpakUnreachable, Detail: "org.mozilla.firefox"}}},
 		RecoveryKey{Key: "aaaa-bbbb"},
-		Done{OK: true, BootEntry: "0003"},
+		Done{OK: true},
 	}
 	for _, e := range events {
 		if err := em.Emit(e); err != nil {
@@ -32,11 +34,12 @@ func TestNDJSONStream(t *testing.T) {
 		`{"event":"start","protocol":1,"firn":"0.1.0","steps":[{"name":"preflight","weight":2},{"name":"partition","weight":5}]}`,
 		`{"event":"step_start","index":0,"name":"preflight"}`,
 		`{"event":"warning","code":"no_tpm","message":"no TPM device; skipping enrollment"}`,
+		`{"event":"step_progress","index":1,"fraction":0,"bytes":0,"total_bytes":0}`,
 		`{"event":"step_progress","index":1,"fraction":0.5,"bytes":512,"total_bytes":1024}`,
 		`{"event":"info","message":"writing image"}`,
 		`{"event":"summary","items":[{"code":"flatpak_unreachable","detail":"org.mozilla.firefox"}]}`,
 		`{"event":"recovery_key","key":"aaaa-bbbb"}`,
-		`{"event":"done","ok":true,"boot_entry":"0003"}`,
+		`{"event":"done","ok":true}`,
 	}
 
 	sc := bufio.NewScanner(&buf)
@@ -57,15 +60,29 @@ func TestNDJSONStream(t *testing.T) {
 	}
 }
 
-func TestErrorEventOmitsEmptyStep(t *testing.T) {
+func TestErrorEventIncludesEmptyStep(t *testing.T) {
 	var buf bytes.Buffer
 	if err := NewNDJSON(&buf).Emit(Error{Code: "download_failed", Message: "checksum mismatch"}); err != nil {
 		t.Fatal(err)
 	}
 	got := strings.TrimSpace(buf.String())
-	want := `{"event":"error","code":"download_failed","message":"checksum mismatch"}`
+	want := `{"event":"error","step":"","code":"download_failed","message":"checksum mismatch"}`
 	if got != want {
 		t.Errorf("got %s want %s", got, want)
+	}
+}
+
+func TestNDJSONRejectsEventsAfterTerminal(t *testing.T) {
+	var buf bytes.Buffer
+	em := NewNDJSON(&buf)
+	if err := em.Emit(Done{OK: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := em.Emit(Info{Message: "late"}); !errors.Is(err, ErrAfterTerminal) {
+		t.Fatalf("late Emit error = %v, want ErrAfterTerminal", err)
+	}
+	if strings.Contains(buf.String(), "late") {
+		t.Fatal("event after terminal reached NDJSON stream")
 	}
 }
 

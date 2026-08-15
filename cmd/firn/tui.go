@@ -231,7 +231,7 @@ func reportTUIResult(stderr io.Writer, res tui.InstallResult, uiErr error, path,
 			runErr = fmt.Errorf("install failed at %s [%s]: %s", res.FailedStep, res.ErrorCode, res.ErrorMessage)
 		}
 	default:
-		runErr = fmt.Errorf("install cancelled")
+		runErr = fmt.Errorf("install failed [%s]: progress stream closed before a terminal event", progress.CodeStreamTruncated)
 	}
 	fmt.Fprintf(stderr, "firn: generated recipe saved at %s\n", path)
 	fmt.Fprintf(stderr, "firn: reproduce headless with: firn install --confirm %s %s\n", disk, path)

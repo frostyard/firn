@@ -2,6 +2,7 @@ package firn
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -127,27 +128,41 @@ func validateInstallMode(hasRecipe, dryRun bool, confirm string, jsonProgress bo
 // printEvent renders progress events for humans on stderr, keeping
 // stdout clean.
 func printEvent(e progress.Event) {
+	printEventTo(os.Stderr, e)
+}
+
+func printEventTo(w io.Writer, e progress.Event) {
 	switch ev := e.(type) {
 	case progress.Start:
-		fmt.Fprintf(os.Stderr, "firn %s — %d steps:\n", ev.Firn, len(ev.Steps))
+		fmt.Fprintf(w, "firn %s — %d steps:\n", ev.Firn, len(ev.Steps))
 		for i, s := range ev.Steps {
-			fmt.Fprintf(os.Stderr, "  %2d. %s (weight %d)\n", i+1, s.Name, s.Weight)
+			fmt.Fprintf(w, "  %2d. %s (weight %d)\n", i+1, s.Name, s.Weight)
 		}
 	case progress.StepStart:
-		fmt.Fprintf(os.Stderr, "→ %s\n", ev.Name)
+		fmt.Fprintf(w, "→ %s\n", ev.Name)
+	case progress.StepProgress:
+		if ev.TotalBytes > 0 {
+			fmt.Fprintf(w, "  progress: %d/%d bytes (%.0f%%)\n", ev.Bytes, ev.TotalBytes, float64(ev.Bytes)/float64(ev.TotalBytes)*100)
+		} else {
+			fmt.Fprintf(w, "  progress: %.0f%%\n", ev.Fraction*100)
+		}
 	case progress.Info:
-		fmt.Fprintf(os.Stderr, "  %s\n", ev.Message)
+		fmt.Fprintf(w, "  %s\n", ev.Message)
 	case progress.Warning:
-		fmt.Fprintf(os.Stderr, "  warning [%s]: %s\n", ev.Code, ev.Message)
+		fmt.Fprintf(w, "  warning [%s]: %s\n", ev.Code, ev.Message)
 	case progress.Summary:
 		for _, item := range ev.Items {
-			fmt.Fprintf(os.Stderr, "  summary [%s]: %s\n", item.Code, item.Detail)
+			fmt.Fprintf(w, "  summary [%s]: %s\n", item.Code, item.Detail)
 		}
 	case progress.RecoveryKey:
-		fmt.Fprintf(os.Stderr, "RECOVERY KEY (store it safely): %s\n", ev.Key)
+		fmt.Fprintf(w, "RECOVERY KEY (store it safely): %s\n", ev.Key)
 	case progress.Error:
-		fmt.Fprintf(os.Stderr, "error in %s [%s]: %s\n", ev.Step, ev.Code, ev.Message)
+		if ev.Step == "" {
+			fmt.Fprintf(w, "error [%s]: %s\n", ev.Code, ev.Message)
+		} else {
+			fmt.Fprintf(w, "error in %s [%s]: %s\n", ev.Step, ev.Code, ev.Message)
+		}
 	case progress.Done:
-		fmt.Fprint(os.Stderr, "done\n")
+		fmt.Fprint(w, "done\n")
 	}
 }

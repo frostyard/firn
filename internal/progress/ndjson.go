@@ -11,8 +11,9 @@ import (
 // object per line with an `event` type tag, nothing else on the
 // stream. Safe for concurrent use.
 type NDJSON struct {
-	mu sync.Mutex
-	w  io.Writer
+	mu       sync.Mutex
+	w        io.Writer
+	terminal bool
 }
 
 // NewNDJSON returns an emitter writing to w (stdout in --json-progress
@@ -23,6 +24,11 @@ func NewNDJSON(w io.Writer) *NDJSON { return &NDJSON{w: w} }
 const maxLine = 64 * 1024
 
 func (n *NDJSON) Emit(e Event) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.terminal {
+		return ErrAfterTerminal
+	}
 	// Tag-then-payload: marshal the event struct, then splice in the
 	// `event` tag so each type's fields stay declared on the type.
 	payload, err := json.Marshal(e)
@@ -44,10 +50,11 @@ func (n *NDJSON) Emit(e Event) error {
 		return fmt.Errorf("progress: %s event exceeds %d-byte line limit", e.Kind(), maxLine)
 	}
 
-	n.mu.Lock()
-	defer n.mu.Unlock()
 	if _, err := n.w.Write(line); err != nil {
 		return fmt.Errorf("progress: write: %w", err)
+	}
+	if isTerminal(e) {
+		n.terminal = true
 	}
 	return nil
 }

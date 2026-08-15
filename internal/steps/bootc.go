@@ -328,7 +328,7 @@ func redirectBootcStorageToDisk(ctx context.Context, env *pipeline.Env) (teardow
 			// stubborn mount still releases the underlying tree for removal.
 			if _, e := env.Runner.Run(context.Background(), "umount", "-R", mounted[i]); e != nil {
 				if _, e2 := env.Runner.Run(context.Background(), "umount", "-R", "-l", mounted[i]); e2 != nil {
-					env.Emit(progress.Warning{Code: "store_umount_failed", Message: e2.Error()})
+					env.Emit(progress.Warning{Code: progress.CodeStoreUnmountFailed, Message: e2.Error()})
 				}
 			}
 		}
@@ -394,7 +394,7 @@ func redirectBootcStorageToDisk(ctx context.Context, env *pipeline.Env) (teardow
 		restoreEnv()
 		undo()
 		if e := os.RemoveAll(base); e != nil {
-			env.Emit(progress.Warning{Code: "store_cleanup_failed", Message: e.Error()})
+			env.Emit(progress.Warning{Code: progress.CodeStoreCleanupFailed, Message: e.Error()})
 		}
 	}
 	return teardown, scratch, nil
@@ -581,8 +581,8 @@ func runFlatpaks(ctx context.Context, env *pipeline.Env) error {
 		}
 		if !ok {
 			msg := "core_flatpaks: no readable core set in the deployment or on the installer medium"
-			env.Emit(progress.Warning{Code: "no_core_set", Message: msg})
-			env.AddSummary("no_core_set", msg)
+			env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg})
+			env.AddSummary(progress.CodeNoCoreSet, msg)
 		}
 		apps = append(apps, core...)
 	}
@@ -616,8 +616,8 @@ func runSysconfig(ctx context.Context, env *pipeline.Env) error {
 		}
 		for _, g := range missing {
 			msg := fmt.Sprintf("group %q does not exist in the image; user %s not joined to it", g, sys.User.Name)
-			env.Emit(progress.Warning{Code: "group_missing", Message: msg})
-			env.AddSummary("group_missing", msg)
+			env.Emit(progress.Warning{Code: progress.CodeGroupMissing, Message: msg})
+			env.AddSummary(progress.CodeGroupMissing, msg)
 		}
 		if key, err := resolveKey(sys.User.SSHAuthorizedKey, sys.User.SSHAuthorizedKeyFile); err != nil {
 			return err
