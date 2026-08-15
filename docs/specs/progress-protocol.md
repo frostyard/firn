@@ -53,6 +53,13 @@ active (human/log output goes to stderr). Every event carries `event`
 6. Event order is the source of truth for progress; wall-clock pacing
    carries no meaning.
 
+### Stable error codes
+
+| Code | Meaning |
+| --- | --- |
+| `step_failed` | A pipeline step failed without a more specific stable code. |
+| `image_verification_failed` | Bootc image digest resolution or cosign verification failed in `preflight-image`; no destructive step has run. |
+
 ## Recovery-key disclosure
 
 Recovery keys deliberately have different presentation boundaries for the
