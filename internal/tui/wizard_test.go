@@ -277,6 +277,65 @@ func TestAssembleRecipeCarriesCatalogCosignKey(t *testing.T) {
 	}
 }
 
+func TestAssembleRecipeAdvancedImageOptions(t *testing.T) {
+	assertValid := func(t *testing.T, rec *recipe.Recipe) {
+		t.Helper()
+		reviewed, err := marshalAssembled(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if issues := validateAssembled(reviewed, recipe.Env{}); len(issues) != 0 {
+			t.Fatalf("advanced wizard recipe failed canonical validation: %v", issues)
+		}
+	}
+
+	t.Run("bootc", func(t *testing.T) {
+		c := baseChoices(bootcEntry())
+		c.filesystem = "btrfs"
+		c.advancedImage = true
+		c.targetRef = " ghcr.io/frostyard/snow:stable "
+		c.bootloader = "grub2"
+		rec, err := assembleRecipe(c, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.Image.TargetRef != "ghcr.io/frostyard/snow:stable" || rec.Target.Bootloader != "grub2" {
+			t.Fatalf("bootc advanced fields = target_ref:%q bootloader:%q", rec.Image.TargetRef, rec.Target.Bootloader)
+		}
+		assertValid(t, rec)
+	})
+
+	t.Run("ab", func(t *testing.T) {
+		c := baseChoices(abEntry())
+		c.varFilesystem = "ext4"
+		c.advancedImage = true
+		c.origin = " https://mirror.example.test "
+		c.release = "20260814010203"
+		rec, err := assembleRecipe(c, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.Image.Origin != "https://mirror.example.test" || rec.Image.Release != "20260814010203" {
+			t.Fatalf("A/B advanced fields = origin:%q release:%q", rec.Image.Origin, rec.Image.Release)
+		}
+		assertValid(t, rec)
+	})
+
+	t.Run("disabled ignores stale answers", func(t *testing.T) {
+		c := baseChoices(bootcEntry())
+		c.filesystem = "btrfs"
+		c.targetRef = "ghcr.io/frostyard/snow:stable"
+		c.bootloader = "grub2"
+		rec, err := assembleRecipe(c, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.Image.TargetRef != "" || rec.Target.Bootloader != "" {
+			t.Fatalf("disabled advanced page leaked fields: %+v %+v", rec.Image, rec.Target)
+		}
+	})
+}
+
 func TestAssembleRecipeSecretFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "secrets")
 	c := baseChoices(abEntry())
@@ -654,6 +713,27 @@ func TestConfirmFormsPreserveAnswersWhenRebuilt(t *testing.T) {
 	}
 }
 
+func TestAdvancedImageFormsPreserveAnswersWhenRebuilt(t *testing.T) {
+	bootc := &wizard{c: wizardChoices{entry: bootcEntry()}}
+	bootc.advancedImageForm()
+	if bootc.c.advancedImage || bootc.c.bootloader != "systemd" {
+		t.Fatalf("bootc advanced initial state = enabled:%v bootloader:%q", bootc.c.advancedImage, bootc.c.bootloader)
+	}
+	bootc.c.advancedImage = true
+	bootc.c.targetRef = "ghcr.io/frostyard/snow:stable"
+	bootc.c.bootloader = "grub2"
+	bootc.advancedImageForm()
+	if !bootc.c.advancedImage || bootc.c.targetRef != "ghcr.io/frostyard/snow:stable" || bootc.c.bootloader != "grub2" {
+		t.Fatalf("rebuilt bootc advanced form changed answers: %+v", bootc.c)
+	}
+
+	ab := &wizard{c: wizardChoices{entry: abEntry(), advancedImage: true, origin: "https://mirror.example.test", release: "20260814010203"}}
+	ab.advancedImageForm()
+	if ab.c.origin != "https://mirror.example.test" || ab.c.release != "20260814010203" {
+		t.Fatalf("rebuilt A/B advanced form changed answers: %+v", ab.c)
+	}
+}
+
 func TestSystemFormDoesNotSeedOptionalImageDefaults(t *testing.T) {
 	w := &wizard{}
 	w.systemForm()
@@ -870,6 +950,24 @@ func TestLiveValidators(t *testing.T) {
 	}
 	if validateGroupListInput("Bad Group") == nil {
 		t.Error("invalid group list accepted")
+	}
+	if err := validateTargetRefInput("ghcr.io/frostyard/snow:stable"); err != nil {
+		t.Errorf("valid target ref rejected: %v", err)
+	}
+	if validateTargetRefInput("ghcr.io/frostyard/snow: bad") == nil {
+		t.Error("target ref with whitespace accepted")
+	}
+	if err := validateOriginInput("https://mirror.example.test"); err != nil {
+		t.Errorf("valid artifact origin rejected: %v", err)
+	}
+	if validateOriginInput("file:///tmp/repo") == nil {
+		t.Error("non-HTTP artifact origin accepted")
+	}
+	if err := validateReleaseInput("20260814010203"); err != nil {
+		t.Errorf("valid release rejected: %v", err)
+	}
+	if validateReleaseInput("latest") == nil {
+		t.Error("non-version release accepted")
 	}
 
 	tzdir := t.TempDir()

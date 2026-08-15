@@ -162,6 +162,9 @@ func validateImageSelection(img *Image, add func(code, field, format string, arg
 		} else if strings.ContainsAny(img.Ref, " \t") {
 			add(CodeEnum, "image.ref", "not a valid OCI reference")
 		}
+		if img.TargetRef != "" && strings.ContainsAny(img.TargetRef, " \t\r\n") {
+			add(CodeEnum, "image.target_ref", "not a valid OCI reference")
+		}
 		if img.CosignPubKey != "" {
 			if !bootcimg.IsRegistryRef(img.Ref) {
 				add(CodeEnum, "image.ref", "cosign verification requires a registry image reference")

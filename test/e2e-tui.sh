@@ -217,6 +217,8 @@ if [[ $CATALOG_MODE == mixed ]]; then
 fi
 expect_screen 'What to install'        # image: catalog filtered to family
 choose 'cayo\b'                        # filtered list: no cayo/cayo-ab clash
+expect_screen 'Advanced image options'
+skip_field                             # keep catalog/default image policy
 expect_screen 'Target disk'            # vda=installer, vdb=blank target, vdc=seed
 choose 'vdb'
 if [[ $FAMILY == bootc ]]; then
