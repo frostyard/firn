@@ -35,6 +35,13 @@ that generates the same recipe and runs the same pipeline in-process.
                                                 (versioned NDJSON, spec)
 ```
 
+Before rendering image choices, the wizard validates the loaded catalog with
+the recipe package's canonical machine-independent image constraints. Family
+choices come only from families represented in that validated catalog; a
+one-family catalog skips the family page. The selected catalog entry is the
+sole family state used by every later page and by recipe assembly, including
+after a start-over.
+
 ## Design
 
 ### Layers and packages
