@@ -61,9 +61,9 @@ omitting a required field here is a validation error, never a default.
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `hostname` | string | yes | RFC 1123 host label(s), max 253 chars. |
-| `locale` | string | no | `ll_CC[.ENC]` form, e.g. `en_US.UTF-8`. |
-| `timezone` | string | no | IANA zone name, e.g. `America/Chicago`; MUST exist in the target's zoneinfo. |
-| `keyboard` | string | no | `LAYOUT[:VARIANT[:MODEL]]` XKB triplet. |
+| `locale` | string | no | `ll_CC[.ENC]` form, e.g. `en_US.UTF-8`. Empty or omitted preserves the image default. |
+| `timezone` | string | no | IANA zone name, e.g. `America/Chicago`; MUST exist in the target's zoneinfo. Empty or omitted preserves the image default. |
+| `keyboard` | string | no | `LAYOUT[:VARIANT[:MODEL]]` XKB triplet. Empty or omitted preserves the image default. |
 | `flatpaks` | array of string | no | Flatpak application IDs. |
 | `core_flatpaks` | bool | no | Install the image-defined core set where published. Default `false`. |
 | `root_ssh_authorized_key` / `_file` | string / path | no | At most one. OpenSSH public key line(s). |
