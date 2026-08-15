@@ -106,6 +106,11 @@ func TestWeightsToPercent(t *testing.T) {
 	if f := m.overallFraction(); math.Abs(f-0.125) > 1e-9 {
 		t.Fatalf("step 0 half done: fraction = %v, want 0.125", f)
 	}
+	m, _ = apply(t, m, progress.StepProgress{Index: 0, Fraction: 0})
+	if f := m.overallFraction(); f != 0 {
+		t.Fatalf("explicit zero fraction = %v, want 0", f)
+	}
+	m, _ = apply(t, m, progress.StepProgress{Index: 0, Fraction: 0.5})
 
 	m, _ = apply(t, m, progress.StepStart{Index: 1, Name: "write"})
 	if f := m.overallFraction(); math.Abs(f-0.25) > 1e-9 {
@@ -249,7 +254,7 @@ func TestDoneShowsSummary(t *testing.T) {
 	m, _ = apply(t, m, progress.Summary{Items: []progress.SummaryItem{
 		{Code: progress.CodeNoTPM, Detail: "recovery key required at boot"},
 	}})
-	m, cmd := apply(t, m, progress.Done{OK: true, BootEntry: "snosi"})
+	m, cmd := apply(t, m, progress.Done{OK: true})
 	// The success screen also holds until acknowledged.
 	requireNoQuit(t, cmd)
 
@@ -330,14 +335,17 @@ func TestChannelCloseWithoutTerminalEventHolds(t *testing.T) {
 	m := startedModel(t)
 	nm, cmd := m.Update(channelClosedMsg{})
 	m = nm.(installModel)
-	// A channel close with no terminal event still holds the final screen
-	// (rather than vanishing) so the user sees the "did not finish" state.
+	// A producer disappearing with no terminal event is a stream failure, not
+	// user cancellation, and the failure screen still holds for acknowledgement.
 	requireNoQuit(t, cmd)
 	if !m.finished {
 		t.Fatal("channel close should mark the view finished")
 	}
-	if m.result.Done || m.result.Failed {
-		t.Fatalf("result = %+v, want neither Done nor Failed", m.result)
+	if m.result.Done || !m.result.Failed || m.result.ErrorCode != progress.CodeStreamTruncated {
+		t.Fatalf("result = %+v, want stream_truncated failure", m.result)
+	}
+	if view := m.View(); !strings.Contains(view, "install failed") || !strings.Contains(view, progress.CodeStreamTruncated) {
+		t.Fatalf("truncated stream failure not rendered:\n%s", view)
 	}
 	_, cmd = key(t, m, tea.KeyEnter)
 	requireQuit(t, cmd)

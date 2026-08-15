@@ -102,7 +102,7 @@ type installModel struct {
 
 	gated     bool // recovery-key screen is blocking the view
 	canceling bool // Ctrl+C seen; waiting for the pipeline to stop
-	finished  bool // terminal event seen (or channel closed)
+	finished  bool // terminal event seen, or a truncated channel detected
 	result    InstallResult
 }
 
@@ -165,6 +165,12 @@ func (m installModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleEvent(msg.event)
 
 	case channelClosedMsg:
+		if !m.result.Done && !m.result.Failed {
+			m.result.Failed = true
+			m.result.FailedStep = m.currentName
+			m.result.ErrorCode = progress.CodeStreamTruncated
+			m.result.ErrorMessage = "progress stream closed before a terminal event"
+		}
 		m.finished = true
 		return m, nil
 	}
@@ -187,11 +193,10 @@ func (m installModel) handleEvent(e progress.Event) (tea.Model, tea.Cmd) {
 
 	case progress.StepProgress:
 		if e.Index == m.currentIndex {
-			switch {
-			case e.Fraction > 0:
-				m.stepFraction = min(e.Fraction, 1)
-			case e.TotalBytes > 0:
+			if e.TotalBytes > 0 {
 				m.stepFraction = min(float64(e.Bytes)/float64(e.TotalBytes), 1)
+			} else {
+				m.stepFraction = min(max(e.Fraction, 0), 1)
 			}
 		}
 
@@ -355,9 +360,6 @@ func (m installModel) finalView() string {
 		}
 	} else if m.result.Done {
 		b.WriteString(okStyle.Render("install complete"))
-		b.WriteString("\n")
-	} else {
-		b.WriteString(warnStyle.Render("install did not finish"))
 		b.WriteString("\n")
 	}
 	if len(m.result.Summary) > 0 {

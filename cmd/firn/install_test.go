@@ -1,9 +1,12 @@
 package firn
 
 import (
+	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/frostyard/firn/internal/progress"
 )
 
 func TestValidateInstallMode(t *testing.T) {
@@ -35,6 +38,26 @@ func TestValidateInstallMode(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("validateInstallMode error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintEventRendersStepProgress(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		event progress.StepProgress
+		want  string
+	}{
+		{name: "fraction including zero", event: progress.StepProgress{Index: 1, Fraction: 0}, want: "progress: 0%"},
+		{name: "fraction", event: progress.StepProgress{Index: 1, Fraction: 0.25}, want: "progress: 25%"},
+		{name: "bytes", event: progress.StepProgress{Index: 1, Bytes: 512, TotalBytes: 1024}, want: "progress: 512/1024 bytes (50%)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			printEventTo(&out, tc.event)
+			if !strings.Contains(out.String(), tc.want) {
+				t.Fatalf("printEventTo() = %q, want containing %q", out.String(), tc.want)
 			}
 		})
 	}
