@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/BurntSushi/toml"
 )
 
 // writeSecret creates a 0600 file for *_file fields.
@@ -245,7 +243,7 @@ func TestMarshalRoundTripValidates(t *testing.T) {
 	}
 	for name, r := range cases {
 		t.Run(name, func(t *testing.T) {
-			data, err := toml.Marshal(r)
+			data, err := Marshal(&r)
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}

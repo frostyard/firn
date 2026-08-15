@@ -121,7 +121,10 @@ groups = ["wheel"]
 4. Validation MUST succeed or fail entirely before any destructive step;
    a recipe that validates assembles a runnable pipeline.
 5. The TUI MUST NOT be able to produce a recipe this spec rejects, and
-   every recipe it produces MUST reproduce the same install headless.
+   every recipe it produces MUST reproduce the same install headless. The
+   accepted review page's TOML byte sequence MUST be the exact persisted
+   `recipe.toml` artifact used by the in-process install and printed
+   reproduce-headless command; the command layer MUST NOT reserialize it.
 6. Secrets (`passphrase`, `password_hash`, file contents) MUST never be
    echoed in logs, progress events, or error messages.
 7. `version` gates the whole schema: any breaking change to this spec

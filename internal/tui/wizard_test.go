@@ -208,8 +208,12 @@ func TestAssembleRecipeMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("assembleRecipe: %v", err)
 			}
-			if issues := validateAssembled(rec, tc.env); len(issues) != 0 {
-				t.Fatalf("assembled recipe has validation issues (wizard bug):\n%v\nTOML:\n%s", issues, renderTOML(rec))
+			reviewed, err := marshalAssembled(rec)
+			if err != nil {
+				t.Fatalf("marshalAssembled: %v", err)
+			}
+			if issues := validateAssembled(reviewed, tc.env); len(issues) != 0 {
+				t.Fatalf("assembled recipe has validation issues (wizard bug):\n%v\nTOML:\n%s", issues, reviewed)
 			}
 		})
 	}
@@ -235,7 +239,11 @@ func TestAssembleRecipeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assembleRecipe: %v", err)
 	}
-	l, err := recipe.Parse([]byte(renderTOML(rec)))
+	reviewed, err := marshalAssembled(rec)
+	if err != nil {
+		t.Fatalf("marshalAssembled: %v", err)
+	}
+	l, err := recipe.Parse(reviewed)
 	if err != nil {
 		t.Fatalf("re-parsing rendered TOML: %v", err)
 	}
@@ -260,7 +268,11 @@ func TestAssembleRecipeCarriesCatalogCosignKey(t *testing.T) {
 	if rec.Image.CosignPubKey != key {
 		t.Fatalf("cosign key = %q, want catalog key %q", rec.Image.CosignPubKey, key)
 	}
-	if issues := validateAssembled(rec, recipe.Env{}); len(issues) != 0 {
+	reviewed, err := marshalAssembled(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issues := validateAssembled(reviewed, recipe.Env{}); len(issues) != 0 {
 		t.Fatalf("catalog trust recipe failed validation: %v", issues)
 	}
 }
@@ -543,7 +555,11 @@ func TestWizardInteractiveBranchContracts(t *testing.T) {
 		if rec.Target.Filesystem != "xfs" || rec.Security.Encryption != "tpm2-luks" {
 			t.Fatalf("alternate TPM recipe = %+v", rec)
 		}
-		if issues := validateAssembled(rec, recipe.Env{TPM: true}); len(issues) != 0 {
+		reviewed, err := marshalAssembled(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if issues := validateAssembled(reviewed, recipe.Env{TPM: true}); len(issues) != 0 {
 			t.Fatalf("alternate TPM recipe failed validation: %v", issues)
 		}
 	})
@@ -560,7 +576,11 @@ func TestWizardInteractiveBranchContracts(t *testing.T) {
 		if rec.Security.Mok != "enroll" || rec.Security.MokPasswordFile == "" {
 			t.Fatalf("MOK enrollment recipe = %+v", rec.Security)
 		}
-		if issues := validateAssembled(rec, recipe.Env{SecureBoot: true}); len(issues) != 0 {
+		reviewed, err := marshalAssembled(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if issues := validateAssembled(reviewed, recipe.Env{SecureBoot: true}); len(issues) != 0 {
 			t.Fatalf("MOK enrollment recipe failed validation: %v", issues)
 		}
 	})
@@ -610,10 +630,10 @@ func TestSystemFormDoesNotSeedOptionalImageDefaults(t *testing.T) {
 	}
 }
 
-// TestRenderTOMLScoping: only the recipe's own family's fields are
-// emitted, and secrets never appear in the rendered recipe (spec rules
-// 1 and 6 — the review page shows this text).
-func TestRenderTOMLScoping(t *testing.T) {
+// TestReviewedTOMLScoping verifies that the canonical serializer emits only
+// the recipe's family fields and never exposes wizard-entered secrets on the
+// review page (spec rules 1 and 6).
+func TestReviewedTOMLScoping(t *testing.T) {
 	c := baseChoices(bootcEntry())
 	c.filesystem = "btrfs"
 	c.encryption = "luks-passphrase"
@@ -625,7 +645,11 @@ func TestRenderTOMLScoping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assembleRecipe: %v", err)
 	}
-	tomlStr := renderTOML(rec)
+	reviewed, err := marshalAssembled(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tomlStr := string(reviewed)
 	for _, banned := range []string{"product", "var_filesystem", "mok", "recovery_key_out", "sup3r-secret"} {
 		if strings.Contains(tomlStr, banned) {
 			t.Errorf("bootc TOML must not contain %q:\n%s", banned, tomlStr)
@@ -639,7 +663,11 @@ func TestRenderTOMLScoping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assembleRecipe (ab): %v", err)
 	}
-	tomlA := renderTOML(reca)
+	reviewedA, err := marshalAssembled(reca)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tomlA := string(reviewedA)
 	for _, banned := range []string{"ref =", "\nfilesystem =", "btrfs_subvolumes", "bootloader", "passphrase"} {
 		if strings.Contains(tomlA, banned) {
 			t.Errorf("ab TOML must not contain %q:\n%s", banned, tomlA)

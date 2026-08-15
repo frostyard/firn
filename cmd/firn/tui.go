@@ -14,8 +14,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/progress"
@@ -40,8 +38,8 @@ type tuiRuntime struct {
 	holdError     func(context.Context, string, error) error
 	createSession func() (string, error)
 	removeSession func(string) error
-	runWizard     func(context.Context, tui.WizardOpts) (*recipe.Recipe, error)
-	writeRecipe   func(string, *recipe.Recipe, recipe.Env) (string, *recipe.Loaded, error)
+	runWizard     func(context.Context, tui.WizardOpts) ([]byte, error)
+	writeRecipe   func(string, []byte, recipe.Env) (string, *recipe.Loaded, error)
 	runInstall    func(context.Context, *pipeline.Env, *recipe.Loaded) (tui.InstallResult, error)
 	stderr        io.Writer
 }
@@ -142,7 +140,7 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) (ret
 		}
 	}()
 
-	r, err := rt.runWizard(ctx, tui.WizardOpts{
+	reviewed, err := rt.runWizard(ctx, tui.WizardOpts{
 		Runner:     env.Runner,
 		Machine:    env.Machine,
 		UEFI:       env.UEFI,
@@ -156,11 +154,11 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) (ret
 		}
 		return rt.holdError(ctx, "installer setup failed", err)
 	}
-	if r == nil {
+	if reviewed == nil {
 		return nil // user quit the wizard; nothing was touched
 	}
 
-	path, l, err := rt.writeRecipe(sessionDir, r, env.Machine)
+	path, l, err := rt.writeRecipe(sessionDir, reviewed, env.Machine)
 	if err != nil {
 		return rt.holdError(ctx, "could not prepare the install", err)
 	}
@@ -256,11 +254,7 @@ func newTUISession(root string) (string, error) {
 	return os.MkdirTemp(root, "session-")
 }
 
-func writeRecipeTo(dir string, r *recipe.Recipe, machine recipe.Env) (string, *recipe.Loaded, error) {
-	data, err := toml.Marshal(*r)
-	if err != nil {
-		return "", nil, fmt.Errorf("BUG: cannot marshal the wizard's recipe: %w", err)
-	}
+func writeRecipeTo(dir string, reviewed []byte, machine recipe.Env) (string, *recipe.Loaded, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", nil, err
 	}
@@ -268,7 +262,7 @@ func writeRecipeTo(dir string, r *recipe.Recipe, machine recipe.Env) (string, *r
 		return "", nil, err
 	}
 	path := filepath.Join(dir, "recipe.toml")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := os.WriteFile(path, reviewed, 0o600); err != nil {
 		return "", nil, err
 	}
 	l, err := recipe.Load(path)

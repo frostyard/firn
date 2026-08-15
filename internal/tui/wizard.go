@@ -1,11 +1,10 @@
 package tui
 
 // The wizard is a recipe generator (ADR-0005/ADR-0007): it collects
-// choices page by page and assembles a recipe.Recipe that firn then
-// marshals, re-loads, validates, and runs. Spec rule 5 (recipe-schema):
-// the wizard must be unable to produce a recipe validation rejects —
-// enforced here by round-tripping the assembled recipe through
-// recipe.Parse + recipe.Validate before returning it.
+// choices page by page and assembles a recipe.Recipe. The wizard marshals it
+// once for review and returns those exact bytes for persistence and install.
+// Spec rule 5 (recipe-schema) is enforced by round-tripping the reviewed bytes
+// through recipe.Parse + recipe.Validate before returning them.
 
 import (
 	"context"
@@ -35,10 +34,11 @@ type WizardOpts struct {
 	SessionDir string
 }
 
-// RunWizard walks the user through building a recipe. It returns
-// (nil, nil) when the user quits or aborts; an error only on real
-// failures (I/O, disk enumeration, or an internal wizard bug).
-func RunWizard(ctx context.Context, o WizardOpts) (*recipe.Recipe, error) {
+// RunWizard walks the user through building a recipe. It returns the exact
+// TOML bytes shown on the accepted review page. A nil slice means the user
+// quit or aborted; errors are reserved for real failures (I/O, disk
+// enumeration, or an internal wizard bug).
+func RunWizard(ctx context.Context, o WizardOpts) ([]byte, error) {
 	if err := platform.RequireUEFI(o.UEFI); err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ type wizardChoices struct {
 // run drives the page flow: welcome, then a collection pass
 // (image, disk, filesystem, security, system, user, flatpaks), then the
 // review / typed-confirmation / validation loop.
-func (w *wizard) run(ctx context.Context) (*recipe.Recipe, error) {
+func (w *wizard) run(ctx context.Context) ([]byte, error) {
 	if len(w.catalog) == 0 {
 		return nil, errors.New("tui: image catalog is empty")
 	}
@@ -153,9 +153,9 @@ func (w *wizard) run(ctx context.Context) (*recipe.Recipe, error) {
 			return nil, err
 		}
 
-		startOver, rec, err := w.reviewLoop(ctx)
-		if err != nil || rec != nil {
-			return rec, err
+		startOver, reviewed, err := w.reviewLoop(ctx)
+		if err != nil || reviewed != nil {
+			return reviewed, err
 		}
 		if !startOver { // user quit from review
 			return nil, nil
@@ -170,7 +170,7 @@ func (w *wizard) run(ctx context.Context) (*recipe.Recipe, error) {
 // point is a wizard bug: it is displayed on a second review pass, and if
 // it persists the issues are returned as an error (spec rule 5 says this
 // must be unreachable).
-func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, result *recipe.Recipe, err error) {
+func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, result []byte, err error) {
 	defer func() {
 		if result != nil {
 			return
@@ -186,8 +186,12 @@ func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, result *recipe
 		if err != nil {
 			return false, nil, err
 		}
+		reviewed, err := marshalAssembled(rec)
+		if err != nil {
+			return false, nil, err
+		}
 		action := actionInstall
-		quit, err := w.page(ctx, w.reviewForm(renderTOML(rec), issues, &action))
+		quit, err := w.page(ctx, w.reviewForm(string(reviewed), issues, &action))
 		if quit || err != nil {
 			return false, nil, err
 		}
@@ -201,9 +205,9 @@ func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, result *recipe
 		if quit, err := w.page(ctx, w.confirmForm()); quit || err != nil {
 			return false, nil, err
 		}
-		issues = validateAssembled(rec, w.opts.Machine)
+		issues = validateAssembled(reviewed, w.opts.Machine)
 		if len(issues) == 0 {
-			return false, rec, nil
+			return false, reviewed, nil
 		}
 		if retried {
 			return false, nil, issuesError(issues)
@@ -357,11 +361,21 @@ func writeSecretFile(dir, name, content string) (string, error) {
 	return path, nil
 }
 
-// validateAssembled round-trips the recipe through its own TOML
-// rendering and the canonical loader, then validates against the
-// machine env — exactly what headless `firn install` will do.
-func validateAssembled(r *recipe.Recipe, env recipe.Env) []recipe.Issue {
-	l, err := recipe.Parse([]byte(renderTOML(r)))
+// marshalAssembled is the wizard's sole serialization boundary. Its returned
+// bytes are shown on review, validated, persisted, and installed unchanged.
+func marshalAssembled(r *recipe.Recipe) ([]byte, error) {
+	data, err := recipe.Marshal(r)
+	if err != nil {
+		return nil, fmt.Errorf("tui: cannot marshal assembled recipe (wizard bug): %w", err)
+	}
+	return data, nil
+}
+
+// validateAssembled parses the reviewed bytes with the canonical loader and
+// validates against the machine environment — exactly what headless
+// `firn install` will do.
+func validateAssembled(reviewed []byte, env recipe.Env) []recipe.Issue {
+	l, err := recipe.Parse(reviewed)
 	if err != nil {
 		return []recipe.Issue{{Code: "render", Field: "recipe", Message: err.Error()}}
 	}
@@ -386,128 +400,6 @@ func renderIssues(issues []recipe.Issue) string {
 	for _, is := range issues {
 		fmt.Fprintf(&b, "  - %s\n", is.Error())
 	}
-	return b.String()
-}
-
-// --- TOML rendering ---
-
-// renderTOML renders the recipe as the exact TOML `firn install` would
-// consume, emitting only fields that are set and only fields belonging
-// to the recipe's family (a toml.Encoder would emit every zero value,
-// tripping the fail-closed family-scope validation). Inline secrets
-// (passphrase, password_hash) are never rendered (spec rule 6); the
-// wizard only ever sets *_file variants.
-func renderTOML(r *recipe.Recipe) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "version = %d\n", r.Version)
-
-	b.WriteString("\n[image]\n")
-	kv(&b, "family", r.Image.Family)
-	switch r.Image.Family {
-	case recipe.FamilyBootc:
-		kv(&b, "ref", r.Image.Ref)
-		kv(&b, "target_ref", r.Image.TargetRef)
-		kv(&b, "cosign_pub_key", r.Image.CosignPubKey)
-	case recipe.FamilyAB:
-		kv(&b, "product", r.Image.Product)
-		kv(&b, "origin", r.Image.Origin)
-		kv(&b, "release", r.Image.Release)
-	}
-
-	b.WriteString("\n[target]\n")
-	kv(&b, "disk", r.Target.Disk)
-	switch r.Image.Family {
-	case recipe.FamilyBootc:
-		kv(&b, "filesystem", r.Target.Filesystem)
-		kvBool(&b, "btrfs_subvolumes", r.Target.BtrfsSubvolumes)
-		kv(&b, "bootloader", r.Target.Bootloader)
-	case recipe.FamilyAB:
-		kv(&b, "var_filesystem", r.Target.VarFilesystem)
-		kvBool(&b, "var_subvolumes", r.Target.VarSubvolumes)
-	}
-
-	b.WriteString("\n[security]\n")
-	kv(&b, "encryption", r.Security.Encryption)
-	if r.Image.Family == recipe.FamilyBootc {
-		kv(&b, "passphrase_file", r.Security.PassphraseFile)
-	}
-	if r.Image.Family == recipe.FamilyAB {
-		kv(&b, "recovery_key_out", r.Security.RecoveryKeyOut)
-	}
-	// MOK fields apply to both families under Secure Boot (ADR-0014).
-	kv(&b, "mok", r.Security.Mok)
-	kv(&b, "mok_password_file", r.Security.MokPasswordFile)
-
-	b.WriteString("\n[system]\n")
-	kv(&b, "hostname", r.System.Hostname)
-	kv(&b, "locale", r.System.Locale)
-	kv(&b, "timezone", r.System.Timezone)
-	kv(&b, "keyboard", r.System.Keyboard)
-	kvList(&b, "flatpaks", r.System.Flatpaks)
-	kvBool(&b, "core_flatpaks", r.System.CoreFlatpaks)
-	kv(&b, "root_ssh_authorized_key", r.System.RootSSHAuthorizedKey)
-	kv(&b, "root_ssh_authorized_key_file", r.System.RootSSHAuthorizedKeyFile)
-
-	if u := r.System.User; u != nil {
-		b.WriteString("\n[system.user]\n")
-		kv(&b, "name", u.Name)
-		kv(&b, "fullname", u.Fullname)
-		kv(&b, "password_file", u.PasswordFile)
-		kvList(&b, "groups", u.Groups)
-		kv(&b, "ssh_authorized_key", u.SSHAuthorizedKey)
-		kv(&b, "ssh_authorized_key_file", u.SSHAuthorizedKeyFile)
-	}
-	return b.String()
-}
-
-func kv(b *strings.Builder, key, value string) {
-	if value != "" {
-		fmt.Fprintf(b, "%s = %s\n", key, tomlString(value))
-	}
-}
-
-func kvBool(b *strings.Builder, key string, value bool) {
-	if value {
-		fmt.Fprintf(b, "%s = true\n", key)
-	}
-}
-
-func kvList(b *strings.Builder, key string, values []string) {
-	if len(values) == 0 {
-		return
-	}
-	quoted := make([]string, len(values))
-	for i, v := range values {
-		quoted[i] = tomlString(v)
-	}
-	fmt.Fprintf(b, "%s = [%s]\n", key, strings.Join(quoted, ", "))
-}
-
-// tomlString renders s as a TOML basic string.
-func tomlString(s string) string {
-	var b strings.Builder
-	b.WriteByte('"')
-	for _, r := range s {
-		switch r {
-		case '"':
-			b.WriteString(`\"`)
-		case '\\':
-			b.WriteString(`\\`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\t':
-			b.WriteString(`\t`)
-		case '\r':
-			b.WriteString(`\r`)
-		default:
-			if r < 0x20 {
-				fmt.Fprintf(&b, `\u%04X`, r)
-			} else {
-				b.WriteRune(r)
-			}
-		}
-	}
-	b.WriteByte('"')
 	return b.String()
 }
 
