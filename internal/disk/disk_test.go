@@ -3,6 +3,7 @@ package disk
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/frostyard/firn/internal/runner"
@@ -24,6 +25,41 @@ const lsblkFixture = `{
     {"path": "/dev/sdc", "type": "disk", "size": 256060514304, "fstype": null, "label": null, "mountpoints": [null]},
     {"path": "/dev/sdd", "type": "disk", "size": 16008609792, "fstype": "iso9660", "label": "SNOSI_INSTALLER_20260801120000", "mountpoints": [null]},
     {"path": "/dev/loop0", "type": "loop", "size": 4096, "fstype": null, "label": null, "mountpoints": [null]}
+  ]
+}`
+
+// lsblkDeepFixture holds device trees deeper than one level, the shape
+// LUKS produces: disk → part (crypto_LUKS) → crypt → lvm. The refusal
+// rules must see every descendant, not just the disk's own children.
+const lsblkDeepFixture = `{
+  "blockdevices": [
+    {"path": "/dev/sde", "type": "disk", "size": 500107862016, "fstype": null, "label": null,
+     "mountpoints": [null],
+     "children": [
+       {"path": "/dev/sde1", "type": "part", "size": 499569000000, "fstype": "crypto_LUKS", "label": null,
+        "mountpoints": [null],
+        "children": [
+          {"path": "/dev/mapper/cryptroot", "type": "crypt", "size": 499560000000, "fstype": "ext4", "label": null, "mountpoints": ["/"]}
+        ]}
+     ]},
+    {"path": "/dev/sdf", "type": "disk", "size": 1000204886016, "fstype": null, "label": null,
+     "mountpoints": [null],
+     "children": [
+       {"path": "/dev/sdf1", "type": "part", "size": 1000203000000, "fstype": "crypto_LUKS", "label": null,
+        "mountpoints": [null],
+        "children": [
+          {"path": "/dev/mapper/vault", "type": "crypt", "size": 1000200000000, "fstype": null, "label": null,
+           "mountpoints": [null],
+           "children": [
+             {"path": "/dev/mapper/vault-data", "type": "lvm", "size": 900000000000, "fstype": "xfs", "label": null, "mountpoints": ["/data"]}
+           ]}
+        ]}
+     ]},
+    {"path": "/dev/sdg", "type": "disk", "size": 256060514304, "fstype": null, "label": null,
+     "mountpoints": [null],
+     "children": [
+       {"path": "/dev/sdg1", "type": "part", "size": 256000000000, "fstype": "crypto_LUKS", "label": null, "mountpoints": [null]}
+     ]}
   ]
 }`
 
@@ -94,6 +130,65 @@ func TestMountedDiskRefusedEvenWhenNotRoot(t *testing.T) {
 	dev, _ := Find(devices, "/dev/sda")
 	if reason := RefusalReason(dev, ""); reason == "" {
 		t.Error("mounted disk must be refused even with no root device (RAM-booted installer)")
+	}
+}
+
+// A mounted grandchild must refuse its disk. This is the encrypted
+// running root: findmnt reports /dev/mapper/cryptroot, which shares no
+// prefix with /dev/sde, so only the mount on the crypt descendant can
+// catch it.
+func TestRefusalReasonRefusesMountedGrandchild(t *testing.T) {
+	devices, err := List(context.Background(), fakeRunner(t, lsblkDeepFixture, "/dev/mapper/cryptroot"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, ok := Find(devices, "/dev/sde")
+	if !ok {
+		t.Fatal("/dev/sde not found")
+	}
+	reason := RefusalReason(dev, "/dev/mapper/cryptroot")
+	if reason == "" {
+		t.Fatal("disk with an encrypted root mounted on a crypt child must be refused")
+	}
+	if !strings.Contains(reason, "mounted at /") {
+		t.Errorf("refusal reason %q does not report the grandchild's mountpoint %q", reason, "/")
+	}
+}
+
+// The walk must be fully recursive, not merely one level deeper: only
+// the depth-3 lvm device is mounted here, and nothing above it carries
+// a member fstype or a label.
+func TestRefusalReasonRefusesMountedGreatGrandchild(t *testing.T) {
+	devices, err := List(context.Background(), fakeRunner(t, lsblkDeepFixture, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, ok := Find(devices, "/dev/sdf")
+	if !ok {
+		t.Fatal("/dev/sdf not found")
+	}
+	reason := RefusalReason(dev, "")
+	if reason == "" {
+		t.Fatal("disk with a mounted depth-3 lvm descendant must be refused")
+	}
+	if !strings.Contains(reason, "/data") {
+		t.Errorf("refusal reason %q does not report the depth-3 mountpoint %q", reason, "/data")
+	}
+}
+
+// No regression: a locked, unmounted LUKS partition is not a refusal.
+// Reinstalling over a previously encrypted disk stays permitted.
+func TestRefusalReasonAllowsUnmountedLUKSDisk(t *testing.T) {
+	devices, err := List(context.Background(), fakeRunner(t, lsblkDeepFixture, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, ok := Find(devices, "/dev/sdg")
+	if !ok {
+		t.Fatal("/dev/sdg not found")
+	}
+	if reason := RefusalReason(dev, ""); reason != "" {
+		t.Errorf("unmounted crypto_LUKS partition must not refuse the disk, got %q", reason)
 	}
 }
 
