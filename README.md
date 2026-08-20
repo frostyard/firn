@@ -50,9 +50,13 @@ Non-dry-run headless installs are destructive and require
 `[target].disk`. A headless `--dry-run` does not modify disks and does not
 require confirmation.
 
-Detection overrides (`--uefi`, `--secure-boot`, `--tpm`, each `auto|on|off`)
-force the machine-capability probes when you know better than autodetection —
-e.g. in a VM. See [`docs/specs/recipe-schema.md`](docs/specs/recipe-schema.md)
+`firn install` takes detection overrides (`--secure-boot`, `--tpm`, and
+`--uefi`, each `auto|on|off`) that force the machine-capability probes when you
+know better than autodetection — e.g. in a VM. They also reach the wizard when
+you run `firn install` with no recipe; the bare `firn` command always
+autodetects. `--uefi` is `install`-only (`firn validate` accepts
+`--secure-boot` and `--tpm` but not `--uefi`, which it does not consume).
+See [`docs/specs/recipe-schema.md`](docs/specs/recipe-schema.md)
 for a complete recipe.
 
 ## Building
