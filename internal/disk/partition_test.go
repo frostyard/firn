@@ -314,3 +314,33 @@ func TestPartitionRetryFailurePropagates(t *testing.T) {
 		t.Fatal("expected error when both sfdisk attempts fail, got nil")
 	}
 }
+
+// TestPartitionPartprobeFailurePropagates verifies that when the first
+// sfdisk fails, the --force --no-reread retry succeeds, but the
+// subsequent partprobe fails, partition() surfaces a non-nil error and
+// produces no Layout. Without a successful re-read the kernel still
+// holds the OLD (stale, smaller) partition table, so continuing would
+// let mkfs format wrong boundaries — the install must abort instead.
+func TestPartitionPartprobeFailurePropagates(t *testing.T) {
+	noSleep(t)
+	rec := &recorder{}
+	rec.errFn = func(c call, nth int) error {
+		// Fail the first sfdisk (forcing the --no-reread recovery path),
+		// then fail the partprobe on that recovery path.
+		if c.name == "sfdisk" && nth == 0 {
+			return errors.New("disk is currently in use")
+		}
+		if c.name == "partprobe" {
+			return errors.New("partprobe: unable to re-read partition table")
+		}
+		return nil
+	}
+
+	layout, err := PartitionGrub2(context.Background(), rec.runner(), "/dev/vda")
+	if err == nil {
+		t.Fatal("expected error when partprobe fails on the --no-reread recovery path, got nil")
+	}
+	if layout != (Layout{}) {
+		t.Errorf("expected zero Layout on partprobe failure, got %+v", layout)
+	}
+}
