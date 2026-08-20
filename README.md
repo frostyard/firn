@@ -40,9 +40,15 @@ forking is [ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md).
 ```sh
 firn                          # open the interactive wizard
 firn validate recipe.toml     # check a recipe against the schema + this machine
-firn install recipe.toml      # run the install (add --confirm for the destructive step)
-firn install --json-progress recipe.toml   # stream typed progress as NDJSON
+firn install --confirm /dev/nvme0n1 recipe.toml   # install; confirmation must exactly match [target].disk
+firn install --dry-run recipe.toml                 # preflight only; no confirmation required
+firn install --json-progress --confirm /dev/nvme0n1 recipe.toml   # install with NDJSON progress
 ```
+
+Non-dry-run headless installs are destructive and require
+`--confirm <target-disk>`, where the value exactly matches the recipe's
+`[target].disk`. A headless `--dry-run` does not modify disks and does not
+require confirmation.
 
 Detection overrides (`--uefi`, `--secure-boot`, `--tpm`, each `auto|on|off`)
 force the machine-capability probes when you know better than autodetection —

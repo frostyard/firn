@@ -2,6 +2,7 @@ package firn
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -91,5 +92,30 @@ func TestInstallCommandAllowsHeadlessJSONProgress(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), missingRecipe) {
 		t.Fatalf("headless install did not reach recipe loading: %v", err)
+	}
+}
+
+func TestREADMEHeadlessInstallConfirmationExample(t *testing.T) {
+	const documented = "firn install --confirm /dev/nvme0n1 recipe.toml"
+
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	if !strings.Contains(string(readme), documented) {
+		t.Fatalf("README.md does not contain complete destructive install example %q", documented)
+	}
+
+	cmd := newInstallCmd()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--confirm", "/dev/nvme0n1", "recipe.toml"})
+
+	err = cmd.Execute()
+	if err == nil {
+		t.Fatal("documented command with missing recipe unexpectedly succeeded")
+	}
+	if !strings.Contains(err.Error(), "recipe.toml") {
+		t.Fatalf("documented command did not parse --confirm value and reach recipe loading: %v", err)
 	}
 }
