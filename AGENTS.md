@@ -47,8 +47,9 @@ removed. -->
 
 - Run `make check` (fmt + lint + test) before calling any change done —
   the frostyard house gate (ADR-0011; exemplar: frostyard/updex). CI
-  runs the same steps. Note `make lint` silently skips when
-  golangci-lint is missing; CI is the backstop.
+  runs the same steps. `make lint` fails on linter findings when
+  golangci-lint is installed and skips with a message when it is missing; CI
+  is the backstop for environments without the tool.
 - Layout follows the frostyard Go conventions with documented
   deviations (ADR-0011): `cmd/firn-cli/main.go` is the clix entry,
   `cmd/firn/` holds cobra handlers, and — deviating from SDK-first —
