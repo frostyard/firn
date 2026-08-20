@@ -85,35 +85,64 @@ func RefusalReason(dev Device, rootDev string) string {
 	// Installer-medium label guard, ported from snosi-install's
 	// disk_is_installer_medium(): a relabeled/odd boot stick may not be
 	// caught by rootDev when the installer runs entirely from RAM.
-	for _, d := range append([]Device{dev}, dev.Children...) {
+	label := ""
+	walk(dev, func(d Device) bool {
 		if strings.HasPrefix(d.Label, "SNOSI_INSTALLER_") || strings.HasPrefix(d.Label, "FIRN_INSTALLER_") {
-			return "it looks like the installer medium (label " + d.Label + ")"
+			label = d.Label
+			return false
 		}
+		return true
+	})
+	if label != "" {
+		return "it looks like the installer medium (label " + label + ")"
 	}
 	return ""
+}
+
+// walk visits dev and every descendant in depth-first pre-order, so the
+// refusal rules see the whole lsblk tree — a mounted dm/crypt child of a
+// LUKS partition, or an LVM volume under it, is as disqualifying as a
+// mounted partition. visit returns false to stop the walk.
+func walk(dev Device, visit func(Device) bool) bool {
+	if !visit(dev) {
+		return false
+	}
+	for _, child := range dev.Children {
+		if !walk(child, visit) {
+			return false
+		}
+	}
+	return true
 }
 
 func mountedAnywhere(dev Device) string {
-	for _, d := range append([]Device{dev}, dev.Children...) {
+	found := ""
+	walk(dev, func(d Device) bool {
 		for _, mp := range d.Mountpoints {
 			if mp != "" {
-				return mp
+				found = mp
+				return false
 			}
 		}
-	}
-	return ""
+		return true
+	})
+	return found
 }
 
 func memberReason(dev Device) string {
-	for _, d := range append([]Device{dev}, dev.Children...) {
+	reason := ""
+	walk(dev, func(d Device) bool {
 		switch d.Fstype {
 		case "linux_raid_member":
-			return "it is part of a RAID array (" + d.Path + ")"
+			reason = "it is part of a RAID array (" + d.Path + ")"
+			return false
 		case "LVM2_member":
-			return "it is an LVM physical volume (" + d.Path + ")"
+			reason = "it is an LVM physical volume (" + d.Path + ")"
+			return false
 		}
-	}
-	return ""
+		return true
+	})
+	return reason
 }
 
 // RootDevice reports the block device backing /, or "" when the root
