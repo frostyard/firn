@@ -4,8 +4,8 @@ import "sync"
 
 // Channel is the in-process emitter feeding the TUI (ADR-0007): the
 // pipeline goroutine calls Emit and Close, the TUI receives from
-// Events. It satisfies Emitter alongside NDJSON; Emit never returns a
-// non-nil error.
+// Events. It satisfies Emitter alongside NDJSON; Emit returns an error when
+// the producer violates the stream lifecycle.
 //
 // Ownership: the sender (pipeline) side calls Emit and, when the run
 // is over, Close. Protocol-order violations return errors rather than

@@ -46,7 +46,9 @@ type Env struct {
 	UEFI    bool
 	Version string
 	Runner  *runner.Runner
-	Emit    func(progress.Event)
+	Emitter progress.Emitter
+
+	emitErr error
 
 	// Install state shared between steps, populated as steps run.
 	Layout     disk.Layout
@@ -85,6 +87,24 @@ type Env struct {
 	CurrentStep int
 
 	cleanup []cleanupEntry
+}
+
+// Emit sends one progress event and retains the first emitter failure. Step
+// implementations may emit from callbacks that cannot return an error; Run
+// checks the retained failure before starting another step and returns it to
+// the caller after cleanup has unwound.
+func (e *Env) Emit(event progress.Event) error {
+	if e.emitErr != nil {
+		return e.emitErr
+	}
+	if e.Emitter == nil {
+		e.emitErr = errors.New("progress: emitter is not configured")
+		return e.emitErr
+	}
+	if err := e.Emitter.Emit(event); err != nil {
+		e.emitErr = fmt.Errorf("emit progress %s: %w", event.Kind(), err)
+	}
+	return e.emitErr
 }
 
 // AddSummary queues an item for the pre-terminal summary event.
@@ -180,37 +200,63 @@ func (p *Pipeline) Tools() []string {
 // In dry-run mode only preflight steps execute; the rest are announced
 // and skipped.
 func (p *Pipeline) Run(ctx context.Context, env *Env, dryRun bool) error {
-	env.Emit(progress.Start{Protocol: progress.Protocol, Firn: env.Version, Steps: p.ProgressSteps()})
+	startErr := env.Emit(progress.Start{Protocol: progress.Protocol, Firn: env.Version, Steps: p.ProgressSteps()})
 
-	failedStep, runErr := p.runSteps(ctx, env, dryRun)
+	failedStep, runErr := "", startErr
+	if runErr == nil {
+		failedStep, runErr = p.runSteps(ctx, env, dryRun)
+	}
 	for _, cerr := range env.unwind() {
-		env.Emit(progress.Warning{Code: progress.CodeCleanupFailed, Message: cerr.Error()})
+		if env.emitErr == nil {
+			_ = env.Emit(progress.Warning{Code: progress.CodeCleanupFailed, Message: cerr.Error()})
+		}
 		runErr = errors.Join(runErr, cerr)
 	}
-	if len(env.Summary) > 0 {
-		env.Emit(progress.Summary{Items: env.Summary})
+	if env.emitErr != nil && !errors.Is(runErr, env.emitErr) {
+		runErr = errors.Join(runErr, env.emitErr)
+	}
+	if len(env.Summary) > 0 && env.emitErr == nil {
+		if err := env.Emit(progress.Summary{Items: env.Summary}); err != nil {
+			runErr = errors.Join(runErr, err)
+		}
 	}
 	if runErr != nil {
-		env.Emit(progress.Error{Step: failedStep, Code: errorCode(runErr), Message: runErr.Error()})
+		// An emitter cannot be used to report its own failure. Other run
+		// failures still receive the protocol's terminal error event.
+		if env.emitErr == nil {
+			if err := env.Emit(progress.Error{Step: failedStep, Code: errorCode(runErr), Message: runErr.Error()}); err != nil {
+				runErr = errors.Join(runErr, err)
+			}
+		}
 		return runErr
 	}
-	env.Emit(progress.Done{OK: true})
-	return nil
+	return env.Emit(progress.Done{OK: true})
 }
 
 func (p *Pipeline) runSteps(ctx context.Context, env *Env, dryRun bool) (string, error) {
 	for i, s := range p.Steps {
 		env.CurrentStep = i
-		env.Emit(progress.StepStart{Index: i, Name: s.Name})
+		if err := env.Emit(progress.StepStart{Index: i, Name: s.Name}); err != nil {
+			return s.Name, err
+		}
 		if dryRun && !s.Preflight {
-			env.Emit(progress.Info{Message: fmt.Sprintf("dry-run: skipping %s", s.Name)})
+			if err := env.Emit(progress.Info{Message: fmt.Sprintf("dry-run: skipping %s", s.Name)}); err != nil {
+				return s.Name, err
+			}
 			continue
 		}
 		if s.Run == nil {
 			return s.Name, fmt.Errorf("step %s: not implemented yet (see docs/plans/roadmap.md)", s.Name)
 		}
-		if err := s.Run(ctx, env); err != nil {
-			return s.Name, fmt.Errorf("step %s: %w", s.Name, err)
+		stepErr := s.Run(ctx, env)
+		if env.emitErr != nil {
+			if stepErr != nil {
+				stepErr = fmt.Errorf("step %s: %w", s.Name, stepErr)
+			}
+			return s.Name, errors.Join(stepErr, env.emitErr)
+		}
+		if stepErr != nil {
+			return s.Name, fmt.Errorf("step %s: %w", s.Name, stepErr)
 		}
 	}
 	return "", nil

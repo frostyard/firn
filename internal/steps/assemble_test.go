@@ -177,7 +177,7 @@ func TestRecoveryKeyPreflightFailureLeavesDiskUntouched(t *testing.T) {
 	)
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-		Emit: func(progress.Event) {},
+		Emitter: progress.EmitterFunc(func(progress.Event) error { return nil }),
 	}
 	err := Assemble(l).Run(context.Background(), env, false)
 	if err == nil || !strings.Contains(err.Error(), "reserve recovery key output") {
@@ -194,7 +194,7 @@ func TestRecoveryKeyPreflightDryRunAndExistingPolicy(t *testing.T) {
 		t.Helper()
 		r := &recipe.Recipe{}
 		r.Security.RecoveryKeyOut = path
-		env := &pipeline.Env{Recipe: r, Version: "test", Emit: func(progress.Event) {}}
+		env := &pipeline.Env{Recipe: r, Version: "test", Emitter: progress.EmitterFunc(func(progress.Event) error { return nil })}
 		p := &pipeline.Pipeline{Steps: []pipeline.Step{{
 			Name: "preflight-recovery-key", Preflight: true, Run: runPrepareRecoveryKeyOut,
 		}}}
@@ -258,7 +258,7 @@ func TestDryRunVerdicts(t *testing.T) {
 		l := load(t, src)
 		env := &pipeline.Env{
 			Recipe: &l.Recipe, Runner: fake, UEFI: uefi, Version: "test",
-			Emit: func(progress.Event) {},
+			Emitter: progress.EmitterFunc(func(progress.Event) error { return nil }),
 		}
 		return Assemble(l).Run(context.Background(), env, true)
 	}
@@ -290,7 +290,7 @@ func TestMissingToolsFailPreflight(t *testing.T) {
 		},
 	)
 	l := load(t, strings.Replace(bootcBase, "%s", "none", 1))
-	env := &pipeline.Env{Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test", Emit: func(progress.Event) {}}
+	env := &pipeline.Env{Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test", Emitter: progress.EmitterFunc(func(progress.Event) error { return nil })}
 	err := Assemble(l).Run(context.Background(), env, true)
 	if err == nil || !strings.Contains(err.Error(), "sfdisk") {
 		t.Errorf("missing sfdisk must fail the tool preflight, got %v", err)

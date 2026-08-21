@@ -184,7 +184,7 @@ func runTUIInstall(ctx context.Context, env *pipeline.Env, l *recipe.Loaded) (tu
 	// The in-process channel is the interactive flow's only progress consumer
 	// (ADR-0007). NDJSON is headless-only because the TUI owns stdout.
 	ch := progress.NewChannel(64)
-	env.Emit = func(e progress.Event) { _ = ch.Emit(e) }
+	env.Emitter = ch
 
 	ictx, cancel := context.WithCancel(ctx)
 	defer cancel()

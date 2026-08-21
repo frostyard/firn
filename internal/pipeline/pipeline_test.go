@@ -11,8 +11,61 @@ import (
 
 func collectEnv() (*Env, *[]progress.Event) {
 	var events []progress.Event
-	env := &Env{Version: "test", Emit: func(e progress.Event) { events = append(events, e) }}
+	env := &Env{Version: "test", Emitter: progress.EmitterFunc(func(e progress.Event) error {
+		events = append(events, e)
+		return nil
+	})}
 	return env, &events
+}
+
+type failWriter struct {
+	writes int
+	failAt int
+	err    error
+}
+
+func (w *failWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes == w.failAt {
+		return 0, w.err
+	}
+	return len(p), nil
+}
+
+func TestEmitFailureStopsBeforeNextStepAndUnwinds(t *testing.T) {
+	writeErr := errors.New("writer failed")
+	w := &failWriter{failAt: 3, err: writeErr}
+	env := &Env{Version: "test", Emitter: progress.NewNDJSON(w)}
+	cleaned := false
+	secondRan := false
+	p := &Pipeline{Steps: []Step{
+		{Name: "first", Run: func(_ context.Context, env *Env) error {
+			env.Defer("first", func() error {
+				cleaned = true
+				return nil
+			})
+			_ = env.Emit(progress.Info{Message: "fails on this write"})
+			return nil
+		}},
+		{Name: "second", Run: func(_ context.Context, _ *Env) error {
+			secondRan = true
+			return nil
+		}},
+	}}
+
+	err := p.Run(context.Background(), env, false)
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("Run error = %v, want writer failure", err)
+	}
+	if secondRan {
+		t.Error("step after emitter failure must not run")
+	}
+	if !cleaned {
+		t.Error("cleanup must unwind after emitter failure")
+	}
+	if w.writes != 3 {
+		t.Fatalf("writer calls = %d, want 3 (failed emitter must not be reused)", w.writes)
+	}
 }
 
 func TestCleanupUnwindsLIFOOnFailure(t *testing.T) {

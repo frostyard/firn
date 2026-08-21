@@ -87,7 +87,10 @@ func TestRecoveryKeyPreflightCommitsThroughLuksStep(t *testing.T) {
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: r, Runner: fake, VarPart: "/dev/fake6", Version: "test",
-		Emit: func(e progress.Event) { events = append(events, e) },
+		Emitter: progress.EmitterFunc(func(e progress.Event) error {
+			events = append(events, e)
+			return nil
+		}),
 	}
 	p := &pipeline.Pipeline{Steps: []pipeline.Step{
 		{Name: "preflight-recovery-key", Preflight: true, Run: runPrepareRecoveryKeyOut},
@@ -279,7 +282,10 @@ groups = ["sudo", "wheel"]
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
 		Trust: trust.Options{Origin: srv.URL, PubringPath: pubring, Client: srv.Client()},
-		Emit:  func(e progress.Event) { events = append(events, e) },
+		Emitter: progress.EmitterFunc(func(e progress.Event) error {
+			events = append(events, e)
+			return nil
+		}),
 	}
 	env.Machine.TPM = true
 
