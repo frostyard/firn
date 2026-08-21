@@ -133,7 +133,10 @@ groups = ["wheel"]
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
 		TargetDir:  target,
 		ScratchDir: filepath.Join(t.TempDir(), "scratch"),
-		Emit:       func(e progress.Event) { events = append(events, e) },
+		Emitter: progress.EmitterFunc(func(e progress.Event) error {
+			events = append(events, e)
+			return nil
+		}),
 	}
 	env.Machine.TPM = true
 
@@ -261,7 +264,10 @@ hostname = "frost01"
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-		Emit: func(e progress.Event) { events = append(events, e) },
+		Emitter: progress.EmitterFunc(func(e progress.Event) error {
+			events = append(events, e)
+			return nil
+		}),
 	}
 	err := Assemble(l).Run(context.Background(), env, false)
 	if err == nil || !strings.Contains(err.Error(), "no matching signatures") {
@@ -287,7 +293,10 @@ func TestBootcZFSRootRefusedClearly(t *testing.T) {
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: dryRunFake(t), UEFI: true, Version: "test",
-		Emit: func(e progress.Event) { events = append(events, e) },
+		Emitter: progress.EmitterFunc(func(e progress.Event) error {
+			events = append(events, e)
+			return nil
+		}),
 	}
 	err := Assemble(l).Run(context.Background(), env, false)
 	if err == nil || !strings.Contains(err.Error(), "zfs") {

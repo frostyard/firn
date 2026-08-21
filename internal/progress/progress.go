@@ -104,6 +104,12 @@ type Emitter interface {
 	Emit(Event) error
 }
 
+// EmitterFunc adapts a function to Emitter. It is used by renderers that
+// cannot fail while keeping every pipeline path on the same checked contract.
+type EmitterFunc func(Event) error
+
+func (f EmitterFunc) Emit(event Event) error { return f(event) }
+
 // Warning and error codes stable enough to be part of the contract are
 // collected here as they are introduced (spec rule 3).
 const (

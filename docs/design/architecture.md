@@ -99,7 +99,10 @@ path — closing the mount/mapper-leak class of bug documented in
 any accumulated user-facing summary and then the single terminal event on
 both success and failure.
 Both in-process and NDJSON emitters reject events after the first terminal
-event. If the in-process producer disappears before a terminal event, the TUI
+event. The step engine retains the first emission failure, stops before
+starting another step, unwinds every registered cleanup, and returns the
+failure without trying to report it through the same failed emitter. If the
+in-process producer disappears before a terminal event, the TUI
 and command result synthesize the protocol's `stream_truncated` failure rather
 than attributing the crash to user cancellation. The headless human renderer
 also consumes fine-grained `step_progress`, so it and the TUI expose the same

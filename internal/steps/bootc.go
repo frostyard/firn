@@ -89,7 +89,9 @@ func resolvePassphrase(env *pipeline.Env) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		env.Emit(progress.RecoveryKey{Key: key})
+		if err := env.Emit(progress.RecoveryKey{Key: key}); err != nil {
+			return "", err
+		}
 		return key, nil
 	}
 	return "", fmt.Errorf("no passphrase source for encryption %q", s.Encryption)
@@ -328,7 +330,7 @@ func redirectBootcStorageToDisk(ctx context.Context, env *pipeline.Env) (teardow
 			// stubborn mount still releases the underlying tree for removal.
 			if _, e := env.Runner.Run(context.Background(), "umount", "-R", mounted[i]); e != nil {
 				if _, e2 := env.Runner.Run(context.Background(), "umount", "-R", "-l", mounted[i]); e2 != nil {
-					env.Emit(progress.Warning{Code: progress.CodeStoreUnmountFailed, Message: e2.Error()})
+					_ = env.Emit(progress.Warning{Code: progress.CodeStoreUnmountFailed, Message: e2.Error()})
 				}
 			}
 		}
@@ -371,7 +373,10 @@ func redirectBootcStorageToDisk(ctx context.Context, env *pipeline.Env) (teardow
 		}
 		mounted = append(mounted, mnt)
 	}
-	env.Emit(progress.Info{Message: "redirected container image store and blob staging to target disk (installer runs in RAM)"})
+	if err := env.Emit(progress.Info{Message: "redirected container image store and blob staging to target disk (installer runs in RAM)"}); err != nil {
+		undo()
+		return nil, "", err
+	}
 
 	// The installer's root is the initramfs (a rootfs/ramfs), and
 	// pivot_root(2) cannot pivot off it: the bootc container fails to
@@ -394,7 +399,7 @@ func redirectBootcStorageToDisk(ctx context.Context, env *pipeline.Env) (teardow
 		restoreEnv()
 		undo()
 		if e := os.RemoveAll(base); e != nil {
-			env.Emit(progress.Warning{Code: progress.CodeStoreCleanupFailed, Message: e.Error()})
+			_ = env.Emit(progress.Warning{Code: progress.CodeStoreCleanupFailed, Message: e.Error()})
 		}
 	}
 	return teardown, scratch, nil
@@ -504,7 +509,9 @@ func runTPMEnrollBootc(ctx context.Context, env *pipeline.Env) error {
 		if len(allEFI) > 0 {
 			seen = strings.Join(allEFI, ", ")
 		}
-		env.Emit(progress.Info{Message: "tpm-enroll: no EFI/Linux UKI under target; .efi files present: " + seen})
+		if err := env.Emit(progress.Info{Message: "tpm-enroll: no EFI/Linux UKI under target; .efi files present: " + seen}); err != nil {
+			return err
+		}
 		return fmt.Errorf("tpm-enroll: no UKI under the target's EFI/Linux (a UKI-entry bootc image is required for TPM2 unlock); saw .efi: %s", seen)
 	}
 
@@ -581,7 +588,9 @@ func runFlatpaks(ctx context.Context, env *pipeline.Env) error {
 		}
 		if !ok {
 			msg := "core_flatpaks: no readable core set in the deployment or on the installer medium"
-			env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg})
+			if err := env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg}); err != nil {
+				return err
+			}
 			env.AddSummary(progress.CodeNoCoreSet, msg)
 		}
 		apps = append(apps, core...)
@@ -596,7 +605,9 @@ func runFlatpaks(ctx context.Context, env *pipeline.Env) error {
 		return err
 	}
 	for _, app := range unreachable {
-		env.Emit(progress.Warning{Code: progress.CodeFlatpakUnreachable, Message: app})
+		if err := env.Emit(progress.Warning{Code: progress.CodeFlatpakUnreachable, Message: app}); err != nil {
+			return err
+		}
 		env.AddSummary(progress.CodeFlatpakUnreachable, app)
 	}
 	return nil
@@ -616,7 +627,9 @@ func runSysconfig(ctx context.Context, env *pipeline.Env) error {
 		}
 		for _, g := range missing {
 			msg := fmt.Sprintf("group %q does not exist in the image; user %s not joined to it", g, sys.User.Name)
-			env.Emit(progress.Warning{Code: progress.CodeGroupMissing, Message: msg})
+			if err := env.Emit(progress.Warning{Code: progress.CodeGroupMissing, Message: msg}); err != nil {
+				return err
+			}
 			env.AddSummary(progress.CodeGroupMissing, msg)
 		}
 		if key, err := resolveKey(sys.User.SSHAuthorizedKey, sys.User.SSHAuthorizedKeyFile); err != nil {

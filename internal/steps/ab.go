@@ -45,7 +45,9 @@ func runFetchIndex(ctx context.Context, env *pipeline.Env) error {
 		return fmt.Errorf("pinned release %s not present in the signed index", version)
 	}
 	env.ABVersion = version
-	env.Emit(progress.Info{Message: fmt.Sprintf("installing %s release %s", r.Image.Product, version)})
+	if err := env.Emit(progress.Info{Message: fmt.Sprintf("installing %s release %s", r.Image.Product, version)}); err != nil {
+		return err
+	}
 
 	// Capacity check BEFORE the multi-gigabyte download — derived from
 	// the artifact's own xz metadata, not a hand-copied table
@@ -94,7 +96,7 @@ func runStreamWrite(ctx context.Context, env *pipeline.Env) error {
 			if total > 0 {
 				ev.Fraction = float64(bytes) / float64(total)
 			}
-			env.Emit(ev)
+			_ = env.Emit(ev)
 		},
 	})
 	if err != nil {
@@ -136,7 +138,9 @@ func runLuksVar(ctx context.Context, env *pipeline.Env) error {
 		}
 		env.LuksKey = key
 	}
-	env.Emit(progress.RecoveryKey{Key: key})
+	if err := env.Emit(progress.RecoveryKey{Key: key}); err != nil {
+		return err
+	}
 	if out := env.Recipe.Security.RecoveryKeyOut; out != "" {
 		// No trailing newline: the hex string is byte-exactly the
 		// passphrase (snosi-install's printf '%s' rule).
@@ -341,7 +345,9 @@ func runSysconfigAB(ctx context.Context, env *pipeline.Env) error {
 		}
 		for _, g := range missing {
 			msg := fmt.Sprintf("group %q does not exist in the image; user %s not joined to it", g, sys.User.Name)
-			env.Emit(progress.Warning{Code: progress.CodeGroupMissing, Message: msg})
+			if err := env.Emit(progress.Warning{Code: progress.CodeGroupMissing, Message: msg}); err != nil {
+				return err
+			}
 			env.AddSummary(progress.CodeGroupMissing, msg)
 		}
 		if key, err := resolveKey(sys.User.SSHAuthorizedKey, sys.User.SSHAuthorizedKeyFile); err != nil {
@@ -367,7 +373,9 @@ func runFlatpaksAB(ctx context.Context, env *pipeline.Env) error {
 		}
 		if !ok {
 			msg := "core_flatpaks: this image publishes no core set"
-			env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg})
+			if err := env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg}); err != nil {
+				return err
+			}
 			env.AddSummary(progress.CodeNoCoreSet, msg)
 		}
 		apps = append(apps, core...)
@@ -386,7 +394,9 @@ func runFlatpaksAB(ctx context.Context, env *pipeline.Env) error {
 		return err
 	}
 	for _, app := range unreachable {
-		env.Emit(progress.Warning{Code: progress.CodeFlatpakUnreachable, Message: app})
+		if err := env.Emit(progress.Warning{Code: progress.CodeFlatpakUnreachable, Message: app}); err != nil {
+			return err
+		}
 		env.AddSummary(progress.CodeFlatpakUnreachable, app)
 	}
 	return nil

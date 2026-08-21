@@ -29,7 +29,9 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 					return err
 				}
 				if !env.Machine.TPM {
-					env.Emit(progress.Warning{Code: progress.CodeNoTPM, Message: "no TPM device present"})
+					if err := env.Emit(progress.Warning{Code: progress.CodeNoTPM, Message: "no TPM device present"}); err != nil {
+						return err
+					}
 				}
 				return nil
 			},
@@ -47,8 +49,7 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 				if len(missing) > 0 {
 					return fmt.Errorf("required tools not found on PATH: %s", strings.Join(missing, ", "))
 				}
-				env.Emit(progress.Info{Message: fmt.Sprintf("all %d required tools present", len(p.Tools()))})
-				return nil
+				return env.Emit(progress.Info{Message: fmt.Sprintf("all %d required tools present", len(p.Tools()))})
 			},
 		},
 	}
@@ -65,7 +66,9 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 				}
 				env.BootcSourceRef = pinned
 				if env.Recipe.Image.CosignPubKey != "" {
-					env.Emit(progress.Info{Message: "bootc image signature verified at immutable digest"})
+					if err := env.Emit(progress.Info{Message: "bootc image signature verified at immutable digest"}); err != nil {
+						return err
+					}
 				}
 				return nil
 			},
@@ -92,8 +95,7 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 			if reason := disk.RefusalReason(dev, disk.RootDevice(ctx, env.Runner)); reason != "" {
 				return fmt.Errorf("refusing to install to %s: %s", target, reason)
 			}
-			env.Emit(progress.Info{Message: fmt.Sprintf("target disk %s acceptable (%d bytes)", dev.Path, dev.Size)})
-			return nil
+			return env.Emit(progress.Info{Message: fmt.Sprintf("target disk %s acceptable (%d bytes)", dev.Path, dev.Size)})
 		},
 	})
 	return steps

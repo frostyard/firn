@@ -78,10 +78,12 @@ func newInstallCmd() *cobra.Command {
 			}
 
 			if jsonProgress {
-				nd := progress.NewNDJSON(os.Stdout)
-				env.Emit = func(e progress.Event) { _ = nd.Emit(e) }
+				env.Emitter = progress.NewNDJSON(os.Stdout)
 			} else {
-				env.Emit = printEvent
+				env.Emitter = progress.EmitterFunc(func(e progress.Event) error {
+					printEvent(e)
+					return nil
+				})
 			}
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
