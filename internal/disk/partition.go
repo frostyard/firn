@@ -171,7 +171,9 @@ func partition(ctx context.Context, r *runner.Runner, disk, script string) error
 		// correct partition sizes. Without this, mkfs operates on stale
 		// (possibly much smaller) partition boundaries → "no space left".
 		sleep(500 * time.Millisecond)
-		_, _ = r.Run(ctx, "partprobe", disk)
+		if _, err3 := r.Run(ctx, "partprobe", disk); err3 != nil {
+			return fmt.Errorf("disk: partprobe after --no-reread: %w", err3)
+		}
 		_, _ = r.Run(ctx, "udevadm", "settle")
 		// Wipe stale filesystem signatures that udev re-probes after partprobe.
 		// Without this, mkfs fails with "Device or resource busy" on disks
