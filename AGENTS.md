@@ -21,7 +21,7 @@ them rather than improvising, whichever agent you are:
 Add a skill whenever you find yourself re-explaining a multi-step procedure.
 Start from .agents/skills/TEMPLATE/SKILL.md. -->
 
-- **Changing a wizard page or debugging `just e2e-tui`** →
+- **Changing a wizard page or debugging `make e2e-tui`** →
   [.agents/skills/drive-tui-e2e/SKILL.md](.agents/skills/drive-tui-e2e/SKILL.md)
   — the tmux expect-driver is a contract with `internal/tui/wizard_pages.go`.
 - **Extending or debugging any nested-VM E2E** (`e2e-ab`, `e2e-tui`) →

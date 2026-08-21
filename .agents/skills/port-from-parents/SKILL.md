@@ -36,7 +36,7 @@ Sources:
    sequences (byte-exact for security-relevant argv like
    systemd-cryptenroll), fixture trees under `t.TempDir()`. Never run
    real commands.
-6. Verify with `just check`, then prove it on hardware with the
+6. Verify with `make check`, then prove it on hardware with the
    relevant E2E — unit tests repeatedly missed what only a real boot
    catches (wrong baseline path, runtime-invisible writes).
 

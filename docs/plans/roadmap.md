@@ -11,7 +11,7 @@ ordered so every phase ends with something demonstrable in a VM.
 
 - Repo scaffold: Go module, `LICENSE` (GPL-3.0 text) + `NOTICE`
   (attribution lineage) — required before any code is copied in
-  ([ADR-0003](../adr/0003-rewrite-fisherman-as-firn.md)) — `just check`
+  ([ADR-0003](../adr/0003-rewrite-fisherman-as-firn.md)) — `make check`
   recipe, CI running it.
 - `internal/recipe`: TOML load + fail-closed validation per the
   [recipe schema spec](../specs/recipe-schema.md), with fixture recipes
@@ -19,7 +19,7 @@ ordered so every phase ends with something demonstrable in a VM.
 - `internal/progress`: event model + NDJSON emitter per the
   [progress protocol spec](../specs/progress-protocol.md).
 - **Done when:** `firn validate <recipe>` accepts the spec's examples,
-  rejects each rule violation with a distinct error, and `just check`
+  rejects each rule violation with a distinct error, and `make check`
   is green in CI.
 
 ## Phase 2 — Step engine and preflight (small) — ✅ shipped 2026-08-11 (`f702b37`)
