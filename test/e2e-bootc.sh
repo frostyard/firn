@@ -86,7 +86,7 @@ EOF
 fi
 
 echo "e2e: installing $image to $loop"
-"$work/firn" install --uefi on --confirm "$loop" --json-progress "$recipe" | tee "$work/progress.ndjson"
+"$work/firn" install --uefi on --secure-boot off --confirm "$loop" --json-progress "$recipe" | tee "$work/progress.ndjson"
 
 grep -q '"event":"done","ok":true' "$work/progress.ndjson" \
   || { echo "e2e: install did not complete" >&2; exit 1; }
