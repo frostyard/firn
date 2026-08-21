@@ -69,7 +69,9 @@ jobs:
         run: go mod download
 
       - name: Run unit tests with coverage
-        run: go test -v ./internal/... -coverprofile=coverage.out -covermode=atomic
+        # Cover ./internal/... and ./cmd/... so the uploaded profile matches
+        # Codecov's measurement scope (codecov.yml does not ignore cmd/).
+        run: go test -v ./internal/... ./cmd/... -coverprofile=coverage.out -covermode=atomic
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
