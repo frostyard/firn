@@ -101,6 +101,116 @@ func TestMountTargetDiagnosticsOnFailure(t *testing.T) {
 	assertCall(t, rec, 2, "sh", "-c", "dmesg | tail -8")
 }
 
+// TestMountTargetUnwindsOnBootFailure verifies that when the separate
+// /boot mount fails after the root has mounted, MountTarget unwinds the
+// whole target tree with `umount -R <targetDir>` before returning, and the
+// returned error still names the /boot stage.
+func TestMountTargetUnwindsOnBootFailure(t *testing.T) {
+	rec := &recorder{}
+	target := filepath.Join(t.TempDir(), "target")
+	layout := Layout{Disk: "/dev/sda", ESP: "/dev/sda1", Boot: "/dev/sda2", Root: "/dev/sda3"}
+	rec.errFn = func(c call, _ int) error {
+		if c.name == "mount" && len(c.args) > 0 && c.args[len(c.args)-1] == filepath.Join(target, "boot") {
+			return errors.New("exit status 32")
+		}
+		return nil
+	}
+
+	err := MountTarget(context.Background(), rec.runner(), layout, "/dev/sda3", "ext4", false, target)
+	if err == nil {
+		t.Fatal("expected error from failing /boot mount, got nil")
+	}
+	if !strings.Contains(err.Error(), "mounting /boot") {
+		t.Errorf("error lost the original /boot stage context: %v", err)
+	}
+	// root mount, /boot mount (fails) + blkid + dmesg, then umount -R.
+	last := rec.calls[len(rec.calls)-1]
+	assertCall(t, rec, len(rec.calls)-1, "umount", "-R", target)
+	if last.name != "umount" {
+		t.Fatalf("expected the final call to be the recursive unmount, got %+v", last)
+	}
+}
+
+// TestMountTargetUnwindsOnESPFailure verifies that when the ESP mount fails
+// after the root and separate /boot have mounted, MountTarget unwinds the
+// whole target tree with `umount -R <targetDir>` before returning, and the
+// returned error still names the ESP stage.
+func TestMountTargetUnwindsOnESPFailure(t *testing.T) {
+	rec := &recorder{}
+	target := filepath.Join(t.TempDir(), "target")
+	layout := Layout{Disk: "/dev/sda", ESP: "/dev/sda1", Boot: "/dev/sda2", Root: "/dev/sda3"}
+	rec.errFn = func(c call, _ int) error {
+		if c.name == "mount" && len(c.args) > 0 && c.args[len(c.args)-1] == filepath.Join(target, "boot", "efi") {
+			return errors.New("exit status 32")
+		}
+		return nil
+	}
+
+	err := MountTarget(context.Background(), rec.runner(), layout, "/dev/sda3", "ext4", false, target)
+	if err == nil {
+		t.Fatal("expected error from failing ESP mount, got nil")
+	}
+	if !strings.Contains(err.Error(), "mounting ESP") {
+		t.Errorf("error lost the original ESP stage context: %v", err)
+	}
+	assertCall(t, rec, len(rec.calls)-1, "umount", "-R", target)
+}
+
+// TestMountTargetJoinsCleanupFailure verifies that when a post-root mount
+// fails AND the recursive unmount cleanup also fails, both errors remain
+// represented in the returned error.
+func TestMountTargetJoinsCleanupFailure(t *testing.T) {
+	rec := &recorder{}
+	target := filepath.Join(t.TempDir(), "target")
+	layout := Layout{Disk: "/dev/sda", ESP: "/dev/sda1", Boot: "/dev/sda2", Root: "/dev/sda3"}
+	rec.errFn = func(c call, _ int) error {
+		if c.name == "mount" && len(c.args) > 0 && c.args[len(c.args)-1] == filepath.Join(target, "boot") {
+			return errors.New("exit status 32")
+		}
+		if c.name == "umount" {
+			return errors.New("target is busy")
+		}
+		return nil
+	}
+
+	err := MountTarget(context.Background(), rec.runner(), layout, "/dev/sda3", "ext4", false, target)
+	if err == nil {
+		t.Fatal("expected a joined error, got nil")
+	}
+	if !strings.Contains(err.Error(), "mounting /boot") {
+		t.Errorf("joined error dropped the original /boot stage: %v", err)
+	}
+	if !strings.Contains(err.Error(), "umount -R") || !strings.Contains(err.Error(), "target is busy") {
+		t.Errorf("joined error dropped the cleanup failure: %v", err)
+	}
+	assertCall(t, rec, len(rec.calls)-1, "umount", "-R", target)
+}
+
+// TestMountTargetRootFailureDoesNotUnmount verifies that when the initial
+// root mount itself fails, MountTarget does not attempt a recursive unmount
+// (there is nothing mounted to unwind).
+func TestMountTargetRootFailureDoesNotUnmount(t *testing.T) {
+	rec := &recorder{}
+	target := filepath.Join(t.TempDir(), "target")
+	layout := Layout{Disk: "/dev/sda", ESP: "/dev/sda1", Boot: "/dev/sda2", Root: "/dev/sda3"}
+	rec.errFn = func(c call, _ int) error {
+		if c.name == "mount" && len(c.args) > 0 && c.args[len(c.args)-1] == target {
+			return errors.New("exit status 32")
+		}
+		return nil
+	}
+
+	err := MountTarget(context.Background(), rec.runner(), layout, "/dev/sda3", "ext4", false, target)
+	if err == nil {
+		t.Fatal("expected error from failing root mount, got nil")
+	}
+	for i, c := range rec.calls {
+		if c.name == "umount" {
+			t.Fatalf("call %d attempted an unmount after a root-mount failure: %+v", i, c)
+		}
+	}
+}
+
 func TestUnmount(t *testing.T) {
 	rec := &recorder{}
 	if err := Unmount(context.Background(), rec.runner(), "/mnt/target/boot/efi"); err != nil {

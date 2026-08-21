@@ -5,6 +5,7 @@ package disk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,6 +44,28 @@ func MountTarget(ctx context.Context, r *runner.Runner, layout Layout, rootDev, 
 		return fmt.Errorf("disk: mounting root: %w", err)
 	}
 
+	// The root is mounted. Any subsequent mkdir or mount failure must unwind
+	// every mount already made under targetDir (root included) so a failed
+	// install attempt does not leak the target's mount tree onto the deployer.
+	// The cleanup uses a background context so it still runs when ctx is
+	// already cancelled, and the original stage error is preserved: a cleanup
+	// failure is joined onto it rather than replacing it. A root-mount failure
+	// is handled above and never reaches here, so nothing is unmounted when the
+	// initial root mount itself failed.
+	if err := mountBootAndESP(ctx, r, layout, targetDir); err != nil {
+		if cleanupErr := UnmountRecursive(context.Background(), r, targetDir); cleanupErr != nil {
+			return errors.Join(err, cleanupErr)
+		}
+		return err
+	}
+	return nil
+}
+
+// mountBootAndESP performs the post-root mount stages: the separate /boot
+// (grub2 layout only), then the ESP at boot/efi. It assumes the root is
+// already mounted at targetDir; MountTarget unwinds the whole tree if this
+// returns an error.
+func mountBootAndESP(ctx context.Context, r *runner.Runner, layout Layout, targetDir string) error {
 	// grub2 layout: separate ext4 /boot. Must be mounted before the ESP
 	// so boot/efi can be created inside it.
 	if layout.Boot != "" {
