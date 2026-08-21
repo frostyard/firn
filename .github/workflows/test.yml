@@ -82,8 +82,8 @@ jobs:
           verbose: true
         continue-on-error: true
 
-  e2e-test:
-    name: E2E Tests
+  e2e-harness-syntax:
+    name: E2E Harness Syntax
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -91,18 +91,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.26.6"
-
-      - name: Download dependencies
-        run: go mod download
-
       # firn: root-requiring E2E harnesses live in test/e2e-*.sh and run
-      # outside CI (KVM required). This job runs the full unit suite instead.
-      - name: Run tests
-        run: go test ./...
+      # outside hosted CI (KVM required). This job only checks shell syntax.
+      - name: Check E2E harness syntax
+        run: bash -n test/e2e-ab.sh test/e2e-bootc-secure.sh test/e2e-bootc.sh test/e2e-tui.sh
 
   race-test:
     name: Race Detection
