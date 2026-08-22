@@ -203,47 +203,22 @@ Still to do:
 
 ## Phase 8 — bootc under Secure Boot: secure-install schema-1 (large, cross-repo) — ⏳ in progress (code + E2E + lab all DONE 2026-08-12; only dakota retirement remains)
 
-Firn cannot yet install a bootc image that boots under UEFI Secure Boot.
-snosi's secure bootc images use the **Debian shim** (Microsoft-trusted)
-chainloading a **snosi-MOK-signed systemd-boot** second stage
-(`grubx64.efi`) plus MokManager (`mmx64.efi`) — a chain the firmware
-trusts only once the snosi MOK is enrolled. Enrollment is a real,
-human-in-the-loop step: the installer stages the MOK with `mokutil
---import` (password-hashed) so **MokManager prompts the user to enroll it
-on first boot**. A plain `bootc install` does none of this, so firn's
-bootc + SB installs land in MokManager with nothing staged. The contract
-is snosi's `/usr/lib/snosi/bootc-secure.json` (images labelled
-`io.snosi.bootc.secureboot-capable=true`).
+Firn installs secureboot-capable bootc images under UEFI Secure Boot when
+the recipe opts in with `security.mok = "enroll"` (the bootc contract in
+[recipe-schema.md](../specs/recipe-schema.md)). snosi's secure bootc images
+use the **Debian shim** (Microsoft-trusted) to chainload a
+**snosi-MOK-signed systemd-boot** second stage (`grubx64.efi`) plus
+MokManager (`mmx64.efi`). `internal/steps/assemble.go` inserts `esp-stage`
+after the bootc deployment to validate `/usr/lib/snosi/bootc-secure.json`
+and stage that chain, then runs `mok-stage` last to import the image's MOK
+with `mokutil`. MokManager prompts the user to complete enrollment on first
+boot; the image-owned `snosi-bootc-bootloader-reconcile.service` preserves
+the signed second stage across bootc updates.
 
-Fisherman already implements the whole path — the port target is
-`fisherman/internal/secure` (`espstage.go` stages shim / second-stage /
-MokManager onto the ESP; `enroll.go` `StageMOK`; a runtime bootloader
-reconciler). Firn already has half of `StageMOK`
-(`internal/abimg/mok.go`, wired into the A/B `mok-stage` step) —
-schema-1 extends it to the bootc pipeline plus the ESP secure-chain
-assembly and the reconciler unit
+The implementation ports fisherman's `internal/secure` behavior into
+`internal/secureboot` and reuses `internal/abimg/mok.go` through the bootc
+`mok-stage`, with provenance and incident guidance preserved
 ([port-from-parents](../../.agents/skills/port-from-parents/SKILL.md)).
-
-- Port secure-install schema-1 into firn's bootc pipeline: read
-  `bootc-secure.json`, verify the image is `secureboot-capable`, stage
-  the ESP secure chain (shim → MOK-signed systemd-boot → MokManager)
-  after `bootc install`, and stage the MOK via mokutil for first-boot
-  MokManager enrollment. Recipe `mok` becomes valid for the bootc family
-  (today an `abOnlyKeys` field, `internal/recipe/validate.go`); the
-  schema change lands in
-  [recipe-schema.md](../specs/recipe-schema.md) in the same commit.
-- Ship the runtime bootloader-reconciler equivalent (or rely on the
-  image's `snosi-bootc-bootloader-reconcile.service`) so the MOK-signed
-  second stage survives bootc updates.
-- **Retire dakota's installer and its secure tests** (cross-repo): firn
-  becomes the single installer for the secure bootc path too, superseding
-  dakota-iso's `bootc-secure-installer-runner.sh`. The lab's
-  `run-secure-install-tests` (dakota) lane retires and is replaced by
-  firn's own bootc + SB lane — the three cells held out of the matrix in
-  Phase 7 (`argo/firn-install-test.yaml` PENDING block), re-enabled once
-  firn enrolls the MOK for real (drop the lab `virt-fw-vars --add-mok`
-  pre-seed, which fakes the enrolled end-state; drive MokManager or
-  assert genuine mokutil staging).
 - Kick-off is an ADR: committing firn to schema-1 and retiring dakota's
   installer/tests is a significant decision, mirroring the
   fisherman/snosi-install retirement ADRs (frostyard/core 0027–0028).
