@@ -84,7 +84,7 @@ accepted values rather than reapplying these initial selections.
 | `fullname` | string | no | GECOS comment. Empty and Unicode values are valid; `:`, CR, and LF are rejected so both image-family writers produce the same passwd field. |
 | `password_file` | string (path) | one of these two | 0600 file containing the plaintext password (hashed by firn, SHA-512 crypt). |
 | `password_hash` | string | one of these two | Pre-computed `$…` crypt hash, passed through verbatim. |
-| `groups` | array of string | no | Supplementary groups; each MUST exist in the image or be in firn's known-safe join list. |
+| `groups` | array of string | no | Supplementary groups; validated only for name syntax (`internal/recipe/validate.go`'s `usernameRe`), not existence in the image. At install time only groups present in the deployment's `etc/group` are joined (`internal/sysconfig/user.go`'s `filterGroups`); a group missing from the image is silently skipped, not rejected, and reported via a `progress.CodeGroupMissing` warning. |
 | `ssh_authorized_key` / `_file` | string / path | no | At most one. Content follows the same per-line public-key rules as `root_ssh_authorized_key`; every configured line is installed in the user's `authorized_keys`. |
 
 Supported SSH key types are `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-*`, and
