@@ -36,9 +36,6 @@ jobs:
           install_args: golangci-lint
           cache: true
 
-      - name: Check pinned golangci-lint
-        run: make lint-version-check
-
       # make ci is the credential-free gate (core ADR-0043/ADR-0022): verify
       # (tidy diff, gofmt, lint, vet, tests) plus coverage, the race
       # detector, and cross-arch builds, replacing the lint/verify/race/build
