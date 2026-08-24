@@ -10,8 +10,8 @@ on:
 permissions: {}
 
 jobs:
-  lint:
-    name: Lint
+  gate:
+    name: Repository gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,10 +36,15 @@ jobs:
           install_args: golangci-lint
           cache: true
 
-      - name: golangci-lint
-        run: |
-          make lint-version-check
-          golangci-lint run
+      - name: Check pinned golangci-lint
+        run: make lint-version-check
+
+      # make ci is the credential-free gate (core ADR-0043/ADR-0022): verify
+      # (tidy diff, gofmt, lint, vet, tests) plus coverage, the race
+      # detector, and cross-arch builds, replacing the lint/verify/race/build
+      # jobs this workflow ran individually before.
+      - name: Run canonical gate
+        run: make ci
 
   security:
     name: Security Scan
@@ -107,75 +112,3 @@ jobs:
       # outside hosted CI (KVM required). This job only checks shell syntax.
       - name: Check E2E harness syntax
         run: bash -n test/e2e-ab.sh test/e2e-bootc-secure.sh test/e2e-bootc.sh test/e2e-tui.sh
-
-  race-test:
-    name: Race Detection
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run tests with race detector
-        run: go test -race -short ./internal/...
-
-  verify:
-    name: Verify
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      - name: Verify go.mod is tidy
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod go.sum
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Check formatting
-        run: |
-          gofmt -l .
-          test -z "$(gofmt -l .)"
-
-
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      matrix:
-        goos: [linux]
-        goarch: [amd64, arm64]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      - name: Build binary
-        run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} make build
-          ls -lh build/

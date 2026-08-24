@@ -1,4 +1,4 @@
-.PHONY: all build clean fmt lint lint-version-check verify test install help
+.PHONY: all build clean fmt lint lint-version-check verify ci test install help
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -89,6 +89,20 @@ verify:
 
 ## check: Run fmt, lint, and test
 check: fmt lint test
+
+## ci: Credential-free gate mirroring CI's jobs (core ADR-0043/ADR-0022): verify, plus coverage, the race detector, and cross-arch builds
+ci:
+	@$(MAKE) --no-print-directory verify
+	@echo "==> ci: coverage"
+	$(GO) test -coverprofile=coverage.out ./...
+	@echo "==> ci: race detector"
+	$(GO) test -race -short ./internal/...
+	@echo "==> ci: cross-arch build"
+	@for goarch in amd64 arm64; do \
+		echo "GOOS=linux GOARCH=$$goarch make build"; \
+		GOOS=linux GOARCH=$$goarch $(MAKE) --no-print-directory build || exit 1; \
+	done
+	@echo "==> ci passed"
 
 ## help: Show this help message
 help:
