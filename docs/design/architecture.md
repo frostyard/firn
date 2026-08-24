@@ -240,7 +240,8 @@ uses the same engine preflight as headless installation.
 
 - Firn runs as root from live media; every destructive action sits behind
   preflight plus (interactively) typed disk confirmation matching the
-  disk path or serial — `snosi-install`'s rule, adopted everywhere.
+  exact configured target disk path — `snosi-install`'s rule, adopted
+  everywhere.
 - **A/B installs need an isolated partition namespace:** the A/B image
   carries the same discoverable-partition types/labels as any snosi A/B
   host, so its partition surgery must not run against a device the host
