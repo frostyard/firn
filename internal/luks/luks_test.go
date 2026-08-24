@@ -149,6 +149,43 @@ func TestOpenClosesStaleMapper(t *testing.T) {
 	assertCall(t, rec, 1, "cryptsetup", "luksOpen", "--key-file=-", "/dev/sda3", mapper)
 }
 
+// TestOpenStaleMapperCloseFailure: when the stale-mapper luksClose
+// fails, Open must surface that failure immediately and never attempt
+// luksOpen against a mapper that failed to close.
+func TestOpenStaleMapperCloseFailure(t *testing.T) {
+	const mapper = "firn-root"
+	closeErr := errors.New("cryptsetup: device or resource busy")
+
+	staleMapper(t, "/dev/mapper/"+mapper)
+	var calls []call
+	r := runner.NewFake(
+		func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			c := call{name: name, args: args}
+			if in, ok := runner.Stdin(ctx); ok {
+				c.stdin = in
+			}
+			calls = append(calls, c)
+			if len(args) > 0 && args[0] == "luksClose" {
+				return nil, closeErr
+			}
+			return nil, nil
+		},
+		func(name string) (string, error) { return "/usr/bin/" + name, nil },
+	)
+
+	_, err := Open(context.Background(), r, "/dev/sda3", mapper, "pass")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, closeErr) {
+		t.Errorf("Open error = %v, want it to wrap %v", err, closeErr)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected only luksClose to be attempted, got %d calls: %+v", len(calls), calls)
+	}
+	assertCall(t, &recorder{calls: calls}, 0, "cryptsetup", "luksClose", mapper)
+}
+
 func TestClose(t *testing.T) {
 	rec := &recorder{}
 	if err := Close(context.Background(), rec.runner(), "firn-root"); err != nil {
