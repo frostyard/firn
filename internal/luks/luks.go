@@ -56,9 +56,13 @@ func Format(ctx context.Context, r *runner.Runner, dev, passphrase string) error
 // A previous interrupted run may have left the mapper open. Close it
 // before opening so luksOpen succeeds cleanly (fisherman performs this
 // stale-mapper close before luksFormat/luksOpen for the same reason).
+// If that cleanup close fails, Open returns the failure immediately
+// rather than attempting luksOpen against a still-open mapper.
 func Open(ctx context.Context, r *runner.Runner, dev, mapper, passphrase string) (string, error) {
 	if _, err := stat(MapperPath(mapper)); err == nil {
-		_ = Close(ctx, r, mapper)
+		if err := Close(ctx, r, mapper); err != nil {
+			return "", fmt.Errorf("luks: open %s: stale mapper cleanup: %w", dev, err)
+		}
 	}
 	_, err := r.RunInput(ctx, passphrase,
 		"cryptsetup", "luksOpen",
