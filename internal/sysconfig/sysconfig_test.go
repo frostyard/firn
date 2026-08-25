@@ -512,6 +512,59 @@ func TestWriteUserAuthorizedKey(t *testing.T) {
 	}
 }
 
+// A wizard-pasted SSH key is what first creates the stateroot home on the
+// composefs path, and CreateUser's tmpfiles.d "C" entry only copies
+// /etc/skel into a MISSING home on first boot -- so the pre-created home
+// must get the skel copy here, or images that ship their desktop config in
+// skel (flurry: the entire omarchy dotfile set) produce a bare session.
+func TestWriteUserAuthorizedKeyCopiesSkelIntoNewHome(t *testing.T) {
+	ctx := context.Background()
+	target := composefsTarget(t, "aaa")
+	etcDir := filepath.Join(target, "state", "deploy", "aaa", "etc")
+	writeFile(t, filepath.Join(etcDir, "passwd"),
+		"root:x:0:0:root:/root:/bin/bash\ndev:x:1000:1001:Dev:/home/dev:/bin/bash\n")
+	writeFile(t, filepath.Join(etcDir, "skel", ".bashrc"), "export SKEL=1\n")
+	writeFile(t, filepath.Join(etcDir, "skel", ".config", "hypr", "hyprland.lua"), "-- cfg\n")
+
+	var calls []call
+	w := &DeploymentWriter{TargetDir: target, Runner: fakeRunner(&calls)}
+	if err := w.WriteUserAuthorizedKey(ctx, "dev", "ssh-ed25519 AAAA dev@x"); err != nil {
+		t.Fatal(err)
+	}
+
+	home := filepath.Join(target, "state", "os", "default", "var", "home", "dev")
+	for _, rel := range []string{".bashrc", ".config/hypr/hyprland.lua", ".ssh/authorized_keys"} {
+		if _, err := os.Stat(filepath.Join(home, rel)); err != nil {
+			t.Errorf("%s missing from pre-created home: %v", rel, err)
+		}
+	}
+	if fi, _ := os.Stat(home); fi.Mode().Perm() != 0o700 {
+		t.Errorf("home mode = %o, want 0700", fi.Mode().Perm())
+	}
+}
+
+// An already-existing home (any earlier step created it) must NOT be
+// re-seeded: skel only fills a home this call itself creates.
+func TestWriteUserAuthorizedKeyLeavesExistingHomeAlone(t *testing.T) {
+	ctx := context.Background()
+	target := composefsTarget(t, "aaa")
+	etcDir := filepath.Join(target, "state", "deploy", "aaa", "etc")
+	writeFile(t, filepath.Join(etcDir, "passwd"),
+		"dev:x:1000:1001:Dev:/home/dev:/bin/bash\n")
+	writeFile(t, filepath.Join(etcDir, "skel", ".bashrc"), "export SKEL=1\n")
+	home := filepath.Join(target, "state", "os", "default", "var", "home", "dev")
+	writeFile(t, filepath.Join(home, ".profile"), "existing\n")
+
+	var calls []call
+	w := &DeploymentWriter{TargetDir: target, Runner: fakeRunner(&calls)}
+	if err := w.WriteUserAuthorizedKey(ctx, "dev", "ssh-ed25519 AAAA dev@x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".bashrc")); err == nil {
+		t.Error("skel was copied into a pre-existing home")
+	}
+}
+
 func TestWriteUserAuthorizedKey_UnknownUser(t *testing.T) {
 	target := composefsTarget(t, "aaa")
 	writeFile(t, filepath.Join(target, "state", "deploy", "aaa", "etc", "passwd"),

@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha512"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -263,8 +265,12 @@ func (w *DeploymentWriter) WriteRootAuthorizedKey(ctx context.Context, key strin
 // lookup would consult the wrong passwd database.
 //
 // Note: pre-creating the stateroot home means the tmpfiles.d "C" entry from
-// CreateUser finds the directory existing on first boot and skips the
-// /etc/skel copy; the "Z" entry still fixes ownership and SELinux labels.
+// CreateUser finds the directory existing on first boot and SKIPS the
+// /etc/skel copy ("C" only copies into a missing path) -- so when this is
+// the call that first creates the home, it must copy skel itself, or the
+// image's seeded dotfiles are silently lost (fatal on images whose whole
+// desktop config ships in skel). The "Z" entry still fixes ownership and
+// SELinux labels either way.
 func (w *DeploymentWriter) WriteUserAuthorizedKey(ctx context.Context, username, key string) error {
 	if username == "" || key == "" {
 		return nil
@@ -278,6 +284,17 @@ func (w *DeploymentWriter) WriteUserAuthorizedKey(ctx context.Context, username,
 		return err
 	}
 	home := filepath.Join(w.staterootVarDir(lay), "home", username)
+	if _, statErr := os.Stat(home); errors.Is(statErr, fs.ErrNotExist) {
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			return fmt.Errorf("mkdir %s: %w", home, err)
+		}
+		skel := filepath.Join(lay.etcDir, "skel")
+		if _, skelErr := os.Stat(skel); skelErr == nil {
+			if err := copySkel(skel, home); err != nil {
+				return fmt.Errorf("copying skel into %s: %w", home, err)
+			}
+		}
+	}
 	if err := appendAuthorizedKey(filepath.Join(home, ".ssh"), key); err != nil {
 		return err
 	}
