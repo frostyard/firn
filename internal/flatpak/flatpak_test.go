@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/frostyard/firn/internal/runner"
@@ -16,8 +17,11 @@ import (
 
 // fakeCmds is a scriptable command table for runner.NewFake. Commands
 // are keyed by their full argv joined with spaces; unknown commands
-// succeed with empty output unless listed in fail.
+// succeed with empty output unless listed in fail. mu guards calls:
+// copyFlatpakTree's producer and extractor run concurrently, so exec
+// is called from multiple goroutines.
 type fakeCmds struct {
+	mu    sync.Mutex
 	calls [][]string
 	out   map[string]string
 	fail  map[string]bool
@@ -25,7 +29,9 @@ type fakeCmds struct {
 
 func (f *fakeCmds) exec(_ context.Context, name string, args ...string) ([]byte, error) {
 	argv := append([]string{name}, args...)
+	f.mu.Lock()
 	f.calls = append(f.calls, argv)
+	f.mu.Unlock()
 	key := strings.Join(argv, " ")
 	if f.fail[key] {
 		return nil, fmt.Errorf("fake failure: %s", key)
@@ -115,8 +121,11 @@ func TestProvisionCopiesMediumFlatpaksViaTar(t *testing.T) {
 	if !f.called("mkdir", "-p", dst) {
 		t.Errorf("expected mkdir -p %s; calls: %v", dst, f.calls)
 	}
-	if !f.called("sh", "-c", tarPipeScript, "sh", "/var/lib/flatpak", dst) {
-		t.Errorf("expected tar pipe sh invocation for %s; calls: %v", dst, f.calls)
+	if !f.called("tar", "cf", "-", "-C", "/var/lib/flatpak", ".") {
+		t.Errorf("expected tar producer invocation for /var/lib/flatpak; calls: %v", f.calls)
+	}
+	if !f.called("tar", "xf", "-", "-C", dst) {
+		t.Errorf("expected tar extractor invocation for %s; calls: %v", dst, f.calls)
 	}
 	// Present on the medium: no download attempt.
 	for _, c := range f.calls {
@@ -264,25 +273,56 @@ func TestProvisionPartialDownloadFailure(t *testing.T) {
 	}
 }
 
-// TestProvisionTarFailureIsStructural: flatpaks that ARE on the medium
-// failing to copy is a broken install, not an unreachable app.
-func TestProvisionTarFailureIsStructural(t *testing.T) {
+// TestProvisionTarExtractorFailureIsStructural: flatpaks that ARE on
+// the medium failing to copy is a broken install, not an unreachable
+// app.
+func TestProvisionTarExtractorFailureIsStructural(t *testing.T) {
 	target := t.TempDir()
 	f := plainVarFakes(target)
 	dst := filepath.Join(target, "var", "lib", "flatpak")
 	f.out["flatpak list --system --columns=ref --app"] = "org.mozilla.firefox/x86_64/stable\n"
 	f.out["du -sb /var/lib/flatpak"] = "1024\t/var/lib/flatpak\n"
-	f.fail["sh -c "+tarPipeScript+" sh /var/lib/flatpak "+dst] = true
+	f.fail["tar xf - -C "+dst] = true
 
 	unreachable, err := Provision(context.Background(), f.runner(), Opts{
 		TargetDir: target,
 		Apps:      []string{"org.mozilla.firefox"},
 	})
 	if err == nil {
-		t.Fatal("expected structural error when tar copy fails, got nil")
+		t.Fatal("expected structural error when tar extractor fails, got nil")
 	}
 	if unreachable != nil {
 		t.Errorf("expected no unreachable apps on structural error, got %v", unreachable)
+	}
+}
+
+// TestProvisionTarProducerFailureIsStructural demonstrates, independent
+// of the extractor, that a failing archive producer alone is enough to
+// fail Provision structurally — even though the fake extractor call
+// itself is left free to "succeed" (no fail entry). A shell pipeline
+// (`tar cf - | tar xf -`) would report only the last command's exit
+// status and swallow this; copyFlatpakTree must observe the producer's
+// error independently of the extractor's.
+func TestProvisionTarProducerFailureIsStructural(t *testing.T) {
+	target := t.TempDir()
+	f := plainVarFakes(target)
+	dst := filepath.Join(target, "var", "lib", "flatpak")
+	f.out["flatpak list --system --columns=ref --app"] = "org.mozilla.firefox/x86_64/stable\n"
+	f.out["du -sb /var/lib/flatpak"] = "1024\t/var/lib/flatpak\n"
+	f.fail["tar cf - -C /var/lib/flatpak ."] = true
+
+	unreachable, err := Provision(context.Background(), f.runner(), Opts{
+		TargetDir: target,
+		Apps:      []string{"org.mozilla.firefox"},
+	})
+	if err == nil {
+		t.Fatal("expected structural error when tar producer fails, got nil")
+	}
+	if unreachable != nil {
+		t.Errorf("expected no unreachable apps on structural error, got %v", unreachable)
+	}
+	if !f.called("tar", "xf", "-", "-C", dst) {
+		t.Errorf("expected extractor to still be invoked; calls: %v", f.calls)
 	}
 }
 

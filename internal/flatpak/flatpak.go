@@ -12,11 +12,14 @@ package flatpak
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/frostyard/firn/internal/runner"
 )
@@ -27,14 +30,35 @@ import (
 // degraded one).
 const hostFlatpakDir = "/var/lib/flatpak"
 
-// tarPipeScript streams the medium's flatpak tree into the target,
-// preserving hardlinks and ownership. Fisherman piped `tar cf -` into
-// `tar xf -` through an in-process io.Pipe (post.go: tarC/tarX); firn's
-// runner seam has no stdin/stdout plumbing, so the same pipe runs
-// inside a single sh invocation. $1 is the source dir, $2 the
-// destination; the pipeline's exit status is tar xf's, and a mid-stream
-// create failure surfaces as a truncated-archive extract error.
-const tarPipeScript = `tar cf - -C "$1" . | tar xf - -C "$2"`
+// copyFlatpakTree streams src into dst by running `tar cf` and `tar xf`
+// as two concurrent runner invocations joined by an in-process io.Pipe,
+// preserving hardlinks and ownership exactly like fisherman's original
+// tarC/tarX (post.go). Running them as a shell pipeline instead (`tar
+// cf - | tar xf -`) would report only the extractor's exit status: a
+// producer failure with an extractor that still exits 0 on the
+// truncated stream it received would be silently swallowed. Wiring the
+// two runner calls directly means each side's error is observed on its
+// own, so a producer failure is never masked by extractor success.
+func copyFlatpakTree(ctx context.Context, r *runner.Runner, src, dst string) error {
+	pr, pw := io.Pipe()
+
+	var wg sync.WaitGroup
+	var produceErr, extractErr error
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		produceErr = r.RunStream(ctx, nil, pw, "tar", "cf", "-", "-C", src, ".")
+		pw.CloseWithError(produceErr)
+	}()
+	go func() {
+		defer wg.Done()
+		extractErr = r.RunStream(ctx, pr, nil, "tar", "xf", "-", "-C", dst)
+	}()
+	wg.Wait()
+
+	return errors.Join(produceErr, extractErr)
+}
 
 // Opts configures Provision.
 type Opts struct {
@@ -139,7 +163,7 @@ func Provision(ctx context.Context, r *runner.Runner, o Opts) (unreachable []str
 	//    did. A medium with no flatpak data simply skips the copy —
 	//    everything wanted then goes through the download step.
 	if dirSize(ctx, r, hostFlatpakDir) > 0 {
-		if _, tarErr := r.Run(ctx, "sh", "-c", tarPipeScript, "sh", hostFlatpakDir, dst); tarErr != nil {
+		if tarErr := copyFlatpakTree(ctx, r, hostFlatpakDir, dst); tarErr != nil {
 			// Structural: these flatpaks ARE present on the medium;
 			// failing to carry them over is a broken install, not an
 			// unreachable app.
