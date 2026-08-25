@@ -68,7 +68,9 @@ dependencies are a TOML decoder and, in the TUI layer only, the Charm stack
 
 ```sh
 make build     # build ./build/firn
-make check     # fmt + lint + test — the gate for "done"; CI runs the same
+make check     # fmt + lint + test — the gate for "done"
+make ci        # credential-free gate mirroring CI: verify, coverage, race
+               # detector, and linux amd64/arm64 builds
 ```
 
 End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
