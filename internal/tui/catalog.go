@@ -33,18 +33,37 @@ type CatalogEntry struct {
 	Ref          string `json:"ref,omitempty"`
 	CosignPubKey string `json:"cosign_pub_key,omitempty"`
 	Product      string `json:"product,omitempty"`
+	// DefaultGroups preselects the wizard's group multi-select for this
+	// entry (the user can still change the selection; join-where-exists
+	// semantics at install time are unchanged). Empty means the generic
+	// fallback ({"sudo"}). Every name listed here must also be an offered
+	// option in the wizard's group form -- huh's MultiSelect drops
+	// selected values it has no option for.
+	DefaultGroups []string `json:"default_groups,omitempty"`
 }
 
 // builtinCatalog is the default snosi image catalog. Descriptions match
 // the snosi README's image table.
+// Default group sets for the builtin entries, mirrored by snosi's shipped
+// /etc/firn/catalog.json (frostyard/snosi#789): a fresh desktop user
+// otherwise lands in only [user, sudo] -- fine for the logind-managed seat,
+// but printer admin (lpadmin), log reading (adm), and non-seat device
+// access (video/input/render/plugdev) all break later. audio and dialout
+// are deliberately NOT preselected: audio group membership is discouraged
+// under logind, dialout is niche -- both stay offered for opting in.
+var (
+	desktopDefaultGroups = []string{"sudo", "adm", "video", "input", "render", "plugdev", "netdev", "lpadmin", "scanner"}
+	serverDefaultGroups  = []string{"sudo", "adm", "netdev"}
+)
+
 func builtinCatalog() []CatalogEntry {
 	return []CatalogEntry{
-		{Family: recipe.FamilyBootc, Name: "snow", Description: "GNOME desktop with backports kernel", Ref: "ghcr.io/frostyard/snow:latest", CosignPubKey: builtinCosignPubKey},
-		{Family: recipe.FamilyBootc, Name: "snowfield", Description: "GNOME desktop with linux-surface kernel for Surface devices", Ref: "ghcr.io/frostyard/snowfield:latest", CosignPubKey: builtinCosignPubKey},
-		{Family: recipe.FamilyBootc, Name: "cayo", Description: "Headless server with podman and backports kernel", Ref: "ghcr.io/frostyard/cayo:latest", CosignPubKey: builtinCosignPubKey},
-		{Family: recipe.FamilyAB, Name: "snow-ab", Description: "Native A/B GNOME desktop with backports kernel", Product: "snow-ab"},
-		{Family: recipe.FamilyAB, Name: "snowfield-ab", Description: "Native A/B GNOME desktop with linux-surface kernel", Product: "snowfield-ab"},
-		{Family: recipe.FamilyAB, Name: "cayo-ab", Description: "Native A/B headless server with podman", Product: "cayo-ab"},
+		{Family: recipe.FamilyBootc, Name: "snow", Description: "GNOME desktop with backports kernel", Ref: "ghcr.io/frostyard/snow:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: desktopDefaultGroups},
+		{Family: recipe.FamilyBootc, Name: "snowfield", Description: "GNOME desktop with linux-surface kernel for Surface devices", Ref: "ghcr.io/frostyard/snowfield:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: desktopDefaultGroups},
+		{Family: recipe.FamilyBootc, Name: "cayo", Description: "Headless server with podman and backports kernel", Ref: "ghcr.io/frostyard/cayo:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: serverDefaultGroups},
+		{Family: recipe.FamilyAB, Name: "snow-ab", Description: "Native A/B GNOME desktop with backports kernel", Product: "snow-ab", DefaultGroups: desktopDefaultGroups},
+		{Family: recipe.FamilyAB, Name: "snowfield-ab", Description: "Native A/B GNOME desktop with linux-surface kernel", Product: "snowfield-ab", DefaultGroups: desktopDefaultGroups},
+		{Family: recipe.FamilyAB, Name: "cayo-ab", Description: "Native A/B headless server with podman", Product: "cayo-ab", DefaultGroups: serverDefaultGroups},
 	}
 }
 
