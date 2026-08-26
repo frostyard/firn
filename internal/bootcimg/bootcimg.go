@@ -273,6 +273,6 @@ func Install(ctx context.Context, r *runner.Runner, o Options) error {
 // implicitly, so that result is reduced to reachable-or-not.
 // TODO: port NeedsPull/LayerCount if firn grows explicit pull progress.
 func CheckImage(ctx context.Context, r *runner.Runner, image string) error {
-	_, err := CheckAndPinImage(ctx, r, image, "")
+	_, err := CheckAndPinImage(ctx, r, image, "", nil)
 	return err
 }

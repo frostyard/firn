@@ -69,6 +69,7 @@ version-1 wire contract.
 | `flatpak_unreachable` | `warning`, `summary` | A requested Flatpak could not be reached and was not installed. |
 | `group_missing` | `warning`, `summary` | A requested supplementary user group was absent from the installed image. |
 | `image_verification_failed` | `error` | Bootc image digest resolution or cosign verification failed in `preflight-image`; no destructive step has run. |
+| `image_verification_retried` | `warning` | A cosign verification attempt in `preflight-image` failed (transient registry responses can do this) and a bounded retry follows; verification is not weakened, and the run still fails closed with `image_verification_failed` if the final attempt fails. |
 | `no_core_set` | `warning`, `summary` | Core Flatpaks were requested but the selected image publishes no core set. |
 | `no_tpm` | `warning` | No TPM was detected; only choices that do not require it remain valid. |
 | `step_failed` | `error` | A pipeline step failed without a more specific stable code. |

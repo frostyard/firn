@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/frostyard/firn/internal/runner"
 )
@@ -58,7 +59,7 @@ func TestCheckAndPinImageVerifiesResolvedDigest(t *testing.T) {
 			return nil
 		}, &calls)
 
-	got, err := CheckAndPinImage(context.Background(), r, "docker://ghcr.io/frostyard/snow:latest", "/keys/cosign.pub")
+	got, err := CheckAndPinImage(context.Background(), r, "docker://ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ func TestCheckAndPinImageOfflineCachedImage(t *testing.T) {
 		[]byte(`{"Digest":"`+localDigest+`"}`), nil,
 		nil, &calls)
 
-	got, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub")
+	got, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +92,7 @@ func TestCheckAndPinImageBindsVerificationToSelectedLocalDigest(t *testing.T) {
 		[]byte(`{"Digest":"`+localDigest+`"}`), nil,
 		func(args []string) error { verified = args[len(args)-1]; return nil }, &calls)
 
-	got, err := CheckAndPinImage(context.Background(), r, "registry.example.com:5000/snow:latest", "/keys/cosign.pub")
+	got, err := CheckAndPinImage(context.Background(), r, "registry.example.com:5000/snow:latest", "/keys/cosign.pub", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,16 +103,25 @@ func TestCheckAndPinImageBindsVerificationToSelectedLocalDigest(t *testing.T) {
 }
 
 func TestCheckAndPinImageVerificationFailures(t *testing.T) {
+	badSig := errors.New("no matching signatures")
+	wrongKey := errors.New("signature verification failed")
+	// The transient shape from the 2026-08-26 GHCR incident: cosign fell
+	// through to attestation referrers although the key signature existed.
+	transient := errors.New("no matching attestations: expected key signature, not certificate")
 	for _, tc := range []struct {
 		name string
 		key  string
-		err  error
+		errs []error // cosign result per attempt; a nil entry succeeds
+		err  error   // final error the caller sees; nil means success
 	}{
-		{name: "bad signature", key: "/keys/cosign.pub", err: errors.New("no matching signatures")},
-		{name: "wrong key", key: "/keys/wrong.pub", err: errors.New("signature verification failed")},
+		{name: "bad signature", key: "/keys/cosign.pub", errs: []error{badSig, badSig, badSig}, err: badSig},
+		{name: "wrong key", key: "/keys/wrong.pub", errs: []error{wrongKey, wrongKey, wrongKey}, err: wrongKey},
+		{name: "transient then success", key: "/keys/cosign.pub", errs: []error{transient, nil}},
+		{name: "transient until last attempt", key: "/keys/cosign.pub", errs: []error{transient, transient, nil}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls [][]string
+			attempt := 0
 			r := verifyRunner(t,
 				[]byte(`{"Digest":"`+remoteDigest+`"}`), nil,
 				nil, errors.New("not cached"),
@@ -119,12 +129,47 @@ func TestCheckAndPinImageVerificationFailures(t *testing.T) {
 					if args[2] != tc.key {
 						t.Fatalf("cosign key = %q, want %q", args[2], tc.key)
 					}
-					return tc.err
+					err := tc.errs[attempt]
+					attempt++
+					return err
 				}, &calls)
+			var slept []time.Duration
+			r = r.WithSleep(func(d time.Duration) { slept = append(slept, d) })
+			var warnings []string
+			warn := func(msg string) { warnings = append(warnings, msg) }
 
-			_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", tc.key)
-			if err == nil || !strings.Contains(err.Error(), tc.err.Error()) {
-				t.Fatalf("verification error = %v, want %v", err, tc.err)
+			got, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", tc.key, warn)
+			if attempt != len(tc.errs) {
+				t.Fatalf("cosign attempts = %d, want %d", attempt, len(tc.errs))
+			}
+			if tc.err == nil {
+				if err != nil {
+					t.Fatalf("verification after transient failures = %v, want success", err)
+				}
+				if want := "ghcr.io/frostyard/snow@" + remoteDigest; got != want {
+					t.Fatalf("pinned source = %q, want %q", got, want)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), tc.err.Error()) {
+					t.Fatalf("verification error = %v, want %v", err, tc.err)
+				}
+				if !strings.Contains(err.Error(), "bootcimg: verifying image signature for ghcr.io/frostyard/snow@"+remoteDigest) {
+					t.Fatalf("verification error lost its shape: %v", err)
+				}
+			}
+			// Backoff runs before every attempt but the first, never after
+			// the last; every failed non-final attempt surfaces a warning
+			// carrying that attempt's error text.
+			if want := verifyBackoff[:len(tc.errs)-1]; !slices.Equal(slept, want) {
+				t.Fatalf("backoff sleeps = %v, want %v", slept, want)
+			}
+			if len(warnings) != len(tc.errs)-1 {
+				t.Fatalf("retry warnings = %q, want %d of them", warnings, len(tc.errs)-1)
+			}
+			for i, w := range warnings {
+				if !strings.Contains(w, tc.errs[i].Error()) {
+					t.Fatalf("warning %d = %q, missing attempt error %q", i+1, w, tc.errs[i])
+				}
 			}
 		})
 	}
@@ -133,7 +178,7 @@ func TestCheckAndPinImageVerificationFailures(t *testing.T) {
 func TestCheckAndPinImageRejectsMalformedDigest(t *testing.T) {
 	var calls [][]string
 	r := verifyRunner(t, []byte(`{"Digest":"sha256:not-a-digest"}`), nil, nil, errors.New("not cached"), nil, &calls)
-	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub")
+	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
 	if err == nil || !strings.Contains(err.Error(), "no valid sha256 digest") {
 		t.Fatalf("malformed digest error = %v", err)
 	}
@@ -150,7 +195,7 @@ func TestCheckAndPinImageDoesNotReplaceSelectedLocalImage(t *testing.T) {
 		[]byte(`{"Digest":"`+remoteDigest+`"}`), nil,
 		[]byte(`{"Digest":"not-a-digest"}`), nil,
 		nil, &calls)
-	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub")
+	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
 	if err == nil || !strings.Contains(err.Error(), "selected local image") {
 		t.Fatalf("selected local digest error = %v", err)
 	}
@@ -164,7 +209,7 @@ func TestCheckAndPinImageDoesNotReplaceSelectedLocalImage(t *testing.T) {
 func TestCheckAndPinImageRejectsLocalTransportWithVerification(t *testing.T) {
 	var calls [][]string
 	r := verifyRunner(t, nil, fmt.Errorf("offline"), []byte(`{"Digest":"`+localDigest+`"}`), nil, nil, &calls)
-	_, err := CheckAndPinImage(context.Background(), r, "containers-storage:ghcr.io/frostyard/snow:latest", "/keys/cosign.pub")
+	_, err := CheckAndPinImage(context.Background(), r, "containers-storage:ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
 	if err == nil || !strings.Contains(err.Error(), "requires a registry image reference") {
 		t.Fatalf("local transport error = %v", err)
 	}
