@@ -10,12 +10,14 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Runner executes host commands. The zero value is not usable; use New.
 type Runner struct {
 	exec     func(ctx context.Context, name string, args ...string) ([]byte, error)
 	lookPath func(name string) (string, error)
+	sleep    func(d time.Duration)
 }
 
 // New returns a Runner backed by os/exec.
@@ -39,20 +41,38 @@ func New() *Runner {
 			return stdout.Bytes(), nil
 		},
 		lookPath: exec.LookPath,
+		sleep:    time.Sleep,
 	}
 }
 
-// NewFake returns a Runner with injected behavior, for tests.
+// NewFake returns a Runner with injected behavior, for tests. Fake
+// runners never sleep; tests that assert backoff install a recorder
+// with WithSleep.
 func NewFake(
 	execFn func(ctx context.Context, name string, args ...string) ([]byte, error),
 	lookPathFn func(name string) (string, error),
 ) *Runner {
-	return &Runner{exec: execFn, lookPath: lookPathFn}
+	return &Runner{exec: execFn, lookPath: lookPathFn, sleep: func(time.Duration) {}}
 }
 
 // Run executes name with args and returns its stdout.
 func (r *Runner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return r.exec(ctx, name, args...)
+}
+
+// Sleep pauses for d between retry attempts through the same seam
+// tests replace for command execution, so retrying callers need no
+// per-package sleep hook.
+func (r *Runner) Sleep(d time.Duration) {
+	r.sleep(d)
+}
+
+// WithSleep returns a copy of r whose Sleep calls f instead. Tests use
+// it to record backoff durations without real delays.
+func (r *Runner) WithSleep(f func(d time.Duration)) *Runner {
+	c := *r
+	c.sleep = f
+	return &c
 }
 
 // stdinKey carries RunInput's input through the context so the exec

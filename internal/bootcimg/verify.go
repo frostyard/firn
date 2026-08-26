@@ -11,11 +11,24 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/frostyard/firn/internal/runner"
 )
 
 var sha256DigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// cosign retry budget. On 2026-08-26 a hardware install failed
+// preflight with "no matching attestations: expected key signature,
+// not certificate" against a digest whose signature had been in the
+// registry for 5+ hours; a transient GHCR response (rate limiting or
+// referrers inconsistency) made cosign fall through to attestation
+// referrers, and the identical cosign invocation verified cleanly
+// shortly after. Bounded retries absorb that; the retry never weakens
+// verification, and the final attempt's failure fails the install.
+const verifyAttempts = 3
+
+var verifyBackoff = []time.Duration{5 * time.Second, 15 * time.Second}
 
 type inspectManifest struct {
 	Digest string `json:"Digest"`
@@ -24,8 +37,10 @@ type inspectManifest struct {
 // CheckAndPinImage checks that image is reachable or cached. When keyPath is
 // set, it also resolves the source Firn will actually install to an immutable
 // digest, verifies that digest with cosign, and returns the pinned reference.
-// Resolving before verification closes the tag-movement race.
-func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string) (string, error) {
+// Resolving before verification closes the tag-movement race. warn, when
+// non-nil, receives one message per failed non-final cosign attempt (the
+// attempt's stderr is embedded by the runner error).
+func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string)) (string, error) {
 	if keyPath != "" && !IsRegistryRef(image) {
 		return "", fmt.Errorf("bootcimg: cosign verification requires a registry image reference, got %q", image)
 	}
@@ -70,10 +85,31 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 		return "", fmt.Errorf("bootcimg: invalid immutable digest in image reference %q", image)
 	}
 
-	if _, err := r.Run(ctx, "cosign", "verify", "--key", keyPath, bare); err != nil {
-		return "", fmt.Errorf("bootcimg: verifying image signature for %s: %w", bare, err)
+	if err := verifyImageSignature(ctx, r, keyPath, bare, warn); err != nil {
+		return "", err
 	}
 	return bare, nil
+}
+
+// verifyImageSignature runs cosign verify against the pinned reference,
+// retrying transient registry responses across the bounded backoff
+// schedule. No attempt relaxes verification; the last failure is fatal.
+func verifyImageSignature(ctx context.Context, r *runner.Runner, keyPath, ref string, warn func(string)) error {
+	var lastErr error
+	for attempt := 1; attempt <= verifyAttempts; attempt++ {
+		if attempt > 1 {
+			r.Sleep(verifyBackoff[attempt-2])
+		}
+		_, err := r.Run(ctx, "cosign", "verify", "--key", keyPath, ref)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if warn != nil && attempt < verifyAttempts {
+			warn(fmt.Sprintf("cosign verify attempt %d/%d for %s failed, retrying: %v", attempt, verifyAttempts, ref, err))
+		}
+	}
+	return fmt.Errorf("bootcimg: verifying image signature for %s: %w", ref, lastErr)
 }
 
 func manifestDigest(out []byte, err error) string {

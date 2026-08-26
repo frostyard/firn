@@ -277,6 +277,15 @@ hostname = "frost01"
 	if !ok || terminal.Step != "preflight-image" || terminal.Code != progress.CodeImageVerifyFailed {
 		t.Fatalf("terminal verification event = %#v", events[len(events)-1])
 	}
+	var retried int
+	for _, e := range events {
+		if w, ok := e.(progress.Warning); ok && w.Code == progress.CodeImageVerifyRetried {
+			retried++
+		}
+	}
+	if retried != 2 {
+		t.Fatalf("retry warnings = %d, want 2 (bounded retries before failing closed)", retried)
+	}
 	for _, command := range commands {
 		for _, destructive := range []string{"sfdisk", "wipefs", "mkfs", "cryptsetup", "bootc", "podman"} {
 			if strings.HasPrefix(command, destructive+" ") {

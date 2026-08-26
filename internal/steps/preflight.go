@@ -57,7 +57,10 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 		steps = append(steps, pipeline.Step{
 			Name: "preflight-image", Weight: 1, Preflight: true,
 			Run: func(ctx context.Context, env *pipeline.Env) error {
-				pinned, err := bootcimg.CheckAndPinImage(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey)
+				pinned, err := bootcimg.CheckAndPinImage(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey,
+					func(msg string) {
+						_ = env.Emit(progress.Warning{Code: progress.CodeImageVerifyRetried, Message: msg})
+					})
 				if err != nil {
 					if env.Recipe.Image.CosignPubKey != "" {
 						return pipeline.WithErrorCode(progress.CodeImageVerifyFailed, err)
