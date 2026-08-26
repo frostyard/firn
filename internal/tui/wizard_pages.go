@@ -454,13 +454,53 @@ func (w *wizard) systemForm() *huh.Form {
 	)
 }
 
+// groupOptions is the single source of the group multi-select's offered
+// set. Every group a catalog entry's default_groups may preselect MUST be
+// listed here -- huh's MultiSelect silently drops selected values it has
+// no option for (pinned by TestGroupOptionsCoverAllBuiltinDefaults).
+func groupOptions() []huh.Option[string] {
+	return []huh.Option[string]{
+		huh.NewOption("sudo — administrator", "sudo"),
+		huh.NewOption("docker — run containers without sudo", "docker"),
+		huh.NewOption("incus-admin — manage incus VMs/containers", "incus-admin"),
+		huh.NewOption("lpadmin — manage printers", "lpadmin"),
+		huh.NewOption("scanner — use scanners", "scanner"),
+		huh.NewOption("adm — read system logs", "adm"),
+		huh.NewOption("audio", "audio"),
+		huh.NewOption("video", "video"),
+		huh.NewOption("input — raw input devices", "input"),
+		huh.NewOption("render — GPU compute/render nodes", "render"),
+		huh.NewOption("dialout — serial devices", "dialout"),
+		huh.NewOption("plugdev — removable devices", "plugdev"),
+		huh.NewOption("netdev — network configuration", "netdev"),
+	}
+}
+
+// groupOptionValues returns just the option values, for coverage checks.
+func groupOptionValues() []string {
+	opts := groupOptions()
+	vals := make([]string, 0, len(opts))
+	for _, o := range opts {
+		vals = append(vals, o.Value)
+	}
+	return vals
+}
+
 func (w *wizard) userForm() *huh.Form {
 	// These are TUI initial selections, applied once. Keeping the marker in
 	// wizardChoices distinguishes a first visit from a user who answered No
 	// or removed every group before the form is rebuilt.
 	if !w.c.userInitialized {
 		w.c.createUser = true
-		w.c.groups = []string{"sudo"}
+		// Preselect the chosen image's default group set (catalog
+		// default_groups, frostyard/snosi#789); generic fallback when the
+		// entry declares none. Copy -- huh mutates the bound slice and must
+		// never write into the catalog entry.
+		if len(w.c.entry.DefaultGroups) > 0 {
+			w.c.groups = append([]string(nil), w.c.entry.DefaultGroups...)
+		} else {
+			w.c.groups = []string{"sudo"}
+		}
 		w.c.userInitialized = true
 	}
 	var passConfirm string
@@ -504,19 +544,7 @@ func (w *wizard) userForm() *huh.Form {
 				Description("Common groups plus the ones snosi's sysexts provide (docker,\n"+
 					"incus, printing, scanning). Any not present in the chosen image\n"+
 					"are skipped at install time.").
-				Options(
-					huh.NewOption("sudo — administrator", "sudo"),
-					huh.NewOption("docker — run containers without sudo", "docker"),
-					huh.NewOption("incus-admin — manage incus VMs/containers", "incus-admin"),
-					huh.NewOption("lpadmin — manage printers", "lpadmin"),
-					huh.NewOption("scanner — use scanners", "scanner"),
-					huh.NewOption("adm — read system logs", "adm"),
-					huh.NewOption("audio", "audio"),
-					huh.NewOption("video", "video"),
-					huh.NewOption("dialout — serial devices", "dialout"),
-					huh.NewOption("plugdev — removable devices", "plugdev"),
-					huh.NewOption("netdev — network configuration", "netdev"),
-				).
+				Options(groupOptions()...).
 				Value(&w.c.groups),
 			huh.NewInput().
 				Title("Additional groups (optional)").

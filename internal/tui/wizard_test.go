@@ -998,3 +998,49 @@ func TestRenderIssues(t *testing.T) {
 		t.Errorf("issue rendering missing detail: %q", out)
 	}
 }
+
+func TestUserFormPreselectsCatalogDefaultGroups(t *testing.T) {
+	w := &wizard{}
+	w.c.entry = CatalogEntry{Name: "desk", DefaultGroups: []string{"sudo", "video", "input"}}
+	_ = w.userForm()
+	if len(w.c.groups) != 3 || w.c.groups[2] != "input" {
+		t.Fatalf("groups not preselected from the catalog entry: %v", w.c.groups)
+	}
+	// Must be a copy: the wizard mutates the bound slice, the catalog
+	// entry must stay pristine for a rebuilt form or another install.
+	w.c.groups[0] = "mutated"
+	if w.c.entry.DefaultGroups[0] != "sudo" {
+		t.Fatal("wizard selection aliases the catalog entry's DefaultGroups slice")
+	}
+	// Re-entry keeps the user's changes (userInitialized marker).
+	w.c.groups = []string{"docker"}
+	_ = w.userForm()
+	if len(w.c.groups) != 1 || w.c.groups[0] != "docker" {
+		t.Fatalf("rebuilding the form must not reset the user's selection: %v", w.c.groups)
+	}
+}
+
+func TestUserFormFallbackGroupsWithoutCatalogDefaults(t *testing.T) {
+	w := &wizard{}
+	w.c.entry = CatalogEntry{Name: "plain"}
+	_ = w.userForm()
+	if len(w.c.groups) != 1 || w.c.groups[0] != "sudo" {
+		t.Fatalf("entries without default_groups must fall back to [sudo]: %v", w.c.groups)
+	}
+}
+
+func TestGroupOptionsCoverAllBuiltinDefaults(t *testing.T) {
+	// huh's MultiSelect silently drops selected values it has no option
+	// for, so every group any builtin entry preselects must be offered.
+	offered := map[string]bool{}
+	for _, o := range groupOptionValues() {
+		offered[o] = true
+	}
+	for _, e := range builtinCatalog() {
+		for _, g := range e.DefaultGroups {
+			if !offered[g] {
+				t.Errorf("entry %q preselects %q, which the group form does not offer", e.Name, g)
+			}
+		}
+	}
+}

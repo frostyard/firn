@@ -152,3 +152,40 @@ func TestFormatCatalogOption(t *testing.T) {
 		t.Errorf("ab option line missing detail: %q", a)
 	}
 }
+
+func TestCatalogDefaultGroups(t *testing.T) {
+	// Override entries parse default_groups; absent field stays empty.
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	body := `[
+		{"family": "bootc", "name": "desk", "description": "d", "ref": "r:1", "default_groups": ["sudo", "video", "lpadmin"]},
+		{"family": "ab", "name": "plain", "description": "p", "product": "plain-ab"}
+	]`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entries, warn := loadCatalogFrom(path)
+	if warn != nil {
+		t.Fatalf("valid override must not warn: %v", warn)
+	}
+	if got := entries[0].DefaultGroups; len(got) != 3 || got[1] != "video" {
+		t.Errorf("default_groups not parsed: %+v", got)
+	}
+	if len(entries[1].DefaultGroups) != 0 {
+		t.Errorf("absent default_groups must stay empty, got %+v", entries[1].DefaultGroups)
+	}
+}
+
+func TestBuiltinCatalogDefaultGroups(t *testing.T) {
+	// Every builtin entry declares defaults: desktops get the device/admin
+	// set, servers the minimal set; sudo is always included
+	// (frostyard/snosi#789).
+	for _, e := range builtinCatalog() {
+		if len(e.DefaultGroups) == 0 {
+			t.Errorf("builtin entry %q has no default_groups", e.Name)
+			continue
+		}
+		if e.DefaultGroups[0] != "sudo" {
+			t.Errorf("builtin entry %q defaults must start with sudo, got %v", e.Name, e.DefaultGroups)
+		}
+	}
+}
