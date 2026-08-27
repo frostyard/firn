@@ -11,16 +11,20 @@ import (
 
 const lsblkFixture = `{
   "blockdevices": [
-    {"path": "/dev/sda", "type": "disk", "size": 500107862016, "fstype": null, "label": null,
+    {"path": "/dev/sda", "type": "disk", "size": 500107862016,
+     "vendor": "ATA", "model": "System SSD", "serial": "SYSTEM01", "wwn": "0x500-system", "tran": "sata",
+     "fstype": null, "label": null,
      "mountpoints": [null],
      "children": [
        {"path": "/dev/sda1", "type": "part", "size": 536870912, "fstype": "vfat", "label": null, "mountpoints": ["/boot/efi"]},
        {"path": "/dev/sda2", "type": "part", "size": 499569000000, "fstype": "ext4", "label": null, "mountpoints": ["/"]}
      ]},
-    {"path": "/dev/sdb", "type": "disk", "size": 1000204886016, "fstype": null, "label": null,
+    {"path": "/dev/sdb", "type": "disk", "size": 1000204886016,
+     "vendor": "WDC", "model": "WD_BLACK SN850X 2000GB", "serial": "WD-KEEP01", "wwn": "eui.keep01", "tran": "nvme",
+     "fstype": null, "label": null,
      "mountpoints": [null],
      "children": [
-       {"path": "/dev/sdb1", "type": "part", "size": 1000203000000, "fstype": "linux_raid_member", "label": null, "mountpoints": [null]}
+       {"path": "/dev/sdb1", "type": "part", "size": 1000203000000, "fstype": "linux_raid_member", "label": "backups", "mountpoints": [null]}
      ]},
     {"path": "/dev/sdc", "type": "disk", "size": 256060514304, "fstype": null, "label": null, "mountpoints": [null]},
     {"path": "/dev/sdd", "type": "disk", "size": 16008609792, "fstype": "iso9660", "label": "SNOSI_INSTALLER_20260801120000", "mountpoints": [null]},
@@ -91,6 +95,16 @@ func TestListReturnsWholeDisksAndLoops(t *testing.T) {
 	}
 	if _, ok := Find(devices, "/dev/loop0"); !ok {
 		t.Error("loop device should be listed as a target candidate")
+	}
+	wd, ok := Find(devices, "/dev/sdb")
+	if !ok {
+		t.Fatal("/dev/sdb not found")
+	}
+	if wd.Vendor != "WDC" || wd.Model != "WD_BLACK SN850X 2000GB" || wd.Serial != "WD-KEEP01" || wd.WWN != "eui.keep01" || wd.Transport != "nvme" {
+		t.Errorf("disk identity metadata was not decoded: %+v", wd)
+	}
+	if got := Labels(wd); len(got) != 1 || got[0] != "backups" {
+		t.Errorf("Labels(/dev/sdb) = %v, want [backups]", got)
 	}
 }
 
