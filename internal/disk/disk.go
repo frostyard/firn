@@ -1,10 +1,11 @@
 // Package disk enumerates block devices and applies firn's disk
 // refusal rules — the union of both parent installers' guards.
 //
-// The refusal rules are ported from snosi-install's
-// disk_refusal_reason() (frostyard/snosi, shared/native-installer,
-// GPL-3.0-only): never the running system's own disk, never anything
-// mounted, never RAID/LVM members.
+// Disk identity fields and the refusal rules are ported from snosi-install's
+// list_installable_disks() and disk_refusal_reason() (frostyard/snosi,
+// shared/native-installer, GPL-3.0-only): enumerate enough hardware metadata
+// to distinguish same-size disks, never the running system's own disk, never
+// anything mounted, never RAID/LVM members.
 package disk
 
 import (
@@ -22,6 +23,11 @@ type Device struct {
 	Path        string   `json:"path"`
 	Type        string   `json:"type"`
 	Size        int64    `json:"size"`
+	Vendor      string   `json:"vendor"`
+	Model       string   `json:"model"`
+	Serial      string   `json:"serial"`
+	WWN         string   `json:"wwn"`
+	Transport   string   `json:"tran"`
 	Fstype      string   `json:"fstype"`
 	Label       string   `json:"label"`
 	Mountpoints []string `json:"mountpoints"`
@@ -34,7 +40,7 @@ type lsblkOutput struct {
 
 // List enumerates whole disks via lsblk.
 func List(ctx context.Context, r *runner.Runner) ([]Device, error) {
-	out, err := r.Run(ctx, "lsblk", "-b", "-J", "-o", "PATH,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINTS")
+	out, err := r.Run(ctx, "lsblk", "-b", "-J", "-o", "PATH,TYPE,SIZE,VENDOR,MODEL,SERIAL,WWN,TRAN,FSTYPE,LABEL,MOUNTPOINTS")
 	if err != nil {
 		return nil, fmt.Errorf("disk: %w", err)
 	}
@@ -52,6 +58,23 @@ func List(ctx context.Context, r *runner.Runner) ([]Device, error) {
 		}
 	}
 	return disks, nil
+}
+
+// Labels returns the distinct filesystem labels found on dev or any of its
+// descendants, in lsblk traversal order. Whole disks normally have no label;
+// the useful label is commonly on a partition below them.
+func Labels(dev Device) []string {
+	var labels []string
+	seen := make(map[string]bool)
+	walk(dev, func(d Device) bool {
+		label := strings.TrimSpace(d.Label)
+		if label != "" && !seen[label] {
+			labels = append(labels, label)
+			seen[label] = true
+		}
+		return true
+	})
+	return labels
 }
 
 // Find returns the device for path from a List result, resolving

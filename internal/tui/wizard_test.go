@@ -812,9 +812,26 @@ func TestSplitListAndMergeGroups(t *testing.T) {
 }
 
 func TestFormatDiskOption(t *testing.T) {
-	d := disk.Device{Path: "/dev/sda", Size: 500107862016, Label: "data"}
+	d := disk.Device{
+		Path:      "/dev/nvme0n1",
+		Size:      2000398934016,
+		Vendor:    "WDC ",
+		Model:     "WD_BLACK SN850X 2000GB ",
+		Serial:    "WD-ABC123",
+		WWN:       "eui.0000000000000001",
+		Transport: "nvme",
+		Children: []disk.Device{
+			{Label: "backups"},
+			{Label: "backups"},
+			{Label: "archive"},
+		},
+	}
 	ok := formatDiskOption(d, "")
-	for _, want := range []string{"/dev/sda", "465.8 GiB", "data"} {
+	for _, want := range []string{
+		"/dev/nvme0n1", "1.8 TiB", "vendor=WDC", "model=WD_BLACK SN850X 2000GB",
+		"serial=WD-ABC123", "wwn=eui.0000000000000001", "transport=nvme",
+		"labels=backups,archive",
+	} {
 		if !strings.Contains(ok, want) {
 			t.Errorf("formatDiskOption = %q, want it to contain %q", ok, want)
 		}

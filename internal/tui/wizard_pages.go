@@ -622,12 +622,28 @@ func (w *wizard) confirmForm() *huh.Form {
 	))
 }
 
-// formatDiskOption renders one disk picker line: path, size, label, and
-// the inline refusal reason for disks that must not be selected.
+// formatDiskOption renders one disk picker option with the hardware identity
+// fields snosi-install exposes plus filesystem labels from the whole device
+// tree. huh wraps long options to the terminal width, keeping every available
+// identifier visible instead of truncating it.
 func formatDiskOption(d disk.Device, reason string) string {
 	parts := []string{d.Path, humanSize(d.Size)}
-	if d.Label != "" {
-		parts = append(parts, d.Label)
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{"vendor", d.Vendor},
+		{"model", d.Model},
+		{"serial", d.Serial},
+		{"wwn", d.WWN},
+		{"transport", d.Transport},
+	} {
+		if value := strings.TrimSpace(field.value); value != "" {
+			parts = append(parts, field.name+"="+value)
+		}
+	}
+	if labels := disk.Labels(d); len(labels) > 0 {
+		parts = append(parts, "labels="+strings.Join(labels, ","))
 	}
 	line := strings.Join(parts, "  ")
 	if reason != "" {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # E2E: drive the REAL firn TUI wizard inside a throwaway QEMU guest via
-# tmux, install cayo-ab to a virtio target disk, then boot and verify it.
+# tmux, install cayo-ab to an NVMe target disk, then boot and verify it.
 #
 # WHY NESTED (ADR-0009, docs/adr/0009-ab-installs-require-partition-
 # isolation.md): this test installs an A/B image, so it MUST run nested,
@@ -9,11 +9,11 @@
 # (esp/var/root) as a snosi A/B host's own disk; on a host-visible loop
 # device the HOST's udev acts on the cloned partitions (it tore down a
 # live GNOME session on a snow-ab dev box, 2026-08-11). Inside a VM the
-# target is a virtio disk the host kernel never scans — safe by
+# target is a virtual NVMe disk the host kernel never scans — safe by
 # construction.
 #
-# Flow: boot a Debian cloud guest with the blank target as a second
-# virtio disk; install tmux; run `sudo /tmp/firn` (bare — the TUI) in an
+# Flow: boot a Debian cloud guest with the blank NVMe target as a second
+# disk; install tmux; run `sudo /tmp/firn` (bare — the TUI) in an
 # 80x24 tmux pane and script the wizard with a driver (send-keys +
 # capture-pane polling, never blind sleeps). After the install view
 # finishes: save the generated /run/firn/session-*/recipe.toml, assert `firn
@@ -265,8 +265,9 @@ else
 fi
 expect_screen 'Advanced image options'
 accept_field 'Advanced image options' # keep catalog/default image policy
-expect_screen 'Target disk'            # vda=installer, vdb=blank target, vdc=seed
-choose_disk 'vdb' '/dev/vdb'
+expect_screen 'Target disk'            # vda=installer, nvme0n1=blank target, vdb=seed
+expect_screen 'FIRN_E2E_TARGET'         # hardware serial must be visible in the picker
+choose_disk 'nvme0n1' '/dev/nvme0n1'
 if [[ $FAMILY == bootc ]]; then
   expect_screen 'Root filesystem'
   choose 'btrfs'
@@ -304,7 +305,7 @@ expect_screen 'Quit without installing'
 tmux send-keys -t "$S" Enter           # Install is the focused first action
 sleep 0.5
 expect_screen 'Point of no return'     # typed disk confirmation
-type_input 'Point of no return' '/dev/vdb'
+type_input 'Point of no return' '/dev/nvme0n1'
 
 # The install view deliberately holds secret disclosure and terminal
 # screens. A recovery-key install must acknowledge the key first; only
@@ -362,14 +363,17 @@ gssh() { ssh "${sshopts[@]}" -p "$inst_port" debian@127.0.0.1 "$@"; }
 gscp() { scp "${sshopts[@]}" -P "$inst_port" "$@"; }
 
 cp "$ovmf_vars" "$work/vars.fd"
-echo "e2e-tui: booting installer VM (the TUI installs cayo for family $family to the guest's /dev/vdb)"
+echo "e2e-tui: booting installer VM (the TUI installs cayo for family $family to the guest's /dev/nvme0n1)"
 qemu-system-x86_64 \
   -m 4096 -smp 2 -enable-kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$ovmf_code" \
   -drive if=pflash,format=raw,file="$work/vars.fd" \
-  -drive file="$work/installer.qcow2",format=qcow2,if=virtio \
-  -drive file="$work/target.raw",format=raw,if=virtio \
-  -drive file="$work/seed.iso",format=raw,if=virtio,readonly=on \
+  -drive if=none,id=firn-installer,file="$work/installer.qcow2",format=qcow2 \
+  -device virtio-blk-pci,drive=firn-installer,bootindex=1 \
+  -drive if=none,id=firn-target,file="$work/target.raw",format=raw \
+  -device nvme,drive=firn-target,serial=FIRN_E2E_TARGET \
+  -drive if=none,id=firn-seed,file="$work/seed.iso",format=raw,readonly=on \
+  -device virtio-blk-pci,drive=firn-seed \
   -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$inst_port-:22" \
   -display none -serial file:"$work/installer-console.log" &
 qemu_pid=$!
@@ -416,7 +420,7 @@ echo "e2e-tui: retrieving the generated recipe (reproduce-headless artifact)"
 gscp debian@127.0.0.1:/tmp/recipe-out.toml "$work/recipe-out.toml" >/dev/null
 
 # The wizard's written recipe must be reusable headless: `firn install
-# --confirm /dev/vdb <recipe>` in this same environment. Assert that to
+# --confirm /dev/nvme0n1 <recipe>` in this same environment. Assert that to
 # the validation level (a full second headless install is e2e-ab.sh's
 # job) — IN THE GUEST, because the wizard stores interactive secrets as
 # *_file paths under /run/firn (spec rule 6) and validation fail-closed
