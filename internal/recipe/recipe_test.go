@@ -310,3 +310,60 @@ func TestMarshalRoundTripValidates(t *testing.T) {
 		})
 	}
 }
+
+// writeSecretMode creates a *_file input at an exact mode, defeating umask so
+// the permission boundary under test is the file's own mode.
+func writeSecretMode(t *testing.T, name string, mode os.FileMode) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte("hunter2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != mode {
+		t.Fatalf("%s: got mode %#o, want %#o", path, got, mode)
+	}
+	return path
+}
+
+// TestSecretFileModeBoundary pins the rule-2 boundary the recipe schema
+// documents for operator-supplied secret files: an existing regular file that
+// is not world-readable, not an exact 0600 mode. Group-readable 0640 is
+// accepted; world-readable 0644 is rejected with CodeSecretFile.
+func TestSecretFileModeBoundary(t *testing.T) {
+	for _, field := range []string{"mok_password_file = ", "password_file = "} {
+		for _, tc := range []struct {
+			name     string
+			mode     os.FileMode
+			rejected bool
+		}{
+			{"group-readable 0640 accepted", 0o640, false},
+			{"world-readable 0644 rejected", 0o644, true},
+		} {
+			t.Run(strings.TrimSuffix(field, " = ")+"/"+tc.name, func(t *testing.T) {
+				secret := writeSecretMode(t, "secret", tc.mode)
+				src := swapLine(validAB(t), field, strings.TrimSuffix(field, " = ")+` = "`+secret+`"`)
+				issues := Validate(mustParse(t, src), fullEnv)
+
+				found := false
+				for _, is := range issues {
+					if is.Code == CodeSecretFile {
+						found = true
+					}
+				}
+				if tc.rejected && !found {
+					t.Errorf("mode %#o: expected a %s issue, got %v", tc.mode, CodeSecretFile, issues)
+				}
+				if !tc.rejected && len(issues) != 0 {
+					t.Errorf("mode %#o: expected no issues, got %v", tc.mode, issues)
+				}
+			})
+		}
+	}
+}
