@@ -430,3 +430,69 @@ hostname = "h"
 		}
 	}
 }
+
+// TestMountROFailureRemovesScratchDir pins the failure half of
+// mountRO's cleanup contract: a mount that never happened registers no
+// unmount cleanup, so nothing would unwind the scratch directory later
+// and mountRO must remove it before returning the mount error.
+func TestMountROFailureRemovesScratchDir(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	mountErr := errors.New("mount: /dev/fake1: unknown filesystem type")
+	fake := runner.NewFake(
+		func(_ context.Context, name string, _ ...string) ([]byte, error) {
+			if name != "mount" {
+				return nil, fmt.Errorf("unexpected command %s", name)
+			}
+			return nil, mountErr
+		},
+		nil,
+	)
+	env := &pipeline.Env{Runner: fake}
+
+	dir, err := mountRO(context.Background(), env, "/dev/fake1", "esp")
+	if !errors.Is(err, mountErr) {
+		t.Fatalf("mountRO error = %v, want %v", err, mountErr)
+	}
+	if dir != "" {
+		t.Fatalf("mountRO returned dir %q on failure, want empty", dir)
+	}
+	leaked, err := filepath.Glob(filepath.Join(tmp, "firn-esp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leaked) != 0 {
+		t.Fatalf("failed mount left scratch directories %v, want none", leaked)
+	}
+}
+
+// TestMountROSuccessRetainsScratchDir guards the other half: a
+// successful mount still returns a live scratch directory, which only
+// the registered unmount cleanup removes.
+func TestMountROSuccessRetainsScratchDir(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	fake := runner.NewFake(
+		func(_ context.Context, name string, _ ...string) ([]byte, error) {
+			if name != "mount" {
+				return nil, fmt.Errorf("unexpected command %s", name)
+			}
+			return nil, nil
+		},
+		nil,
+	)
+	env := &pipeline.Env{Runner: fake}
+
+	dir, err := mountRO(context.Background(), env, "/dev/fake1", "esp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(dir) != tmp {
+		t.Fatalf("scratch dir %q is not under %q", dir, tmp)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Fatalf("successful mount did not retain scratch dir %q (%v)", dir, err)
+	}
+}

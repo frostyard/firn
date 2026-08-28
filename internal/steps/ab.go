@@ -269,6 +269,11 @@ func mountRO(ctx context.Context, env *pipeline.Env, dev, tag string) (string, e
 		return "", err
 	}
 	if _, err := env.Runner.Run(ctx, "mount", "-o", "ro", dev, dir); err != nil {
+		// No mount was registered, so nothing will unwind this
+		// scratch dir later; drop it here. os.Remove (not
+		// RemoveAll) keeps the failure path incapable of
+		// deleting anything a partially-succeeded mount exposed.
+		_ = os.Remove(dir)
 		return "", err
 	}
 	env.Defer("unmount "+tag, func() error {
