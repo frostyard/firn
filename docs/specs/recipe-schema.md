@@ -58,7 +58,7 @@ advance past each prompt; the recipe always serializes the accepted values.
 | `passphrase` / `passphrase_file` | string / path | conditional | Exactly one MUST be set when `encryption` includes `passphrase`; MUST NOT be set otherwise. |
 | `recovery_key_out` | string (path) | no | ab only with `encryption = "luks"` or `"tpm2-luks"`: also write the generated recovery key to this non-empty path. Preflight refuses an existing path and reserves a new 0600 file before any destructive step (including in dry-run); the final byte-exact key is committed by same-directory atomic rename. The key is always disclosed via the progress protocol. |
 | `mok` | string | ab or bootc: yes when Secure Boot is active | `"enroll"` or `"skip"`. With `"enroll"`, `mok_password_file` MUST be set. bootc uses it for the secure-install schema-1 path ([ADR-0014](../adr/0014-port-secure-install-schema-1-for-bootc.md)). |
-| `mok_password_file` | string (path) | conditional | 0600 file; content is the one-time MokManager password. |
+| `mok_password_file` | string (path) | conditional | Existing regular file that is not world-readable (rule 2); content is the one-time MokManager password. |
 
 ### `[system]`
 
@@ -82,7 +82,7 @@ accepted values rather than reapplying these initial selections.
 | --- | --- | --- | --- |
 | `name` | string | yes | POSIX username, `[a-z_][a-z0-9_-]*`, ≤ 32 chars. |
 | `fullname` | string | no | GECOS comment. Empty and Unicode values are valid; `:`, CR, and LF are rejected so both image-family writers produce the same passwd field. |
-| `password_file` | string (path) | one of these two | 0600 file containing the plaintext password (hashed by firn, SHA-512 crypt). |
+| `password_file` | string (path) | one of these two | Existing regular file that is not world-readable (rule 2), containing the plaintext password (hashed by firn, SHA-512 crypt). |
 | `password_hash` | string | one of these two | Pre-computed `$…` crypt hash, passed through verbatim. |
 | `groups` | array of string | no | Supplementary groups; validated only for name syntax (`internal/recipe/validate.go`'s `usernameRe`), not existence in the image. At install time only groups present in the deployment's `etc/group` are joined (`internal/sysconfig/user.go`'s `filterGroups`); a group missing from the image is silently skipped, not rejected, and reported via a `progress.CodeGroupMissing` warning. |
 | `ssh_authorized_key` / `_file` | string / path | no | At most one. Content follows the same per-line public-key rules as `root_ssh_authorized_key`; every configured line is installed in the user's `authorized_keys`. |
