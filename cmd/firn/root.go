@@ -6,6 +6,7 @@ package firn
 import (
 	"fmt"
 
+	"github.com/frostyard/clix"
 	"github.com/spf13/cobra"
 
 	"github.com/frostyard/firn/internal/platform"
@@ -25,10 +26,15 @@ native A/B disk images — from a TOML recipe, headless or through the
 built-in wizard.
 
 Run with no arguments to launch the interactive installer. Automation
-uses 'firn install <recipe.toml>' (see docs/specs/recipe-schema.md).`,
-		Args:          cobra.NoArgs,
-		SilenceUsage:  true,
-		SilenceErrors: false,
+uses 'firn install <recipe.toml>' (see docs/specs/recipe-schema.md).
+
+The inherited global --dry-run flag is not a wizard or validation mode and
+is rejected there. Use 'firn install --dry-run <recipe.toml>' for a
+non-destructive, recipe-backed preflight.`,
+		Args:              cobra.NoArgs,
+		SilenceUsage:      true,
+		SilenceErrors:     false,
+		PersistentPreRunE: rejectUnsupportedInheritedDryRun,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Bare firn = the TUI wizard with all-auto platform
 			// detection; `firn install` (no recipe) reaches the same
@@ -38,6 +44,17 @@ uses 'firn install <recipe.toml>' (see docs/specs/recipe-schema.md).`,
 	}
 	cmd.AddCommand(newValidateCmd(), newInstallCmd())
 	return cmd
+}
+
+// rejectUnsupportedInheritedDryRun prevents clix's inherited common flag
+// from promising a safety mode that bare firn and validate do not implement.
+// The install command's own --dry-run flag shadows the inherited flag, so the
+// documented recipe-backed preflight remains accepted.
+func rejectUnsupportedInheritedDryRun(cmd *cobra.Command, _ []string) error {
+	if !clix.DryRun {
+		return nil
+	}
+	return fmt.Errorf("--dry-run is not supported for %s; use 'firn install --dry-run <recipe.toml>' for non-destructive preflight", cmd.CommandPath())
 }
 
 // tristate resolves an auto|on|off flag against a platform probe.
