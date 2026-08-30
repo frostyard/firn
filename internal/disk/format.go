@@ -5,7 +5,9 @@ package disk
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/frostyard/firn/internal/runner"
 )
@@ -106,11 +108,28 @@ func CreateSubvolumes(ctx context.Context, r *runner.Runner, mountpoint string) 
 	return nil
 }
 
+// thawRecoveryTimeout bounds the recovery thaw in FinalizeFilesystem. It
+// is deliberately generous: the recovery runs precisely when something has
+// already gone wrong, and leaving the target frozen is worse than waiting.
+// It exists only so a wedged fsfreeze cannot hang the install forever,
+// since the recovery context is detached from the caller's cancellation.
+const thawRecoveryTimeout = 30 * time.Second
+
 // FinalizeFilesystem replicates the three operations bootc performs when
 // --skip-finalize is NOT passed (bootc's internal finalize_filesystem()):
 //  1. fstrim  — discards unused blocks for SSD health
 //  2. remount ro — flushes writeback and locks the deployment read-only
 //  3. fsfreeze/thaw — flushes the journal so the first boot is clean
+//
+// Once step 3's freeze succeeds the target is frozen: every write to it
+// blocks until a thaw lands. Returning while frozen strands the target,
+// so a failed or cancelled thaw is always followed by one best-effort
+// recovery thaw. That retry runs on a context detached from ctx's
+// cancellation (bounded by thawRecoveryTimeout) because the likeliest
+// reason the first thaw failed is that ctx was cancelled — a retry
+// inheriting ctx would be killed the same way and recover nothing.
+// Neither failure is hidden: the original error is always returned, with
+// a failed recovery joined to it.
 func FinalizeFilesystem(ctx context.Context, r *runner.Runner, mountpoint string) error {
 	if _, err := r.Run(ctx, "fstrim", "--quiet-unsupported", "-v", mountpoint); err != nil {
 		return fmt.Errorf("disk: fstrim: %w", err)
@@ -122,7 +141,15 @@ func FinalizeFilesystem(ctx context.Context, r *runner.Runner, mountpoint string
 		return fmt.Errorf("disk: fsfreeze: %w", err)
 	}
 	if _, err := r.Run(ctx, "fsfreeze", "-u", mountpoint); err != nil {
-		return fmt.Errorf("disk: fsfreeze -u: %w", err)
+		thawErr := fmt.Errorf("disk: fsfreeze -u: %w", err)
+		recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), thawRecoveryTimeout)
+		defer cancel()
+		if _, rerr := r.Run(recoveryCtx, "fsfreeze", "-u", mountpoint); rerr != nil {
+			return errors.Join(thawErr, fmt.Errorf(
+				"disk: recovery fsfreeze -u: %w (%s may still be frozen and must be thawed before use)",
+				rerr, mountpoint))
+		}
+		return thawErr
 	}
 	return nil
 }
