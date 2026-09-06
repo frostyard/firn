@@ -326,22 +326,29 @@ func (w *wizard) page(ctx context.Context, f *huh.Form) (quit bool, err error) {
 		tea.WithOutput(os.Stdout),
 		tea.WithReportFocus(),
 	).Run()
-	if m, ok := result.(*wizardPageModel); ok && m.back {
-		return false, errPageBack
-	}
-	if err == nil && f.State != huh.StateAborted {
-		return false, nil
-	}
 	if ctx.Err() != nil {
 		return false, ctx.Err()
 	}
-	if f.State == huh.StateAborted || errors.Is(err, tea.ErrInterrupted) {
+	if errors.Is(err, tea.ErrInterrupted) {
 		return true, nil
 	}
 	if errors.Is(err, tea.ErrProgramKilled) {
 		return false, huh.ErrTimeout
 	}
-	return false, fmt.Errorf("huh: %w", err)
+	if err != nil {
+		return false, fmt.Errorf("huh: %w", err)
+	}
+	finished, ok := result.(*wizardPageModel)
+	if !ok {
+		return false, fmt.Errorf("tui: unexpected wizard form model %T", result)
+	}
+	if finished.back {
+		return false, errPageBack
+	}
+	if f.State == huh.StateAborted {
+		return true, nil
+	}
+	return false, nil
 }
 
 type wizardPageModel struct {
