@@ -34,8 +34,12 @@ func TestWizardPageModelShiftTabGoesBack(t *testing.T) {
 
 func TestWizardPageModelShiftTabMovesToPreviousField(t *testing.T) {
 	form := huh.NewForm(huh.NewGroup(huh.NewInput(), huh.NewInput()))
+	_ = form.Init()
 	first := form.GetFocusedField()
 	form.NextField()
+	if form.GetFocusedField() == first {
+		t.Fatal("test setup did not focus the second field")
+	}
 	m := &wizardPageModel{form: form, first: first}
 
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
