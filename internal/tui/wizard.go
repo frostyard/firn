@@ -326,7 +326,7 @@ func (w *wizard) page(ctx context.Context, f *huh.Form) (quit bool, err error) {
 		tea.WithOutput(os.Stdout),
 		tea.WithReportFocus(),
 	).Run()
-	if result != nil && result.(*wizardPageModel).back {
+	if m, ok := result.(*wizardPageModel); ok && m.back {
 		return false, errPageBack
 	}
 	if err == nil && f.State != huh.StateAborted {
