@@ -9,10 +9,62 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
+
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/recipe"
 )
+
+func TestWizardPageModelShiftTabGoesBack(t *testing.T) {
+	form := huh.NewForm(huh.NewGroup(huh.NewInput()))
+	m := &wizardPageModel{form: form, first: form.GetFocusedField()}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+
+	if !updated.(*wizardPageModel).back {
+		t.Fatal("Shift-Tab did not request the previous wizard page")
+	}
+	if msg := cmd(); func() bool { _, ok := msg.(tea.QuitMsg); return ok }() == false {
+		t.Fatalf("Shift-Tab command returned %T, want tea.QuitMsg", msg)
+	}
+}
+
+func TestWizardPageModelShiftTabMovesToPreviousField(t *testing.T) {
+	form := huh.NewForm(huh.NewGroup(huh.NewInput(), huh.NewInput()))
+	first := form.GetFocusedField()
+	form.NextField()
+	m := &wizardPageModel{form: form, first: first}
+
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+
+	if m.back {
+		t.Fatal("Shift-Tab on a later field requested the previous wizard page")
+	}
+}
+
+func TestPreviousPageSkipsUnavailableFamilyPage(t *testing.T) {
+	tests := []struct {
+		name          string
+		current       wizardPage
+		hasFamilyPage bool
+		want          wizardPage
+	}{
+		{name: "welcome stays at welcome", current: pageWelcome, hasFamilyPage: true, want: pageWelcome},
+		{name: "mixed catalog image returns to family", current: pageImage, hasFamilyPage: true, want: pageFamily},
+		{name: "single-family image returns to welcome", current: pageImage, hasFamilyPage: false, want: pageWelcome},
+		{name: "ordinary page decrements", current: pageSecurity, hasFamilyPage: true, want: pageFilesystem},
+		{name: "review returns to flatpaks", current: pageReview, hasFamilyPage: true, want: pageFlatpaks},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := previousPage(tt.current, tt.hasFamilyPage); got != tt.want {
+				t.Fatalf("previousPage(%v, %v) = %v, want %v", tt.current, tt.hasFamilyPage, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestRunWizardRejectsNonUEFIBeforeCatalogOrChoices(t *testing.T) {
 	rec, err := RunWizard(context.Background(), WizardOpts{UEFI: false})

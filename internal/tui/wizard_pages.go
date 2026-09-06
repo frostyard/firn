@@ -83,7 +83,7 @@ func (w *wizard) familyPage(ctx context.Context, preferred string) (family strin
 			Value(&family),
 	))
 	if quit, err = w.page(ctx, form); quit || err != nil {
-		return "", quit, err
+		return family, quit, err
 	}
 	return family, false, nil
 }
@@ -111,6 +111,9 @@ func (w *wizard) imagePage(ctx context.Context, family string) (quit bool, err e
 	opts := make([]huh.Option[int], len(entries))
 	for i, e := range entries {
 		opts[i] = huh.NewOption(formatCatalogOption(e), i)
+		if e.Name == w.c.entry.Name {
+			idx = i
+		}
 	}
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[int]().
@@ -209,6 +212,12 @@ func (w *wizard) diskPage(ctx context.Context) (quit bool, err error) {
 		choice := rescanValue
 		if len(devices) > 0 {
 			choice = devices[0].Path
+		}
+		for _, d := range devices {
+			if d.Path == w.c.disk {
+				choice = w.c.disk
+				break
+			}
 		}
 		form := huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
