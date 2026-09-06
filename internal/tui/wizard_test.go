@@ -26,7 +26,8 @@ func TestWizardPageModelShiftTabGoesBack(t *testing.T) {
 	if !updated.(*wizardPageModel).back {
 		t.Fatal("Shift-Tab did not request the previous wizard page")
 	}
-	if msg := cmd(); func() bool { _, ok := msg.(tea.QuitMsg); return ok }() == false {
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
 		t.Fatalf("Shift-Tab command returned %T, want tea.QuitMsg", msg)
 	}
 }
