@@ -83,9 +83,9 @@ type startFieldBackMsg struct{}
 
 type fieldBackAfterInit struct {
 	*wizardPageModel
-	first     huh.Field
-	requested bool
-	moved     bool
+	first        huh.Field
+	shiftTabSent bool
+	moved        bool
 }
 
 func (m *fieldBackAfterInit) Init() tea.Cmd {
@@ -102,12 +102,12 @@ func (m *fieldBackAfterInit) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.form.GetFocusedField() == m.first {
 			return m, tea.Quit
 		}
-		m.requested = true
+		m.shiftTabSent = true
 		_, cmd := m.wizardPageModel.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 		return m, cmd
 	}
 	_, cmd := m.wizardPageModel.Update(msg)
-	if m.requested && m.form.GetFocusedField() == m.first {
+	if m.shiftTabSent && m.form.GetFocusedField() == m.first {
 		m.moved = true
 		return m, tea.Quit
 	}
