@@ -60,10 +60,10 @@ func builtinCatalog() []CatalogEntry {
 	return []CatalogEntry{
 		{Family: recipe.FamilyBootc, Name: "snow", Description: "GNOME desktop with backports kernel", Ref: "ghcr.io/frostyard/snow:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: desktopDefaultGroups},
 		{Family: recipe.FamilyBootc, Name: "snowfield", Description: "GNOME desktop with linux-surface kernel for Surface devices", Ref: "ghcr.io/frostyard/snowfield:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: desktopDefaultGroups},
-		{Family: recipe.FamilyBootc, Name: "cayo", Description: "Headless server with podman and backports kernel", Ref: "ghcr.io/frostyard/cayo:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: serverDefaultGroups},
+		{Family: recipe.FamilyBootc, Name: "floe", Description: "Headless server with podman and backports kernel", Ref: "ghcr.io/frostyard/floe:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: serverDefaultGroups},
 		{Family: recipe.FamilyAB, Name: "snow-ab", Description: "Native A/B GNOME desktop with backports kernel", Product: "snow-ab", DefaultGroups: desktopDefaultGroups},
 		{Family: recipe.FamilyAB, Name: "snowfield-ab", Description: "Native A/B GNOME desktop with linux-surface kernel", Product: "snowfield-ab", DefaultGroups: desktopDefaultGroups},
-		{Family: recipe.FamilyAB, Name: "cayo-ab", Description: "Native A/B headless server with podman", Product: "cayo-ab", DefaultGroups: serverDefaultGroups},
+		{Family: recipe.FamilyAB, Name: "floe-ab", Description: "Native A/B headless server with podman", Product: "floe-ab", DefaultGroups: serverDefaultGroups},
 	}
 }
 

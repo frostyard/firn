@@ -26,7 +26,7 @@
 # certificate. Network. ~30 GiB scratch.
 #
 # Usage: sudo test/e2e-bootc-secure.sh
-#   FIRN_E2E_IMAGE    secureboot-capable bootc image (default ghcr.io/frostyard/cayo:latest)
+#   FIRN_E2E_IMAGE    secureboot-capable bootc image (default ghcr.io/frostyard/floe:latest)
 #   FIRN_E2E_MOK_CERT snosi MOK cert (default: snosi checkout shared/native-ab/keys/mok-2026.crt)
 #   FIRN_E2E_DIR      scratch dir     FIRN_E2E_TIMEOUT seconds (default 900)
 set -euo pipefail
@@ -34,7 +34,7 @@ set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "e2e: must run as root (qemu KVM + disk images)" >&2; exit 1; }
 
 here=$(cd "$(dirname "$0")/.." && pwd)
-image=${FIRN_E2E_IMAGE:-ghcr.io/frostyard/cayo:latest}
+image=${FIRN_E2E_IMAGE:-ghcr.io/frostyard/floe:latest}
 work=${FIRN_E2E_DIR:-$(mktemp -d /var/tmp/firn-e2e-bootc-secure.XXXXXX)}
 timeout=${FIRN_E2E_TIMEOUT:-900}
 cache=${FIRN_E2E_CACHE:-/var/tmp/firn-e2e-cache}

@@ -33,8 +33,8 @@ const abVersion = "20260811110127"
 
 const abLayoutJSON = `{"partitiontable":{"label":"gpt","device":"DISK","unit":"sectors","partitions":[
   {"node":"/dev/fake1","start":2048,"size":2097152,"name":"esp"},
-  {"node":"/dev/fake2","start":2099200,"size":524288,"name":"cayo-ab_20260811110127_v"},
-  {"node":"/dev/fake3","start":2623488,"size":16777216,"name":"cayo-ab_20260811110127_r"},
+  {"node":"/dev/fake2","start":2099200,"size":524288,"name":"floe-ab_20260811110127_v"},
+  {"node":"/dev/fake3","start":2623488,"size":16777216,"name":"floe-ab_20260811110127_r"},
   {"node":"/dev/fake4","start":19400704,"size":524288,"name":"_empty"},
   {"node":"/dev/fake5","start":19924992,"size":16777216,"name":"_empty"},
   {"node":"/dev/fake6","start":36702208,"size":8388608,"name":"var"}]}}`
@@ -127,21 +127,21 @@ func TestABPipelineEndToEnd(t *testing.T) {
 	}
 	xzSum := sha256.Sum256(xzBytes)
 
-	manifest := []byte(`{"manifest_version":1,"config":{"name":"cayo-ab","architecture":"x86-64","version":"` + abVersion + `"}}`)
+	manifest := []byte(`{"manifest_version":1,"config":{"name":"floe-ab","architecture":"x86-64","version":"` + abVersion + `"}}`)
 	manSum := sha256.Sum256(manifest)
-	sums := fmt.Sprintf("%s  cayo-ab_%s.disk.raw.xz\n%s  cayo-ab_%s.manifest.json\n",
+	sums := fmt.Sprintf("%s  floe-ab_%s.disk.raw.xz\n%s  floe-ab_%s.manifest.json\n",
 		hex.EncodeToString(xzSum[:]), abVersion, hex.EncodeToString(manSum[:]), abVersion)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		base := "/os/native/v1/cayo/x86-64/"
+		base := "/os/native/v1/floe/x86-64/"
 		switch strings.TrimPrefix(req.URL.Path, base) {
 		case "SHA256SUMS":
 			io.WriteString(w, sums)
 		case "SHA256SUMS.gpg":
 			w.Write([]byte("fake-signature"))
-		case "cayo-ab_" + abVersion + ".manifest.json":
+		case "floe-ab_" + abVersion + ".manifest.json":
 			w.Write(manifest)
-		case "cayo-ab_" + abVersion + ".disk.raw.xz":
+		case "floe-ab_" + abVersion + ".disk.raw.xz":
 			http.ServeContent(w, req, "disk.raw.xz", time.Time{}, strings.NewReader(string(xzBytes)))
 		default:
 			http.NotFound(w, req)
@@ -220,7 +220,7 @@ func TestABPipelineEndToEnd(t *testing.T) {
 				dir := args[len(args)-1]
 				switch {
 				case len(args) >= 2 && args[len(args)-2] == "/dev/fake1": // ESP
-					uki := filepath.Join(dir, "EFI", "Linux", "cayo-ab_"+abVersion+".efi")
+					uki := filepath.Join(dir, "EFI", "Linux", "floe-ab_"+abVersion+".efi")
 					if err := os.MkdirAll(filepath.Dir(uki), 0o755); err != nil {
 						return nil, err
 					}
@@ -253,7 +253,7 @@ func TestABPipelineEndToEnd(t *testing.T) {
 version = 1
 [image]
 family = "ab"
-product = "cayo-ab"
+product = "floe-ab"
 [target]
 disk = "%s"
 var_filesystem = "btrfs"

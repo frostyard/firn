@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # E2E: drive the REAL firn TUI wizard inside a throwaway QEMU guest via
-# tmux, install cayo-ab to an NVMe target disk, then boot and verify it.
+# tmux, install floe-ab to an NVMe target disk, then boot and verify it.
 #
 # WHY NESTED (ADR-0009, docs/adr/0009-ab-installs-require-partition-
 # isolation.md): this test installs an A/B image, so it MUST run nested,
@@ -114,11 +114,11 @@ COSIGN
 chmod 0755 "$work/cosign"
 printf '%s\n' 'e2e-tui public-key placeholder' >"$work/cosign.pub"
 if [[ $catalog_mode == single && $family == bootc ]]; then
-  printf '%s\n' '[{"family":"bootc","name":"cayo","description":"E2E bootc image","ref":"ghcr.io/frostyard/cayo:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"}]' >"$work/catalog.json"
+  printf '%s\n' '[{"family":"bootc","name":"floe","description":"E2E bootc image","ref":"ghcr.io/frostyard/floe:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"}]' >"$work/catalog.json"
 elif [[ $catalog_mode == single ]]; then
-  printf '%s\n' '[{"family":"ab","name":"cayo-ab","description":"E2E A/B image","product":"cayo-ab"}]' >"$work/catalog.json"
+  printf '%s\n' '[{"family":"ab","name":"floe-ab","description":"E2E A/B image","product":"floe-ab"}]' >"$work/catalog.json"
 else
-  printf '%s\n' '[{"family":"bootc","name":"cayo","description":"E2E bootc image","ref":"ghcr.io/frostyard/cayo:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"},{"family":"ab","name":"cayo-ab","description":"E2E A/B image","product":"cayo-ab"}]' >"$work/catalog.json"
+  printf '%s\n' '[{"family":"bootc","name":"floe","description":"E2E bootc image","ref":"ghcr.io/frostyard/floe:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"},{"family":"ab","name":"floe-ab","description":"E2E A/B image","product":"floe-ab"}]' >"$work/catalog.json"
 fi
 
 # The tmux driver script, run INSIDE the guest. Quoted heredoc: nothing
@@ -259,9 +259,9 @@ if [[ $CATALOG_MODE == mixed ]]; then
 fi
 expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$' # stable image-page title
 if [[ $FAMILY == bootc ]]; then
-  choose 'cayo[[:space:]]+\(bootc image\)'
+  choose 'floe[[:space:]]+\(bootc image\)'
 else
-  choose 'cayo-ab[[:space:]]+\(A/B image\)'
+  choose 'floe-ab[[:space:]]+\(A/B image\)'
 fi
 expect_screen 'Advanced image options'
 # Shift-Tab is wizard-level back navigation, not merely field navigation.
@@ -283,9 +283,9 @@ else
 fi
 expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$'
 if [[ $FAMILY == bootc ]]; then
-  choose 'cayo[[:space:]]+\(bootc image\)'
+  choose 'floe[[:space:]]+\(bootc image\)'
 else
-  choose 'cayo-ab[[:space:]]+\(A/B image\)'
+  choose 'floe-ab[[:space:]]+\(A/B image\)'
 fi
 expect_screen 'Advanced image options'
 accept_field 'Advanced image options' # keep catalog/default image policy
@@ -321,7 +321,7 @@ accept_field 'Additional groups'
 accept_field 'User SSH authorized key' # empty huh.NewText
 # Flatpaks: core-set confirm + IDs. The schema and TUI both default this
 # optional feature to false, so Enter preserves the focused No answer.
-accept_field 'core app set'            # No (cayo has no runtime)
+accept_field 'core app set'            # No (floe has no runtime)
 accept_field 'Extra Flatpak apps'      # empty huh.NewText
 # Review: with a long recipe the page TITLE scrolls off the 24-row pane;
 # gate on the action list, which is always visible at the bottom.
@@ -387,7 +387,7 @@ gssh() { ssh "${sshopts[@]}" -p "$inst_port" debian@127.0.0.1 "$@"; }
 gscp() { scp "${sshopts[@]}" -P "$inst_port" "$@"; }
 
 cp "$ovmf_vars" "$work/vars.fd"
-echo "e2e-tui: booting installer VM (the TUI installs cayo for family $family to the guest's /dev/nvme0n1)"
+echo "e2e-tui: booting installer VM (the TUI installs floe for family $family to the guest's /dev/nvme0n1)"
 qemu-system-x86_64 \
   -m 4096 -smp 2 -enable-kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$ovmf_code" \
@@ -501,4 +501,4 @@ ssh "${sshopts[@]}" root@127.0.0.1 poweroff 2>/dev/null || true
 wait "$qemu_pid" 2>/dev/null || true; qemu_pid=""
 
 ((fail == 0)) || { echo "e2e-tui: FAIL (details above; $work)" >&2; exit 1; }
-echo "e2e-tui: PASS — the wizard installed $family (cayo) inside a VM, the disk boots, and the generated recipe validates ($work)"
+echo "e2e-tui: PASS — the wizard installed $family (floe) inside a VM, the disk boots, and the generated recipe validates ($work)"

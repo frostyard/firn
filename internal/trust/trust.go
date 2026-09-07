@@ -59,10 +59,10 @@ var DefaultPubringPaths = []string{
 // the documented defaults.
 //
 // Product is the channel-style product name firn recipes carry
-// ("cayo-ab", "snow-ab"). The published URL path uses the BARE
-// product ("cayo"): artifact names inside the index keep the full
-// channel prefix (cayo-ab_<version>.manifest.json), but the
-// directory is os/native/v1/cayo/x86-64 — see baseURL.
+// ("floe-ab", "snow-ab"). The published URL path uses the BARE
+// product ("floe"): artifact names inside the index keep the full
+// channel prefix (floe-ab_<version>.manifest.json), but the
+// directory is os/native/v1/floe/x86-64 — see baseURL.
 //
 // PubringPath: when set, only that file is used (fail-closed if
 // missing/empty); when empty, DefaultPubringPaths are searched in
@@ -102,7 +102,7 @@ func (o Options) withDefaults() Options {
 // from the channel (`product="${channel%-ab}"`, fetch_verified_index
 // line 295) — bash's `%-ab` removes only a trailing occurrence and
 // leaves other names untouched, which is exactly TrimSuffix. So
-// Product "cayo-ab" and bare "cayo" both address os/native/v1/cayo.
+// Product "floe-ab" and bare "floe" both address os/native/v1/floe.
 func (o Options) baseURL() string {
 	bare := strings.TrimSuffix(o.Product, "-ab")
 	return strings.TrimSuffix(o.Origin, "/") + "/os/native/v1/" + bare + "/" + o.Arch
@@ -127,7 +127,7 @@ var (
 // signed products while retaining the publisher's exact naming boundary.
 func ValidateChannel(channel string) error {
 	if !channelRE.MatchString(channel) {
-		return fmt.Errorf("invalid channel %q (expected lowercase name like cayo-ab)", channel)
+		return fmt.Errorf("invalid channel %q (expected lowercase name like floe-ab)", channel)
 	}
 	return nil
 }
@@ -437,7 +437,7 @@ const MinimumVarBytes int64 = 4294967296 // 4 GiB
 // definitions 00-esp through 30-var, i.e. exactly snosi's
 // esp + 2*root + 2*verity + var_min table). The install minimum is
 // therefore the decompressed image size itself; anything beyond it is
-// optional /var growth. (Verified against the live cayo-ab
+// optional /var growth. (Verified against the live floe-ab
 // publication: decompressed size 16.7 GB = the 15.5 GiB contract
 // minimum.)
 //

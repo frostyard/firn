@@ -260,7 +260,7 @@ func TestOverlayWriteRootAuthorizedKey(t *testing.T) {
 func TestOverlayWriteInstallInfo(t *testing.T) {
 	stubNow(t, time.Date(2026, 8, 11, 9, 30, 0, 0, time.UTC))
 	w := newOverlayWriter(t)
-	if err := w.WriteInstallInfo("cayo-ab", "2026.08.1"); err != nil {
+	if err := w.WriteInstallInfo("floe-ab", "2026.08.1"); err != nil {
 		t.Fatal(err)
 	}
 	raw := readOverlayFile(t, filepath.Join(w.VarDir, "lib", "snosi", "install-info.json"), 0o644)
@@ -269,7 +269,7 @@ func TestOverlayWriteInstallInfo(t *testing.T) {
 		t.Fatalf("install-info.json is not valid JSON: %v\n%s", err, raw)
 	}
 	want := map[string]string{
-		"product":      "cayo-ab",
+		"product":      "floe-ab",
 		"version":      "2026.08.1",
 		"architecture": got["architecture"], // host-dependent, checked below
 		"installed_at": "2026-08-11T09:30:00Z",

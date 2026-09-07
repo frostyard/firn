@@ -17,17 +17,17 @@
 #
 # Requirements: qemu-system-x86_64 (KVM), OVMF, genisoimage, curl, ssh.
 # Network (host + guest NAT). ~30 GiB scratch. Usage: sudo test/e2e-ab.sh
-#   FIRN_E2E_PRODUCT (default cayo-ab)   FIRN_E2E_DIR   FIRN_E2E_TIMEOUT (default 600)
+#   FIRN_E2E_PRODUCT (default floe-ab)   FIRN_E2E_DIR   FIRN_E2E_TIMEOUT (default 600)
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo "e2e: must run as root (qemu KVM + disk images)" >&2; exit 1; }
 
 here=$(cd "$(dirname "$0")/.." && pwd)
-product=${FIRN_E2E_PRODUCT:-cayo-ab}
+product=${FIRN_E2E_PRODUCT:-floe-ab}
 work=${FIRN_E2E_DIR:-$(mktemp -d /var/tmp/firn-e2e-ab.XXXXXX)}
 timeout=${FIRN_E2E_TIMEOUT:-600}
 # Flatpak proof needs an image that ships the flatpak runtime — snow
-# does, cayo does not. Default a small app on snow products; override
+# does, floe does not. Default a small app on snow products; override
 # with FIRN_E2E_FLATPAK (empty disables).
 case $product in
   snow*) flatpak_app=${FIRN_E2E_FLATPAK-org.gnome.Calculator} ;;
