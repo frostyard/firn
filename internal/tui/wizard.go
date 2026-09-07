@@ -368,6 +368,7 @@ func (m *wizardPageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if key, ok := msg.(tea.KeyMsg); ok &&
 		key.Type == tea.KeyShiftTab &&
+		m.first != nil &&
 		focused == m.first {
 		m.back = true
 		return m, tea.Quit
