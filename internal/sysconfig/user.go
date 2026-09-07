@@ -35,7 +35,7 @@ import (
 // Groups are joined only where they exist in the deployment's
 // etc/group — snosi-install's join-where-exists rule. Fisherman passed
 // the list verbatim, and useradd exits 6 on any distro mismatch (e.g.
-// "wheel" against a Debian image, observed in the cayo loop-device
+// "wheel" against a Debian image, observed in the floe loop-device
 // E2E); the skipped names are returned for the caller to report
 // loudly.
 //
@@ -247,7 +247,7 @@ func (w *DeploymentWriter) WriteRootAuthorizedKey(ctx context.Context, key strin
 	// STATEROOT var — writing under the deployment root's own var is
 	// invisible to the booted system (the exact bug class fisherman's
 	// home-relocation comment documents; observed live: sshd up, key
-	// never seen, cayo bootc E2E 2026-08-11).
+	// never seen, floe bootc E2E 2026-08-11).
 	rootHome := filepath.Join(w.staterootVarDir(lay), "roothome")
 	if err := os.MkdirAll(rootHome, 0o700); err != nil {
 		return fmt.Errorf("mkdir root home: %w", err)

@@ -183,7 +183,7 @@ func runBootcInstall(ctx context.Context, env *pipeline.Env) error {
 	// On a RAM-only installer ISO the whole rootfs is tmpfs, so podman's
 	// default image store (/var/lib/containers) and the scratch dir are
 	// RAM-backed: a bootc image pull unpacks into /var/lib/containers and
-	// dies with ENOSPC partway through the layers (observed live: cayo
+	// dies with ENOSPC partway through the layers (observed live: floe
 	// pull failed at "write .../solidity.vim: no space left on device",
 	// 2026-08-12). Redirect the image store and bootc's deployment scratch
 	// onto the target disk — which has room — for the pull+deploy, then

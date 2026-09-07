@@ -23,7 +23,7 @@ func commandTUIRecipe(t *testing.T) ([]byte, *recipe.Loaded) {
 version = 1
 [image]
 family = "bootc"
-ref = "ghcr.io/frostyard/cayo:latest"
+ref = "ghcr.io/frostyard/floe:latest"
 [target]
 disk = "/dev/vda"
 filesystem = "btrfs"

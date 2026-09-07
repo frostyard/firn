@@ -258,7 +258,7 @@ func TestMarshalRoundTripValidates(t *testing.T) {
 	cases := map[string]Recipe{
 		"ab": {
 			Version:  SchemaVersion,
-			Image:    Image{Family: FamilyAB, Product: "cayo-ab"},
+			Image:    Image{Family: FamilyAB, Product: "floe-ab"},
 			Target:   Target{Disk: "/dev/vdb", VarFilesystem: "ext4"},
 			Security: Security{Encryption: "none"},
 			System: System{

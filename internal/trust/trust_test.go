@@ -3,7 +3,7 @@
 // (lines ~655-740): good signature produces an index, tampered
 // signature/body refuse, latest_channel_version picks the numeric
 // maximum, index_object_sha256 lookups. Fixtures are shaped after the
-// real published index (channel cayo-ab under os/native/v1/cayo/,
+// real published index (channel floe-ab under os/native/v1/floe/,
 // version style 20260811110127); no test touches the network.
 package trust
 
@@ -78,10 +78,10 @@ func indexServer(t *testing.T, bareProduct string, sums, sig []byte, extra map[s
 
 func TestFetchIndexVerifiesSignatureArgv(t *testing.T) {
 	sums := []byte(
-		sha256hex([]byte("disk")) + "  cayo-ab_20260811110127.disk.raw.xz\n" +
-			sha256hex([]byte("manifest")) + "  cayo-ab_20260811110127.manifest.json\n")
+		sha256hex([]byte("disk")) + "  floe-ab_20260811110127.disk.raw.xz\n" +
+			sha256hex([]byte("manifest")) + "  floe-ab_20260811110127.manifest.json\n")
 	sig := []byte("binary signature bytes")
-	srv := indexServer(t, "cayo", sums, sig, nil)
+	srv := indexServer(t, "floe", sums, sig, nil)
 	pubring := writePubring(t)
 
 	var calls [][]string
@@ -106,7 +106,7 @@ func TestFetchIndexVerifiesSignatureArgv(t *testing.T) {
 	// Product carries the channel-style name; the URL path must use
 	// the bare product (see TestBaseURLProductMapping).
 	idx, err := FetchIndex(context.Background(), r, Options{
-		Origin: srv.URL, Product: "cayo-ab", PubringPath: pubring,
+		Origin: srv.URL, Product: "floe-ab", PubringPath: pubring,
 	})
 	if err != nil {
 		t.Fatalf("FetchIndex: %v", err)
@@ -124,7 +124,7 @@ func TestFetchIndexVerifiesSignatureArgv(t *testing.T) {
 	if !bytes.Equal(seenSig, sig) || !bytes.Equal(seenSums, sums) {
 		t.Fatal("gpgv did not see the exact downloaded bytes")
 	}
-	if sha, ok := idx.Sha256("cayo-ab_20260811110127.disk.raw.xz"); !ok || sha != sha256hex([]byte("disk")) {
+	if sha, ok := idx.Sha256("floe-ab_20260811110127.disk.raw.xz"); !ok || sha != sha256hex([]byte("disk")) {
 		t.Fatalf("index lookup wrong: %q %v", sha, ok)
 	}
 	if _, ok := idx.Sha256("nonexistent.disk.raw.xz"); ok {
@@ -139,7 +139,7 @@ func TestFetchIndexVerifiesSignatureArgv(t *testing.T) {
 func TestFetchIndexRefusesOnGpgvFailure(t *testing.T) {
 	// Mirrors snosi-install-test.sh "rejects a tampered signature" /
 	// "tampered SHA256SUMS body": any gpgv failure is fail-closed.
-	srv := indexServer(t, "cayo", []byte("tampered"), []byte("sig"), nil)
+	srv := indexServer(t, "floe", []byte("tampered"), []byte("sig"), nil)
 	r := runner.NewFake(
 		func(_ context.Context, _ string, _ ...string) ([]byte, error) {
 			return nil, errors.New("gpgv: BAD signature")
@@ -147,7 +147,7 @@ func TestFetchIndexRefusesOnGpgvFailure(t *testing.T) {
 		func(name string) (string, error) { return name, nil },
 	)
 	idx, err := FetchIndex(context.Background(), r, Options{
-		Origin: srv.URL, Product: "cayo-ab", PubringPath: writePubring(t),
+		Origin: srv.URL, Product: "floe-ab", PubringPath: writePubring(t),
 	})
 	if idx != nil || err == nil {
 		t.Fatal("tampered index must be refused")
@@ -160,7 +160,7 @@ func TestFetchIndexRefusesOnGpgvFailure(t *testing.T) {
 func TestFetchIndexRefusesMissingOrEmptyPubring(t *testing.T) {
 	// Ports the bash's [[ -s "$PUBRING" ]] guard: never run gpgv
 	// against a missing/empty keyring.
-	srv := indexServer(t, "cayo", []byte("x"), []byte("y"), nil)
+	srv := indexServer(t, "floe", []byte("x"), []byte("y"), nil)
 	empty := filepath.Join(t.TempDir(), "empty.gpg")
 	if err := os.WriteFile(empty, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestFetchIndexRefusesMissingOrEmptyPubring(t *testing.T) {
 	var calls [][]string
 	for _, pubring := range []string{filepath.Join(t.TempDir(), "missing.gpg"), empty} {
 		_, err := FetchIndex(context.Background(), okRunner(&calls), Options{
-			Origin: srv.URL, Product: "cayo-ab", PubringPath: pubring,
+			Origin: srv.URL, Product: "floe-ab", PubringPath: pubring,
 		})
 		if err == nil || !strings.Contains(err.Error(), "update pubring not found or empty") {
 			t.Fatalf("pubring %s: want refusal, got %v", pubring, err)
@@ -184,7 +184,7 @@ func TestFetchIndexHTTPFailure(t *testing.T) {
 	defer srv.Close()
 	var calls [][]string
 	_, err := FetchIndex(context.Background(), okRunner(&calls), Options{
-		Origin: srv.URL, Product: "cayo-ab", PubringPath: writePubring(t),
+		Origin: srv.URL, Product: "floe-ab", PubringPath: writePubring(t),
 	})
 	if err == nil || !strings.Contains(err.Error(), "could not fetch") {
 		t.Fatalf("want fetch error, got %v", err)
@@ -204,12 +204,12 @@ func TestValidateChannel(t *testing.T) {
 		channel string
 		valid   bool
 	}{
-		{name: "valid bare name", channel: "cayo", valid: true},
+		{name: "valid bare name", channel: "floe", valid: true},
 		{name: "valid ab name", channel: "snowfield-ab", valid: true},
-		{name: "path traversal", channel: "../cayo-ab"},
-		{name: "uppercase", channel: "Cayo-ab"},
-		{name: "whitespace", channel: "cayo ab"},
-		{name: "regex metacharacters", channel: "cayo.*-ab"},
+		{name: "path traversal", channel: "../floe-ab"},
+		{name: "uppercase", channel: "Floe-ab"},
+		{name: "whitespace", channel: "floe ab"},
+		{name: "regex metacharacters", channel: "floe.*-ab"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -232,7 +232,7 @@ func TestFetchIndexRejectsInvalidProductBeforeHTTP(t *testing.T) {
 	})}
 	var calls [][]string
 	_, err := FetchIndex(context.Background(), okRunner(&calls), Options{
-		Product: "../cayo-ab",
+		Product: "../floe-ab",
 		Client:  client,
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid channel") {
@@ -245,19 +245,19 @@ func TestFetchIndexRejectsInvalidProductBeforeHTTP(t *testing.T) {
 
 func TestBaseURLProductMapping(t *testing.T) {
 	// Pins the live-repository layout: URL path uses the BARE product
-	// (os/native/v1/cayo/x86-64) while artifact names keep the full
+	// (os/native/v1/floe/x86-64) while artifact names keep the full
 	// channel prefix. Mapping is snosi-install's product="${channel%-ab}"
 	// (line 295) / publish-lib.sh product_path.
 	tests := []struct {
 		product, name, want string
 	}{
-		{"cayo-ab", "cayo-ab_20260811110127.manifest.json",
-			"https://repository.frostyard.org/os/native/v1/cayo/x86-64/cayo-ab_20260811110127.manifest.json"},
+		{"floe-ab", "floe-ab_20260811110127.manifest.json",
+			"https://repository.frostyard.org/os/native/v1/floe/x86-64/floe-ab_20260811110127.manifest.json"},
 		{"snow-ab", "snow-ab_20260811110127.disk.raw.xz",
 			"https://repository.frostyard.org/os/native/v1/snow/x86-64/snow-ab_20260811110127.disk.raw.xz"},
 		// Bare product passes through unchanged (bash %-ab semantics).
-		{"cayo", "SHA256SUMS",
-			"https://repository.frostyard.org/os/native/v1/cayo/x86-64/SHA256SUMS"},
+		{"floe", "SHA256SUMS",
+			"https://repository.frostyard.org/os/native/v1/floe/x86-64/SHA256SUMS"},
 		// Only a TRAILING -ab is stripped.
 		{"x-ab-y", "SHA256SUMS",
 			"https://repository.frostyard.org/os/native/v1/x-ab-y/x86-64/SHA256SUMS"},
@@ -276,27 +276,27 @@ func TestLatestVersion(t *testing.T) {
 	// first-listed (snosi-install-test.sh line 701); entries that are
 	// not this channel's manifests are ignored.
 	idx := parseIndex([]byte(strings.Join([]string{
-		sha256hex([]byte("a")) + "  cayo-ab_20260811110127.manifest.json",
-		sha256hex([]byte("b")) + "  cayo-ab_20260101000000.manifest.json",
-		sha256hex([]byte("c")) + "  cayo-ab_20260201000000.disk.raw.xz",    // wrong suffix
+		sha256hex([]byte("a")) + "  floe-ab_20260811110127.manifest.json",
+		sha256hex([]byte("b")) + "  floe-ab_20260101000000.manifest.json",
+		sha256hex([]byte("c")) + "  floe-ab_20260201000000.disk.raw.xz",    // wrong suffix
 		sha256hex([]byte("d")) + "  snow-ab_20270101000000.manifest.json",  // other channel
-		sha256hex([]byte("e")) + "  cayo-ab_123.manifest.json",             // not 14 digits
-		sha256hex([]byte("f")) + "  cayo-ab_202601010000001.manifest.json", // 15 digits
+		sha256hex([]byte("e")) + "  floe-ab_123.manifest.json",             // not 14 digits
+		sha256hex([]byte("f")) + "  floe-ab_202601010000001.manifest.json", // 15 digits
 	}, "\n")))
 
 	tests := []struct {
 		name, channel, want string
 		wantErr             string
 	}{
-		{"numeric max wins over line order", "cayo-ab", "20260811110127", ""},
+		{"numeric max wins over line order", "floe-ab", "20260811110127", ""},
 		{"other channel resolves independently", "snow-ab", "20270101000000", ""},
-		{"no versions for channel", "cayo", "", "no published version found for cayo"},
+		{"no versions for channel", "floe", "", "no published version found for floe"},
 		// Release-pinning input validation: channel is interpolated
 		// into names/URLs, so hostile or malformed input is refused,
 		// not matched (the bash interpolated it into a grep regex).
 		{"empty channel", "", "", "invalid channel"},
-		{"path traversal channel", "../cayo-ab", "", "invalid channel"},
-		{"regex metachar channel", "cayo.?-ab", "", "invalid channel"},
+		{"path traversal channel", "../floe-ab", "", "invalid channel"},
+		{"regex metachar channel", "floe.?-ab", "", "invalid channel"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -316,19 +316,19 @@ func TestLatestVersion(t *testing.T) {
 
 func TestFetchManifest(t *testing.T) {
 	manifest := []byte(`{"manifest_version":1,` +
-		`"config":{"name":"cayo","distribution":"debian","architecture":"x86-64","version":"20260811110127"},` +
+		`"config":{"name":"floe","distribution":"debian","architecture":"x86-64","version":"20260811110127"},` +
 		`"packages":[{"type":"deb","name":"bash","version":"5.2","size":123}]}`)
-	name := "cayo-ab_20260811110127.manifest.json"
+	name := "floe-ab_20260811110127.manifest.json"
 
 	t.Run("verifies hash then parses", func(t *testing.T) {
-		srv := indexServer(t, "cayo", nil, nil, map[string][]byte{name: manifest})
+		srv := indexServer(t, "floe", nil, nil, map[string][]byte{name: manifest})
 		idx := parseIndex([]byte(sha256hex(manifest) + "  " + name + "\n"))
-		m, err := FetchManifest(context.Background(), Options{Origin: srv.URL, Product: "cayo-ab"},
-			idx, "cayo-ab", "20260811110127")
+		m, err := FetchManifest(context.Background(), Options{Origin: srv.URL, Product: "floe-ab"},
+			idx, "floe-ab", "20260811110127")
 		if err != nil {
 			t.Fatalf("FetchManifest: %v", err)
 		}
-		if m.Config.Name != "cayo" || m.Architecture() != "x86-64" || len(m.Packages) != 1 || m.Packages[0].Name != "bash" {
+		if m.Config.Name != "floe" || m.Architecture() != "x86-64" || len(m.Packages) != 1 || m.Packages[0].Name != "bash" {
 			t.Fatalf("manifest parsed wrong: %+v", m)
 		}
 	})
@@ -344,20 +344,20 @@ func TestFetchManifest(t *testing.T) {
 		// The served bytes differ from the signed index entry: the
 		// hash-checked fetch must refuse (fetch_verified_features
 		// posture, snosi-install lines 331-333).
-		srv := indexServer(t, "cayo", nil, nil, map[string][]byte{name: []byte(`{"config":{}} tampered`)})
+		srv := indexServer(t, "floe", nil, nil, map[string][]byte{name: []byte(`{"config":{}} tampered`)})
 		idx := parseIndex([]byte(sha256hex(manifest) + "  " + name + "\n"))
-		_, err := FetchManifest(context.Background(), Options{Origin: srv.URL, Product: "cayo-ab"},
-			idx, "cayo-ab", "20260811110127")
+		_, err := FetchManifest(context.Background(), Options{Origin: srv.URL, Product: "floe-ab"},
+			idx, "floe-ab", "20260811110127")
 		if err == nil || !strings.Contains(err.Error(), "does not match the signed index hash") {
 			t.Fatalf("want hash refusal, got %v", err)
 		}
 	})
 
 	t.Run("refuses names absent from the signed index", func(t *testing.T) {
-		srv := indexServer(t, "cayo", nil, nil, map[string][]byte{name: manifest})
+		srv := indexServer(t, "floe", nil, nil, map[string][]byte{name: manifest})
 		idx := parseIndex(nil)
-		_, err := FetchManifest(context.Background(), Options{Origin: srv.URL, Product: "cayo-ab"},
-			idx, "cayo-ab", "20260811110127")
+		_, err := FetchManifest(context.Background(), Options{Origin: srv.URL, Product: "floe-ab"},
+			idx, "floe-ab", "20260811110127")
 		if err == nil || !strings.Contains(err.Error(), "signed index has no entry") {
 			t.Fatalf("want index refusal, got %v", err)
 		}
@@ -369,9 +369,9 @@ func TestFetchManifest(t *testing.T) {
 		}))
 		defer srv.Close()
 		idx := parseIndex(nil)
-		o := Options{Origin: srv.URL, Product: "cayo-ab"}
+		o := Options{Origin: srv.URL, Product: "floe-ab"}
 		for _, version := range []string{"", "2026", "20260811110127x", "../../SHA256SUMS", "202608111101271"} {
-			if _, err := FetchManifest(context.Background(), o, idx, "cayo-ab", version); err == nil ||
+			if _, err := FetchManifest(context.Background(), o, idx, "floe-ab", version); err == nil ||
 				!strings.Contains(err.Error(), "frozen grammar") {
 				t.Errorf("version %q: want grammar refusal, got %v", version, err)
 			}
@@ -439,7 +439,7 @@ func buildXZ(uncompressed []uint64) []byte {
 func diskServer(t *testing.T, name string, body []byte, ranges *[]string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/os/native/v1/cayo/x86-64/"+name {
+		if r.URL.Path != "/os/native/v1/floe/x86-64/"+name {
 			http.NotFound(w, r)
 			return
 		}
@@ -452,8 +452,8 @@ func diskServer(t *testing.T, name string, body []byte, ranges *[]string) *httpt
 
 func TestMinimumDiskBytes(t *testing.T) {
 	const version = "20260811110127"
-	name := "cayo-ab_" + version + ".disk.raw.xz"
-	// Shaped after cayo's real image: 1 GiB ESP + 5 GiB root +
+	name := "floe-ab_" + version + ".disk.raw.xz"
+	// Shaped after floe's real image: 1 GiB ESP + 5 GiB root +
 	// 256 MiB verity, spread across two blocks like xz -T0 output.
 	blockA := uint64(4 << 30)
 	blockB := uint64((1 << 30) + (1 << 30) + (256 << 20)) // remainder
@@ -467,8 +467,8 @@ func TestMinimumDiskBytes(t *testing.T) {
 	t.Run("derives image size from ranged xz index", func(t *testing.T) {
 		var ranges []string
 		srv := diskServer(t, name, body, &ranges)
-		got, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "cayo-ab"},
-			newIndex(name), "cayo-ab", version)
+		got, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "floe-ab"},
+			newIndex(name), "floe-ab", version)
 		if err != nil {
 			t.Fatalf("MinimumDiskBytes: %v", err)
 		}
@@ -495,8 +495,8 @@ func TestMinimumDiskBytes(t *testing.T) {
 		// guess (the hand-copied capacity table is gone for good).
 		var ranges []string
 		srv := diskServer(t, name, body, &ranges)
-		_, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "cayo-ab"},
-			newIndex("cayo-ab_"+version+".disk.raw"), "cayo-ab", version)
+		_, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "floe-ab"},
+			newIndex("floe-ab_"+version+".disk.raw"), "floe-ab", version)
 		if err == nil || !strings.Contains(err.Error(), "cannot derive minimum disk size") {
 			t.Fatalf("want derivation refusal, got %v", err)
 		}
@@ -510,8 +510,8 @@ func TestMinimumDiskBytes(t *testing.T) {
 			w.Write(body) // 200, full body: Range unsupported
 		}))
 		defer srv.Close()
-		_, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "cayo-ab"},
-			newIndex(name), "cayo-ab", version)
+		_, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "floe-ab"},
+			newIndex(name), "floe-ab", version)
 		if err == nil || !strings.Contains(err.Error(), "did not honor Range") {
 			t.Fatalf("want Range refusal, got %v", err)
 		}
@@ -521,8 +521,8 @@ func TestMinimumDiskBytes(t *testing.T) {
 		var ranges []string
 		garbage := bytes.Repeat([]byte{0x11}, 4096)
 		srv := diskServer(t, name, garbage, &ranges)
-		_, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "cayo-ab"},
-			parseIndex([]byte(sha256hex(garbage)+"  "+name+"\n")), "cayo-ab", version)
+		_, err := MinimumDiskBytes(context.Background(), Options{Origin: srv.URL, Product: "floe-ab"},
+			parseIndex([]byte(sha256hex(garbage)+"  "+name+"\n")), "floe-ab", version)
 		if err == nil {
 			t.Fatal("garbage bytes must not yield a size")
 		}
@@ -533,8 +533,8 @@ func TestMinimumDiskBytes(t *testing.T) {
 			t.Error("no HTTP request may be made for invalid input")
 		}))
 		defer srv.Close()
-		o := Options{Origin: srv.URL, Product: "cayo-ab"}
-		if _, err := MinimumDiskBytes(context.Background(), o, newIndex(name), "cayo-ab", "not-a-version"); err == nil {
+		o := Options{Origin: srv.URL, Product: "floe-ab"}
+		if _, err := MinimumDiskBytes(context.Background(), o, newIndex(name), "floe-ab", "not-a-version"); err == nil {
 			t.Fatal("bad version must be refused")
 		}
 		if _, err := MinimumDiskBytes(context.Background(), o, newIndex(name), "", version); err == nil {

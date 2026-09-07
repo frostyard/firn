@@ -15,7 +15,7 @@ import (
 // unpacking. This is the single-installer ISO's situation: the whole
 // rootfs is unpacked into tmpfs, so /var/lib/containers is RAM-backed
 // and the image unpack dies with ENOSPC partway through the last layers
-// (observed live: cayo pull failed at "write .../solidity.vim: no space
+// (observed live: floe pull failed at "write .../solidity.vim: no space
 // left on device", 2026-08-12).
 //
 // When true, the bootc step redirects the image store (and bootc's

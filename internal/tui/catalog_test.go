@@ -19,18 +19,18 @@ func TestBuiltinCatalog(t *testing.T) {
 	for _, e := range entries {
 		names[e.Name] = e
 	}
-	for _, want := range []string{"snow", "snowfield", "cayo", "snow-ab", "snowfield-ab", "cayo-ab"} {
+	for _, want := range []string{"snow", "snowfield", "floe", "snow-ab", "snowfield-ab", "floe-ab"} {
 		if _, ok := names[want]; !ok {
 			t.Errorf("built-in catalog missing %q", want)
 		}
 	}
-	for _, n := range []string{"snow", "snowfield", "cayo"} {
+	for _, n := range []string{"snow", "snowfield", "floe"} {
 		e := names[n]
 		if e.Family != recipe.FamilyBootc || !strings.HasPrefix(e.Ref, "ghcr.io/frostyard/") || e.CosignPubKey != builtinCosignPubKey {
 			t.Errorf("entry %q: want signed frostyard bootc ref, got family=%q ref=%q key=%q", n, e.Family, e.Ref, e.CosignPubKey)
 		}
 	}
-	for _, n := range []string{"snow-ab", "snowfield-ab", "cayo-ab"} {
+	for _, n := range []string{"snow-ab", "snowfield-ab", "floe-ab"} {
 		e := names[n]
 		if e.Family != recipe.FamilyAB || e.Product != n {
 			t.Errorf("entry %q: want ab with product %q, got family=%q product=%q", n, n, e.Family, e.Product)
