@@ -319,7 +319,7 @@ func (w *wizard) page(ctx context.Context, f *huh.Form) (quit bool, err error) {
 	f.WithTheme(w.theme)
 	f.SubmitCmd = tea.Quit
 	f.CancelCmd = tea.Interrupt
-	m := &wizardPageModel{form: f, first: f.GetFocusedField()}
+	m := &wizardPageModel{form: f}
 	result, err := tea.NewProgram(m,
 		tea.WithContext(ctx),
 		tea.WithInput(os.Stdin),
@@ -362,9 +362,13 @@ func (m *wizardPageModel) Init() tea.Cmd {
 }
 
 func (m *wizardPageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	focused := m.form.GetFocusedField()
+	if m.first == nil && !focused.Skip() {
+		m.first = focused
+	}
 	if key, ok := msg.(tea.KeyMsg); ok &&
 		key.Type == tea.KeyShiftTab &&
-		m.form.GetFocusedField() == m.first {
+		focused == m.first {
 		m.back = true
 		return m, tea.Quit
 	}

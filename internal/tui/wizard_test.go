@@ -19,7 +19,7 @@ import (
 
 func TestWizardPageModelShiftTabGoesBack(t *testing.T) {
 	form := huh.NewForm(huh.NewGroup(huh.NewInput()))
-	m := &wizardPageModel{form: form, first: form.GetFocusedField()}
+	m := &wizardPageModel{form: form}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 
@@ -34,19 +34,85 @@ func TestWizardPageModelShiftTabGoesBack(t *testing.T) {
 
 func TestWizardPageModelShiftTabMovesToPreviousField(t *testing.T) {
 	form := huh.NewForm(huh.NewGroup(huh.NewInput(), huh.NewInput()))
-	_ = form.Init()
 	first := form.GetFocusedField()
-	form.NextField()
-	if form.GetFocusedField() == first {
-		t.Fatal("test setup did not focus the second field")
+	m := &fieldBackAfterInit{
+		wizardPageModel: &wizardPageModel{form: form},
+		first:           first,
 	}
-	m := &wizardPageModel{form: form, first: first}
-
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-
-	if m.back {
+	result, err := tea.NewProgram(m, tea.WithInput(nil), tea.WithoutRenderer()).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := result.(*fieldBackAfterInit)
+	if finished.back {
 		t.Fatal("Shift-Tab on a later field requested the previous wizard page")
 	}
+	if !finished.moved {
+		t.Fatal("Shift-Tab did not focus the previous field")
+	}
+}
+
+func TestWizardPageModelShiftTabSkipsLeadingNote(t *testing.T) {
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewNote().Description("Review"),
+		huh.NewSelect[string]().Options(huh.NewOption("Install", "install")),
+	))
+	m := &wizardPageModel{form: form}
+	result, err := tea.NewProgram(shiftTabAfterInit{wizardPageModel: m},
+		tea.WithInput(nil),
+		tea.WithoutRenderer(),
+	).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.(*wizardPageModel).back {
+		t.Fatal("Shift-Tab on the first interactive field did not request the previous wizard page")
+	}
+}
+
+type shiftTabAfterInit struct {
+	*wizardPageModel
+}
+
+func (m shiftTabAfterInit) Init() tea.Cmd {
+	return tea.Sequence(
+		m.wizardPageModel.Init(),
+		func() tea.Msg { return tea.KeyMsg{Type: tea.KeyShiftTab} },
+	)
+}
+
+type startFieldBackMsg struct{}
+
+type fieldBackAfterInit struct {
+	*wizardPageModel
+	first     huh.Field
+	requested bool
+	moved     bool
+}
+
+func (m *fieldBackAfterInit) Init() tea.Cmd {
+	return tea.Sequence(
+		m.wizardPageModel.Init(),
+		func() tea.Msg { return startFieldBackMsg{} },
+	)
+}
+
+func (m *fieldBackAfterInit) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(startFieldBackMsg); ok {
+		m.form.NextField()
+		if m.form.GetFocusedField() == m.first {
+			return m, tea.Quit
+		}
+		m.requested = true
+		_, cmd := m.wizardPageModel.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		return m, cmd
+	}
+	_, cmd := m.wizardPageModel.Update(msg)
+	if m.requested && m.form.GetFocusedField() == m.first {
+		m.moved = true
+		return m, tea.Quit
+	}
+	return m, cmd
 }
 
 func TestPreviousPageSkipsUnavailableFamilyPage(t *testing.T) {
@@ -62,12 +128,32 @@ func TestPreviousPageSkipsUnavailableFamilyPage(t *testing.T) {
 		{name: "ordinary page decrements", current: pageSecurity, hasFamilyPage: true, want: pageFilesystem},
 		{name: "review returns to flatpaks", current: pageReview, hasFamilyPage: true, want: pageFlatpaks},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := previousPage(tt.current, tt.hasFamilyPage); got != tt.want {
 				t.Fatalf("previousPage(%v, %v) = %v, want %v", tt.current, tt.hasFamilyPage, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSetEntryResetsOnlyImageDerivedDefaults(t *testing.T) {
+	first := CatalogEntry{Family: recipe.FamilyBootc, Name: "first"}
+	w := &wizard{c: wizardChoices{
+		entry:           first,
+		userInitialized: true,
+		groups:          []string{"docker"},
+	}}
+
+	w.setEntry(first)
+	if !w.c.userInitialized {
+		t.Fatal("reselecting the same image reset user choices")
+	}
+
+	w.setEntry(CatalogEntry{Family: recipe.FamilyBootc, Name: "second"})
+	if w.c.userInitialized {
+		t.Fatal("changing images retained the prior image's initialized user defaults")
 	}
 }
 

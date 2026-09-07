@@ -125,8 +125,15 @@ func (w *wizard) imagePage(ctx context.Context, family string) (quit bool, err e
 	if quit, err = w.page(ctx, form); quit || err != nil {
 		return quit, err
 	}
-	w.c.entry = entries[idx]
+	w.setEntry(entries[idx])
 	return false, nil
+}
+
+func (w *wizard) setEntry(entry CatalogEntry) {
+	if entry.Name != w.c.entry.Name || entry.Family != w.c.entry.Family {
+		w.c.userInitialized = false
+	}
+	w.c.entry = entry
 }
 
 // advancedImageForm exposes engine-supported image and target overrides while

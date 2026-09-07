@@ -267,6 +267,21 @@ expect_screen 'Advanced image options'
 # Shift-Tab is wizard-level back navigation, not merely field navigation.
 tmux send-keys -t "$S" BTab
 expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$'
+# Exercise the preceding boundary too, including the skipped family page when
+# the catalog exposes only one family.
+tmux send-keys -t "$S" BTab
+if [[ $CATALOG_MODE == mixed ]]; then
+  expect_screen 'Update mechanism'
+  if [[ $FAMILY == bootc ]]; then
+    choose 'long-term path'
+  else
+    choose 'proven path'
+  fi
+else
+  expect_screen 'snosi installer'
+  tmux send-keys -t "$S" Enter
+fi
+expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$'
 if [[ $FAMILY == bootc ]]; then
   choose 'cayo[[:space:]]+\(bootc image\)'
 else
