@@ -42,6 +42,9 @@ func TestWizardPageModelShiftTabMovesToPreviousField(t *testing.T) {
 		t.Fatal(err)
 	}
 	finished := result.(*fieldBackAfterInit)
+	if finished.setupFailed {
+		t.Fatal("test setup did not focus the second field")
+	}
 	if finished.back {
 		t.Fatal("Shift-Tab on a later field requested the previous wizard page")
 	}
@@ -86,6 +89,7 @@ type fieldBackAfterInit struct {
 	first        huh.Field
 	shiftTabSent bool
 	moved        bool
+	setupFailed  bool
 }
 
 func (m *fieldBackAfterInit) Init() tea.Cmd {
@@ -100,6 +104,7 @@ func (m *fieldBackAfterInit) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.first = m.form.GetFocusedField()
 		m.form.NextField()
 		if m.form.GetFocusedField() == m.first {
+			m.setupFailed = true
 			return m, tea.Quit
 		}
 		m.shiftTabSent = true
