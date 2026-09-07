@@ -34,10 +34,8 @@ func TestWizardPageModelShiftTabGoesBack(t *testing.T) {
 
 func TestWizardPageModelShiftTabMovesToPreviousField(t *testing.T) {
 	form := huh.NewForm(huh.NewGroup(huh.NewInput(), huh.NewInput()))
-	first := form.GetFocusedField()
 	m := &fieldBackAfterInit{
 		wizardPageModel: &wizardPageModel{form: form},
-		first:           first,
 	}
 	result, err := tea.NewProgram(m, tea.WithInput(nil), tea.WithoutRenderer()).Run()
 	if err != nil {
@@ -99,6 +97,7 @@ func (m *fieldBackAfterInit) Init() tea.Cmd {
 
 func (m *fieldBackAfterInit) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(startFieldBackMsg); ok {
+		m.first = m.form.GetFocusedField()
 		m.form.NextField()
 		if m.form.GetFocusedField() == m.first {
 			return m, tea.Quit
