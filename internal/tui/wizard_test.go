@@ -9,10 +9,157 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
+
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/recipe"
 )
+
+func TestWizardPageModelShiftTabGoesBack(t *testing.T) {
+	form := huh.NewForm(huh.NewGroup(huh.NewInput()))
+	m := &wizardPageModel{form: form}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+
+	if !updated.(*wizardPageModel).back {
+		t.Fatal("Shift-Tab did not request the previous wizard page")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("Shift-Tab command returned %T, want tea.QuitMsg", msg)
+	}
+}
+
+func TestWizardPageModelShiftTabMovesToPreviousField(t *testing.T) {
+	form := huh.NewForm(huh.NewGroup(huh.NewInput(), huh.NewInput()))
+	m := &fieldBackAfterInit{
+		wizardPageModel: &wizardPageModel{form: form},
+	}
+	result, err := tea.NewProgram(m, tea.WithInput(nil), tea.WithoutRenderer()).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := result.(*fieldBackAfterInit)
+	if finished.setupFailed {
+		t.Fatal("test setup did not focus the second field")
+	}
+	if finished.back {
+		t.Fatal("Shift-Tab on a later field requested the previous wizard page")
+	}
+	if !finished.moved {
+		t.Fatal("Shift-Tab did not focus the previous field")
+	}
+}
+
+func TestWizardPageModelShiftTabSkipsLeadingNote(t *testing.T) {
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewNote().Description("Review"),
+		huh.NewSelect[string]().Options(huh.NewOption("Install", "install")),
+	))
+	m := &wizardPageModel{form: form}
+	result, err := tea.NewProgram(shiftTabAfterInit{wizardPageModel: m},
+		tea.WithInput(nil),
+		tea.WithoutRenderer(),
+	).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.(*wizardPageModel).back {
+		t.Fatal("Shift-Tab on the first interactive field did not request the previous wizard page")
+	}
+}
+
+type shiftTabAfterInit struct {
+	*wizardPageModel
+}
+
+func (m shiftTabAfterInit) Init() tea.Cmd {
+	return tea.Sequence(
+		m.wizardPageModel.Init(),
+		func() tea.Msg { return tea.KeyMsg{Type: tea.KeyShiftTab} },
+	)
+}
+
+type startFieldBackMsg struct{}
+
+type fieldBackAfterInit struct {
+	*wizardPageModel
+	first        huh.Field
+	shiftTabSent bool
+	moved        bool
+	setupFailed  bool
+}
+
+func (m *fieldBackAfterInit) Init() tea.Cmd {
+	return tea.Sequence(
+		m.wizardPageModel.Init(),
+		func() tea.Msg { return startFieldBackMsg{} },
+	)
+}
+
+func (m *fieldBackAfterInit) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(startFieldBackMsg); ok {
+		m.first = m.form.GetFocusedField()
+		m.form.NextField()
+		if m.form.GetFocusedField() == m.first {
+			m.setupFailed = true
+			return m, tea.Quit
+		}
+		m.shiftTabSent = true
+		_, cmd := m.wizardPageModel.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		return m, cmd
+	}
+	_, cmd := m.wizardPageModel.Update(msg)
+	if m.shiftTabSent && m.form.GetFocusedField() == m.first {
+		m.moved = true
+		return m, tea.Quit
+	}
+	return m, cmd
+}
+
+func TestPreviousPageSkipsUnavailableFamilyPage(t *testing.T) {
+	tests := []struct {
+		name          string
+		current       wizardPage
+		hasFamilyPage bool
+		want          wizardPage
+	}{
+		{name: "welcome stays at welcome", current: pageWelcome, hasFamilyPage: true, want: pageWelcome},
+		{name: "mixed catalog image returns to family", current: pageImage, hasFamilyPage: true, want: pageFamily},
+		{name: "single-family image returns to welcome", current: pageImage, hasFamilyPage: false, want: pageWelcome},
+		{name: "ordinary page decrements", current: pageSecurity, hasFamilyPage: true, want: pageFilesystem},
+		{name: "review returns to flatpaks", current: pageReview, hasFamilyPage: true, want: pageFlatpaks},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := previousPage(tt.current, tt.hasFamilyPage); got != tt.want {
+				t.Fatalf("previousPage(%v, %v) = %v, want %v", tt.current, tt.hasFamilyPage, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetEntryResetsOnlyImageDerivedDefaults(t *testing.T) {
+	first := CatalogEntry{Family: recipe.FamilyBootc, Name: "first"}
+	w := &wizard{c: wizardChoices{
+		entry:           first,
+		userInitialized: true,
+		groups:          []string{"docker"},
+	}}
+
+	w.setEntry(first)
+	if !w.c.userInitialized {
+		t.Fatal("reselecting the same image reset user choices")
+	}
+
+	w.setEntry(CatalogEntry{Family: recipe.FamilyBootc, Name: "second"})
+	if w.c.userInitialized {
+		t.Fatal("changing images retained the prior image's initialized user defaults")
+	}
+}
 
 func TestRunWizardRejectsNonUEFIBeforeCatalogOrChoices(t *testing.T) {
 	rec, err := RunWizard(context.Background(), WizardOpts{UEFI: false})

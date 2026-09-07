@@ -17,6 +17,7 @@ import (
 	"strings"
 	"unicode"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 
 	"github.com/frostyard/firn/internal/platform"
@@ -77,6 +78,24 @@ type wizard struct {
 	c          wizardChoices
 }
 
+type wizardPage int
+
+const (
+	pageWelcome wizardPage = iota
+	pageFamily
+	pageImage
+	pageAdvancedImage
+	pageDisk
+	pageFilesystem
+	pageSecurity
+	pageSystem
+	pageUser
+	pageFlatpaks
+	pageReview
+)
+
+var errPageBack = errors.New("tui: previous page")
+
 // wizardChoices is everything the pages collect, kept apart from
 // recipe.Recipe so assembly (choices -> recipe + secret files) is a pure
 // function tests drive directly.
@@ -131,50 +150,84 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 	if len(w.catalog) == 0 {
 		return nil, errors.New("tui: image catalog is empty")
 	}
-	if quit, err := w.page(ctx, w.welcomeForm()); quit || err != nil {
-		return nil, err
-	}
-	preferredFamily := ""
+
+	hasFamilyPage := len(catalogFamilies(w.catalog)) > 1
+	family := ""
+	current := pageWelcome
 	for {
-		family, quit, err := w.familyPage(ctx, preferredFamily)
-		if quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.imagePage(ctx, family); quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.page(ctx, w.advancedImageForm()); quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.diskPage(ctx); quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.page(ctx, w.filesystemForm()); quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.page(ctx, w.securityForm()); quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.page(ctx, w.systemForm()); quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.page(ctx, w.userForm()); quit || err != nil {
-			return nil, err
-		}
-		if quit, err := w.page(ctx, w.flatpaksForm()); quit || err != nil {
-			return nil, err
+		var quit bool
+		var err error
+		switch current {
+		case pageWelcome:
+			quit, err = w.page(ctx, w.welcomeForm())
+		case pageFamily:
+			family, quit, err = w.familyPage(ctx, family)
+		case pageImage:
+			if !hasFamilyPage {
+				family = catalogFamilies(w.catalog)[0]
+			}
+			quit, err = w.imagePage(ctx, family)
+		case pageAdvancedImage:
+			quit, err = w.page(ctx, w.advancedImageForm())
+		case pageDisk:
+			quit, err = w.diskPage(ctx)
+		case pageFilesystem:
+			quit, err = w.page(ctx, w.filesystemForm())
+		case pageSecurity:
+			quit, err = w.page(ctx, w.securityForm())
+		case pageSystem:
+			quit, err = w.page(ctx, w.systemForm())
+		case pageUser:
+			quit, err = w.page(ctx, w.userForm())
+		case pageFlatpaks:
+			quit, err = w.page(ctx, w.flatpaksForm())
+		case pageReview:
+			var startOver bool
+			var reviewed []byte
+			startOver, reviewed, err = w.reviewLoop(ctx)
+			if err == nil && reviewed != nil {
+				return reviewed, nil
+			}
+			if err == nil && !startOver {
+				return nil, nil
+			}
+			if startOver {
+				family = w.c.entry.Family
+				w.c = wizardChoices{}
+				current = firstChoicePage(hasFamilyPage)
+				continue
+			}
 		}
 
-		startOver, reviewed, err := w.reviewLoop(ctx)
-		if err != nil || reviewed != nil {
-			return reviewed, err
-		}
-		if !startOver { // user quit from review
+		if quit {
 			return nil, nil
 		}
-		preferredFamily = w.c.entry.Family
-		w.c = wizardChoices{} // start over: fresh choices, same catalog
+		if errors.Is(err, errPageBack) {
+			current = previousPage(current, hasFamilyPage)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		current++
 	}
+}
+
+func firstChoicePage(hasFamilyPage bool) wizardPage {
+	if hasFamilyPage {
+		return pageFamily
+	}
+	return pageImage
+}
+
+func previousPage(current wizardPage, hasFamilyPage bool) wizardPage {
+	if current <= pageWelcome {
+		return pageWelcome
+	}
+	if current == pageImage && !hasFamilyPage {
+		return pageWelcome
+	}
+	return current - 1
 }
 
 // reviewLoop shows the assembled recipe, requires the typed disk-path
@@ -215,6 +268,9 @@ func (w *wizard) reviewLoop(ctx context.Context) (startOver bool, result []byte,
 			return false, nil, nil
 		}
 		if quit, err := w.page(ctx, w.confirmForm()); quit || err != nil {
+			if errors.Is(err, errPageBack) {
+				continue
+			}
 			return false, nil, err
 		}
 		issues = validateAssembled(reviewed, w.opts.Machine)
@@ -260,17 +316,70 @@ func (w *wizard) page(ctx context.Context, f *huh.Form) (quit bool, err error) {
 	// invisible on every console and fully present in the journal
 	// (root-caused on the incus VGA demo, 2026-08-12: /dev/vcs1 blank,
 	// journal full of frames). Render to the TTY explicitly.
-	err = f.WithTheme(w.theme).WithOutput(os.Stdout).WithInput(os.Stdin).RunWithContext(ctx)
-	if err == nil {
-		return false, nil
-	}
+	f.WithTheme(w.theme)
+	f.SubmitCmd = tea.Quit
+	f.CancelCmd = tea.Interrupt
+	m := &wizardPageModel{form: f}
+	result, err := tea.NewProgram(m,
+		tea.WithContext(ctx),
+		tea.WithInput(os.Stdin),
+		tea.WithOutput(os.Stdout),
+		tea.WithReportFocus(),
+	).Run()
 	if ctx.Err() != nil {
 		return false, ctx.Err()
 	}
-	if errors.Is(err, huh.ErrUserAborted) {
+	if errors.Is(err, tea.ErrInterrupted) {
 		return true, nil
 	}
-	return false, err
+	if errors.Is(err, tea.ErrProgramKilled) {
+		return false, huh.ErrTimeout
+	}
+	if err != nil {
+		return false, fmt.Errorf("huh: %w", err)
+	}
+	finished, ok := result.(*wizardPageModel)
+	if !ok {
+		return false, fmt.Errorf("tui: unexpected wizard form model %T", result)
+	}
+	if finished.back {
+		return false, errPageBack
+	}
+	if f.State == huh.StateAborted {
+		return true, nil
+	}
+	return false, nil
+}
+
+type wizardPageModel struct {
+	form  *huh.Form
+	first huh.Field
+	back  bool
+}
+
+func (m *wizardPageModel) Init() tea.Cmd {
+	return m.form.Init()
+}
+
+func (m *wizardPageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	focused := m.form.GetFocusedField()
+	if m.first == nil && focused != nil && !focused.Skip() {
+		m.first = focused
+	}
+	if key, ok := msg.(tea.KeyMsg); ok &&
+		key.Type == tea.KeyShiftTab &&
+		m.first != nil &&
+		focused == m.first {
+		m.back = true
+		return m, tea.Quit
+	}
+	updated, cmd := m.form.Update(msg)
+	m.form = updated.(*huh.Form)
+	return m, cmd
+}
+
+func (m *wizardPageModel) View() string {
+	return m.form.View()
 }
 
 // --- assembly (pure: choices -> recipe + secret files) ---
