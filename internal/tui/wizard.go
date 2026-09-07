@@ -363,7 +363,7 @@ func (m *wizardPageModel) Init() tea.Cmd {
 
 func (m *wizardPageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	focused := m.form.GetFocusedField()
-	if m.first == nil && !focused.Skip() {
+	if m.first == nil && focused != nil && !focused.Skip() {
 		m.first = focused
 	}
 	if key, ok := msg.(tea.KeyMsg); ok &&
