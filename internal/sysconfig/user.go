@@ -104,9 +104,9 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) (missi
 		// symlink to a stateroot var that does not exist under --root, so useradd
 		// --create-home cannot create the directory and exits 12 (dakota GH
 		// matrix 20260724T2128). The passwd entry is written without it, and the
-		// composefs tmpfiles.d snippet below builds+labels /var/home/<user> from
-		// /etc/skel on first boot — the same mechanism the ostree branch relies
-		// on after its relocation.
+		// composefs tmpfiles.d snippet below builds /var/home/<user> from
+		// /etc/skel (owned by the user) on first boot — the same mechanism the
+		// ostree branch relies on after its relocation.
 		cargs := []string{"--root", root}
 		for _, a := range tail[1:] {
 			if a == "--create-home" {
@@ -136,10 +136,9 @@ func (w *DeploymentWriter) CreateUser(ctx context.Context, u recipe.User) (missi
 	// stateroot var is mounted over /var at runtime. The account then
 	// boots with a passwd entry but no home directory at all (wootc E2E
 	// run 20260723T0423: var/home held only the image's seed content).
-	// Relocate the freshly created home into the stateroot var, and pin
-	// it with a tmpfiles.d snippet so the first boot (re)creates it from
-	// /etc/skel if missing and restores ownership + SELinux labels under
-	// the live policy — offline useradd cannot label correctly.
+	// Relocate the freshly created home into the stateroot var (chowned
+	// below), and pin it with a tmpfiles.d snippet so the first boot
+	// (re)creates it from /etc/skel, user-owned, if missing.
 	if staterootHome != "" {
 		deployHome := filepath.Join(root, "var", "home", u.Name)
 		stateHome := filepath.Join(staterootHome, u.Name)
@@ -207,21 +206,34 @@ func passwordHash(u recipe.User) (string, error) {
 }
 
 // writeHomeTmpfiles drops a tmpfiles.d snippet under <root>/etc/tmpfiles.d that
-// makes the first boot create /var/home/<user> from /etc/skel if missing and
-// restore ownership + SELinux labels under the live policy — offline useradd
-// cannot label correctly, and on composefs-native it cannot create the home at
-// all. /home -> var/home is a bootc invariant, so the runtime /var/home path is
+// makes the first boot create /var/home/<user> from /etc/skel if missing —
+// on composefs-native, offline useradd cannot create the home at all.
+// /home -> var/home is a bootc invariant, so the runtime /var/home path is
 // correct for both ostree and composefs deploys.
+//
+// The snippet is a single "C" line and deliberately NOT a "C" + "Z" pair.
+// A "C" line's user/group apply to every file of the copied tree, not just
+// the top-level directory (verified with systemd-tmpfiles 261 against a
+// scratch --root: all skel files came out owned by the given uid:gid), so
+// the home is user-owned from the moment it is created, and the ostree
+// relocation path already chowns recursively at install time. The "Z" line
+// that used to follow it ("Z /var/home/<user> - <user> <user> -") re-walked
+// and chowned the ENTIRE home on EVERY boot for the life of the install:
+// on a snow workstation with 6.7 million files under /var/home/bjk that was
+// 50 s of systemd-tmpfiles-setup.service in every boot (journal
+// 2026-09-09, 13.2 s -> 63.4 s), and it is what tmpfiles runs unconditionally,
+// so any network share mounted below the home later blocks it in D state.
+// SELinux relabelling was the other stated reason; firn's targets are Debian
+// images without SELinux, and tmpfiles labels files it creates itself anyway.
 func writeHomeTmpfiles(root, username string) error {
 	tmpfilesDir := filepath.Join(root, "etc", "tmpfiles.d")
 	if err := os.MkdirAll(tmpfilesDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir tmpfiles.d: %w", err)
 	}
-	// Z mode "-": fix ownership and restore SELinux contexts recursively but
-	// keep each file's own mode — 0700 here would mark every migrated document
-	// executable.
+	// Mode 0700 applies to the home directory itself; copied files keep the
+	// modes they have in /etc/skel.
 	snippet := fmt.Sprintf(
-		"C /var/home/%[1]s 0700 %[1]s %[1]s - /etc/skel\nZ /var/home/%[1]s - %[1]s %[1]s -\n",
+		"C /var/home/%[1]s 0700 %[1]s %[1]s - /etc/skel\n",
 		username)
 	snippetPath := filepath.Join(tmpfilesDir, "firn-home-"+username+".conf")
 	if err := os.WriteFile(snippetPath, []byte(snippet), 0o644); err != nil {
@@ -269,8 +281,9 @@ func (w *DeploymentWriter) WriteRootAuthorizedKey(ctx context.Context, key strin
 // /etc/skel copy ("C" only copies into a missing path) -- so when this is
 // the call that first creates the home, it must copy skel itself, or the
 // image's seeded dotfiles are silently lost (fatal on images whose whole
-// desktop config ships in skel). The "Z" entry still fixes ownership and
-// SELinux labels either way.
+// desktop config ships in skel). The recursive chown below covers ownership
+// of that copy; the tmpfiles snippet no longer carries a "Z" line (see
+// writeHomeTmpfiles), so nothing at boot would fix it up later.
 func (w *DeploymentWriter) WriteUserAuthorizedKey(ctx context.Context, username, key string) error {
 	if username == "" || key == "" {
 		return nil
