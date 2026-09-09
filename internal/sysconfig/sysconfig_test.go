@@ -280,14 +280,21 @@ func TestCreateUser_Ostree(t *testing.T) {
 		t.Errorf("deployment-var home still present: %v", err)
 	}
 
-	// tmpfiles.d snippet pins first-boot creation + relabel.
+	// tmpfiles.d snippet pins first-boot creation: a single user-owned "C"
+	// copy. It must never regain a "Z" line -- that recursively chowned the
+	// whole home on every boot (50 s per boot on a 6.7M-file workstation).
 	snippet, err := os.ReadFile(filepath.Join(deployDir, "etc", "tmpfiles.d", "firn-home-dev.conf"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "C /var/home/dev 0700 dev dev - /etc/skel\nZ /var/home/dev - dev dev -\n"
+	want := "C /var/home/dev 0700 dev dev - /etc/skel\n"
 	if string(snippet) != want {
 		t.Errorf("tmpfiles snippet = %q, want %q", snippet, want)
+	}
+	for _, line := range strings.Split(string(snippet), "\n") {
+		if strings.HasPrefix(line, "Z ") || strings.HasPrefix(line, "z ") {
+			t.Errorf("tmpfiles snippet carries a recursive relabel line: %q", line)
+		}
 	}
 
 	// Pre-hashed password goes through the target's chpasswd -e via stdin.
