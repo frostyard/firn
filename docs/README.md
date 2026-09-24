@@ -28,6 +28,7 @@ Docs are split by the question they answer:
 - [0013 — btrfs /var on A/B requires a filesystem-agnostic image mount](adr/0013-btrfs-var-requires-filesystem-agnostic-image-mount.md)
 - [0014 — Port fisherman's secure-install (schema-1) into firn's bootc pipeline](adr/0014-port-secure-install-schema-1-for-bootc.md)
 - [0015 — Propose a post-cutoff bootc-only installer scope (Proposed)](adr/0015-bootc-only-installer-scope.md)
+- [0016 — Propose a version-2 bootc-only recipe contract (Proposed)](adr/0016-bootc-only-recipe-contract.md)
 
 ### Design
 

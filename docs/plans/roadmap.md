@@ -247,7 +247,10 @@ The implementation ports fisherman's `internal/secure` behavior into
 
 This is a **proposal**, not an approved architecture or a cutoff-triggered
 removal. [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md)
-describes the choice for Brian and Ben to review. The currently implemented
+describes the scope and
+[ADR-0016 (Proposed)](../adr/0016-bootc-only-recipe-contract.md) recommends
+the version-2 contract and bounded bootc-v1 migration for review. The
+currently implemented
 [architecture](../design/architecture.md#prospective-post-cutoff-scope),
 [recipe schema v1](../specs/recipe-schema.md#rules) and
 [progress protocol](../specs/progress-protocol.md) remain in force. Phase 7's

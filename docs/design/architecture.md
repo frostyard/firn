@@ -14,7 +14,8 @@ Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
 
 ## Prospective post-cutoff scope
 
-[ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md) and
+[ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
+[ADR-0016 (Proposed contract)](../adr/0016-bootc-only-recipe-contract.md) and
 [roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
 outline a possible bootc-only transition after 2026-09-30. Neither changes
 the currently implemented dual-family architecture below or recipe schema
@@ -283,6 +284,9 @@ uses the same engine preflight as headless installation.
   [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
   [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
   [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)
+- Prospective (not implemented): [ADR-0015](../adr/0015-bootc-only-installer-scope.md),
+  [ADR-0016](../adr/0016-bootc-only-recipe-contract.md),
+  [roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
 - Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
   [specs/progress-protocol.md](../specs/progress-protocol.md)
 - Built in: [roadmap — Phases 1–7](../plans/roadmap.md)
