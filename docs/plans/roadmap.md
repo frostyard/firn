@@ -243,6 +243,70 @@ The implementation ports fisherman's `internal/secure` behavior into
 - **Done when:** dakota's secure installer + `run-secure-install-tests`
   are retired.
 
+## Phase 9 — Proposed post-cutoff bootc-only transition (bounded, cross-repo) — ⏳ not started
+
+This is a **proposal**, not an approved architecture or a cutoff-triggered
+removal. [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md)
+describes the choice for Brian and Ben to review. The currently implemented
+[architecture](../design/architecture.md#prospective-post-cutoff-scope),
+[recipe schema v1](../specs/recipe-schema.md#rules) and
+[progress protocol](../specs/progress-protocol.md) remain in force. Phase 7's
+published-ISO, real-hardware **both-family** Done-when remains incomplete;
+this phase does not rewrite its historical A/B evidence or mark it done.
+
+1. **Approval and inventory gate:** Brian and Ben decide the post-2026-09-30
+   bootc-only scope, new recipe version, bootc-v1 migration mechanism and
+   compatibility window, A/B-v1 rejection diagnostic and retirement criteria.
+   Inventory recipes, automation, `steps.Assemble`, A/B-only tool dependencies,
+   built-in catalog, override catalogs and snosi's shipped catalog/ISO with
+   Odrade coordinating and Murbella confirming publication responsibilities.
+   No A/B capability changes before this gate.
+2. **Separate implementation PRs after approval:** version the recipe and
+   update its spec with code; test bootc-v1 migration, A/B-v1 diagnostic and
+   unknown-version rejection in `recipe.Validate` /
+   `ValidateImageSelection`. Remove the A/B backbone in `steps.Assemble` and
+   only A/B-only dependencies, retaining direct bootc, shared MOK/TPM helpers,
+   disk/LUKS, cosign, kiosk, progress and security interfaces. Align the
+   wizard and `tui.loadCatalogFrom` / `checkCatalog` with bootc-only choices:
+   test valid, invalid, empty and unreadable override catalogs and built-in
+   fallback; no override or fallback may advertise unsupported A/B. Murbella
+   separately updates snosi's shipped catalog and published ISO/tool payload,
+   confirming Sundog's image ref, trust key and catalog entry (Sundog is not
+   in `builtinCatalog()`). Keep Firn's media boundary from
+   [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) and UEFI floor
+   from [ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md).
+3. **Qualification and sole-path decision gate:** after the above changes,
+   record a bounded published-ISO evidence matrix on actual UEFI x86-64
+   hardware, not a claim that every product supports every security mode.
+   Confirm supported cells and the Snowfield disposition before testing:
+
+   | Product | Proposed hardware cells (subject to image support) | Evidence to record |
+   | --- | --- | --- |
+   | Snow | Secure Boot on + TPM present + `tpm2-luks-passphrase`; Secure Boot off + TPM absent + `none` | Published image ref and cosign key; published snosi ISO build; device identity; install-to-login and hostname/user/config checks. |
+   | Floe | Secure Boot off + TPM absent + `luks-passphrase` | Same provenance, device, login and configuration checks; verify boot-time passphrase unlock. |
+   | Sundog | Confirm image/key/catalog first; if secure-capable, Secure Boot on + TPM present + `tpm2-luks` | Same provenance, device, login and configuration checks; if not secure-capable, explicitly reallocate the Secure Boot cell to a supported image. |
+   | Snowfield | Decide whether in the post-cutoff catalog/support scope before qualification | If included, assign a supported distinct hardware cell and record the same provenance, ISO, login and configuration evidence; otherwise record exclusion and rationale. |
+
+   For each qualified cell, capture the exact published image digest/ref,
+   verified cosign trust key, published snosi ISO identity, machine/firmware
+   identity, and install-to-login/identity/config assertions. Across the
+   supported cells cover Secure Boot on/off, TPM present/absent, unencrypted,
+   passphrase LUKS and TPM unlock; expand the table if image capabilities
+   demand it. Secure-capable images under Secure Boot additionally need
+   **actual first-boot MokManager enrollment and a subsequent Secure Boot
+   boot** (not host-side `virt-fw-vars` injection). Exercise cosign failure
+   refusal before writes, disk preflight/refusal, and applicable offline
+   flatpak/media-copy behavior. Nested-VM, fixtures and lab runs support but
+   do not substitute for published-ISO real-hardware proof. Do not declare
+   the ISO the sole path until this evidence, the outstanding Phase 7
+   criterion, and Brian's separate production authorization are resolved.
+
+- **Done when:** architectural approval and migration policy are recorded,
+  separately reviewed contract/code and snosi media changes have landed,
+  the bounded real-hardware evidence is recorded, Phase 7's outstanding
+  criterion is addressed explicitly, and a separate sole-path/production
+  decision has been made. **Not complete.**
+
 ## Later / ideas
 
 - ✅ **Encrypted bootc installs of UKI-entry images — boot-time unlock

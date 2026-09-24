@@ -12,6 +12,15 @@ single installer ISO).
 Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
 [specs/progress-protocol.md](../specs/progress-protocol.md).
 
+## Prospective post-cutoff scope
+
+[ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md) and
+[roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
+outline a possible bootc-only transition after 2026-09-30. Neither changes
+the currently implemented dual-family architecture below or recipe schema
+v1; approval, migration, separate implementation and published-ISO hardware
+qualification are outstanding.
+
 ## Overview
 
 Firn is a single Go binary that installs every snosi image family — bootc
