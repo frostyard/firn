@@ -1,6 +1,6 @@
 # 0016 — Propose a version-2 bootc-only recipe contract
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-24
 
 ## Context
