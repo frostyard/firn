@@ -55,7 +55,7 @@ Rules:
      `help`. `build` injects `-X main.version/commit/date/builtBy` ldflags.
    - `.golangci.yml` — v2 config, `default: standard` linters, gofmt
      formatter, errcheck excluded in `_test.go`.
-   - `.svu.yaml` — svu config (`tag.prefix: "v"`, `v0: true`).
+   - `.svu.yml` — svu config (svu reads `.svu.yml`, not `.yaml`; `tag.prefix: "v"`, `v0: true`).
    - `.goreleaser.yaml` — `version: 2`, `pro: true`; CGO disabled,
      linux amd64+arm64, `-trimpath`, ldflags as above; before-hooks run
      `scripts/completions.sh` and `scripts/manpages.sh`; nfpm deb/rpm/apk
