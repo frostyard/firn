@@ -1,10 +1,7 @@
 # Firn
 
-Firn is the single installer for every [snosi](https://github.com/frostyard)
-image family — bootc OCI images and native A/B disk images — driven by one
-declarative recipe, with a built-in terminal wizard. It replaces a fleet of
-per-family installers with a single recipe schema and a single progress
-protocol.
+Firn installs [snosi](https://github.com/frostyard) bootc OCI images from a
+declarative recipe, with a built-in terminal wizard and progress protocol.
 
 Firn is a GPL-3.0-only, deeply-inspired rewrite of
 [fisherman](https://github.com/frostyard). Attribution to the code it draws
@@ -13,21 +10,19 @@ forking is [ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md).
 
 ## What it does
 
-- **Two image families, one installer.** `family = "bootc"` installs an OCI
+- **Bootc-only installer.** `family = "bootc"` installs an OCI
   image straight from a container registry (deployed from the RAM installer
-  over containers-storage, [ADR-0012](docs/adr/0012-bootc-install-from-ram-installer.md));
-  `family = "ab"` streams a signed native A/B whole-disk image and grows it in
-  place. The recipe picks the family; the pipeline splices the right steps in.
+  over containers-storage, [ADR-0012](docs/adr/0012-bootc-install-from-ram-installer.md)).
 - **Recipe-driven.** A single versioned TOML file
   ([schema](docs/specs/recipe-schema.md),
   [ADR-0005](docs/adr/0005-toml-recipe-model.md)) describes the target disk,
   image, security options, and system configuration. Validation is
   fail-closed: unknown fields, unknown enum values, and wrong-family fields are
-  errors, never warnings.
-- **Security options.** LUKS `/var` (A/B) or root (bootc) with passphrase or
-  TPM2 auto-unlock; UEFI Secure Boot with MOK enrollment on both families
-  (native A/B, and bootc via secure-install schema-1,
-  [ADR-0014](docs/adr/0014-port-secure-install-schema-1-for-bootc.md)).
+  errors, never warnings. New recipes use version 2; bootc version 1 is
+  temporarily accepted with a deprecation warning; A/B version 1 is rejected.
+- **Security options.** LUKS root with passphrase or TPM2 auto-unlock;
+  UEFI Secure Boot with MOK enrollment via secure-install schema-1
+  ([ADR-0014](docs/adr/0014-port-secure-install-schema-1-for-bootc.md)).
 - **Built-in TUI.** The bare `firn` command opens a terminal wizard
   (single binary, Charm stack, [ADR-0007](docs/adr/0007-tui-only-frontend-single-binary.md))
   that walks the install and emits a recipe you can reproduce headlessly.
@@ -78,7 +73,7 @@ make ci        # credential-free gate mirroring CI: verify, coverage, race
 ```
 
 End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
-and verify the booted disk over SSH (`test/e2e-ab.sh`, `test/e2e-bootc.sh`,
+and verify the booted disk over SSH (`test/e2e-bootc.sh`,
 `test/e2e-bootc-secure.sh`, `test/e2e-tui.sh`).
 
 ## Layout
@@ -90,10 +85,10 @@ API, so the pipeline lives under `internal/`:
 cmd/firn-cli/         clix entry point (main)
 cmd/firn/             cobra command handlers (install, validate, TUI)
 internal/recipe/      TOML recipe model + fail-closed validation
-internal/steps/       pipeline assembly (family backbone + option splices)
+internal/steps/       bootc pipeline assembly + option splices
 internal/pipeline/    the step engine, cleanup stack, runner seam
 internal/bootcimg/    bootc install (podman/bootc)
-internal/abimg/       native A/B image surgery (stream, grow, LUKS, TPM, MOK)
+internal/enroll/      MOK and TPM enrollment helpers
 internal/secureboot/  UEFI Secure Boot ESP chain + contract (schema-1)
 internal/tui/         the terminal wizard
 internal/progress/    the progress protocol emitters

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/frostyard/firn/internal/abimg"
 	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
+	"github.com/frostyard/firn/internal/enroll"
 	"github.com/frostyard/firn/internal/flatpak"
 	"github.com/frostyard/firn/internal/luks"
 	"github.com/frostyard/firn/internal/pipeline"
@@ -264,7 +264,7 @@ func runMOKStageBootc(ctx context.Context, env *pipeline.Env) error {
 		return err
 	}
 	cert := filepath.Join(env.SecureImageRoot, strings.TrimPrefix(contract.MokCertificate, "/"))
-	return abimg.StageMOK(ctx, env.Runner, cert, env.Recipe.Security.MokPasswordFile)
+	return enroll.StageMOK(ctx, env.Runner, cert, env.Recipe.Security.MokPasswordFile)
 }
 
 // bootcRAMPaths are the host directories a bootc image pull writes to
@@ -492,7 +492,7 @@ func rootPartNum(l disk.Layout) (int, error) {
 
 // runTPMEnrollBootc enrolls a TPM2 unlock token on the encrypted bootc
 // root at install time, bound to the deployed UKI's signed PCR 11 policy
-// (abimg.EnrollTPMFromUKI — the A/B path's proven scheme), so the
+// (enroll.EnrollTPMFromUKI — the proven signed-PCR scheme), so the
 // installed system auto-unlocks on first boot with no recovery-key
 // prompt. The UKI is the one bootc just wrote under the target ESP's
 // EFI/Linux/; its name is kernel-version-based (unlike A/B's
@@ -532,7 +532,7 @@ func runTPMEnrollBootc(ctx context.Context, env *pipeline.Env) error {
 	// Enroll on the LUKS PARTITION (which holds the LUKS2 superblock the
 	// token is written into), never the opened mapper — same rule as the
 	// A/B path (runTPMEnroll).
-	return abimg.EnrollTPMFromUKI(ctx, env.Runner, uki, env.Layout.Root, keyFile.Name())
+	return enroll.EnrollTPMFromUKI(ctx, env.Runner, uki, env.Layout.Root, keyFile.Name())
 }
 
 // findBootcUKI walks a boot tree for the deployed UKI: the first *.efi

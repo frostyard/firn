@@ -72,6 +72,7 @@ version-1 wire contract.
 | `image_verification_retried` | `warning` | A cosign verification attempt in `preflight-image` failed (transient registry responses can do this) and a bounded retry follows; verification is not weakened, and the run still fails closed with `image_verification_failed` if the final attempt fails. |
 | `no_core_set` | `warning`, `summary` | Core Flatpaks were requested but the selected image publishes no core set. |
 | `no_tpm` | `warning` | No TPM was detected; only choices that do not require it remain valid. |
+| `recipe_v1_deprecated` | `warning` | Accepted bootc version-1 recipe; message is the `deprecated-version` text in the [recipe schema](recipe-schema.md#bootc-version-1-compatibility). Emitted by install and the TUI before the first `step_start`. `firn validate` writes the deprecation to stderr instead of emitting progress and exits 0. |
 | `step_failed` | `error` | A pipeline step failed without a more specific stable code. |
 | `store_cleanup_failed` | `warning` | Cleanup of the redirected bootc container-image store failed. |
 | `store_umount_failed` | `warning` | Unmounting the redirected bootc container-image store failed. |
@@ -92,9 +93,7 @@ two frontends:
 - **Headless human output:** without `--json-progress`, the human renderer
   prints the literal key to stderr. This is deliberate because there is no
   interactive acknowledgement screen; callers are responsible for securing
-  stderr. For A/B recipes, `security.recovery_key_out` may additionally write
-  the key to the explicitly requested 0600 file described by the
-  [recipe schema](recipe-schema.md#security).
+  stderr.
 
 These are disclosure surfaces, not narration: no `info`, `warning`,
 `summary`, `error`, recipe diagnostic, or post-TUI reproduction message may
@@ -110,5 +109,6 @@ contain the key.
 
 ## References
 
-- Rationale: [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md)
+- Rationale: [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
+  [ADR-0016](../adr/0016-bootc-only-recipe-contract.md)
 - Context: [design/architecture.md](../design/architecture.md)

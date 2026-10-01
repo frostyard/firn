@@ -108,4 +108,4 @@ jobs:
       # firn: root-requiring E2E harnesses live in test/e2e-*.sh and run
       # outside hosted CI (KVM required). This job only checks shell syntax.
       - name: Check E2E harness syntax
-        run: bash -n test/e2e-ab.sh test/e2e-bootc-secure.sh test/e2e-bootc.sh test/e2e-tui.sh
+        run: bash -n test/e2e-bootc-secure.sh test/e2e-bootc.sh test/e2e-tui.sh

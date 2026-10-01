@@ -79,7 +79,7 @@ func TestBootcPipelineEndToEnd(t *testing.T) {
 			case "cosign":
 				return nil, nil
 			case "objcopy":
-				// abimg.EnrollTPMFromUKI dumps the UKI's .pcrpkey; write a
+				// enroll.EnrollTPMFromUKI dumps the UKI's .pcrpkey; write a
 				// non-empty file so its extraction check passes.
 				for _, a := range args {
 					if p, ok := strings.CutPrefix(a, ".pcrpkey="); ok {

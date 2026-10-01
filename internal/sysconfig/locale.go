@@ -136,9 +136,15 @@ func (w *DeploymentWriter) WriteTimezone(ctx context.Context, tz string) error {
 	return writeTimezoneTo(lay.etcDir, tz)
 }
 
-// WriteKeyboard writes the deployment's etc/default/keyboard (see the
-// overlay writer's vconsole.conf-symlink incident note; the same
-// keyboard-configuration ownership applies to Debian bootc images).
+// WriteKeyboard writes the deployment's etc/default/keyboard from a
+// LAYOUT[:VARIANT[:MODEL]] spec.
+//
+// Debian images ship /etc/vconsole.conf as a SYMLINK to default/keyboard
+// (keyboard-configuration owns the keymap; console-setup.service reasserts
+// that shape on first boot — observed live 2026-07-17: a plain-file
+// vconsole.conf write was replaced by the symlink on the installed system's
+// first boot). So write the file the symlink resolves to, in its
+// keyboard(5) format.
 func (w *DeploymentWriter) WriteKeyboard(ctx context.Context, spec string) error {
 	if spec == "" {
 		return nil

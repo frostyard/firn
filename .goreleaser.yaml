@@ -12,7 +12,7 @@ pro: true
 project_name: firn
 
 metadata:
-  description: firn - the installer for snosi images — bootc and native A/B
+  description: firn - the bootc installer for snosi images
   homepage: "https://github.com/frostyard/firn"
   license: GPL-3.0-only
   maintainers:
@@ -105,7 +105,7 @@ nfpms:
   - file_name_template: "{{ .ConventionalFileName }}"
     package_name: frostyard-firn
     description: |-
-      The installer for snosi images — bootc and native A/B.
+      The bootc installer for snosi images.
     license: GPL-3.0-only
     contents:
       - src: ./completions/firn.bash

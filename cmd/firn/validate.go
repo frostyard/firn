@@ -31,6 +31,9 @@ func newValidateCmd() *cobra.Command {
 				}
 				return fmt.Errorf("recipe is invalid (%d issue(s))", len(issues))
 			}
+			for _, issue := range recipe.Deprecations(l) {
+				fmt.Fprintln(os.Stderr, issue)
+			}
 			fmt.Printf("firn: recipe is valid (family %s)\n", l.Recipe.Image.Family)
 			return nil
 		},

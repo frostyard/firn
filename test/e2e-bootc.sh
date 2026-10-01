@@ -55,7 +55,7 @@ recipe=${1:-}
 if [[ -z $recipe ]]; then
   recipe=$work/recipe.toml
   cat >"$recipe" <<EOF
-version = 1
+version = 2
 
 [image]
 family = "bootc"

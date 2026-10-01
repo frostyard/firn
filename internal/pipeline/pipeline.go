@@ -13,7 +13,6 @@ import (
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/runner"
-	"github.com/frostyard/firn/internal/trust"
 )
 
 // Step is one unit of install work. Steps are assembled once, up
@@ -53,7 +52,7 @@ type Env struct {
 	// Install state shared between steps, populated as steps run.
 	Layout     disk.Layout
 	RootDev    string // device holding the root fs (mapper path when encrypted)
-	LuksKey    string // transient unlock key (first-boot TPM staging / A/B enrollment)
+	LuksKey    string // transient unlock key for TPM enrollment
 	TargetDir  string // where the target filesystem tree is mounted
 	ScratchDir string // disk-backed scratch space (podman tmp etc.)
 	// BootcSourceRef is the source selected by preflight-image. When
@@ -66,21 +65,6 @@ type Env struct {
 	// the esp-stage / mok-stage steps. Empty on non-secure installs.
 	SecureImageRoot string
 	Summary         []progress.SummaryItem
-
-	// A/B path state.
-	Trust     trust.Options // origin/product/arch/pubring for artifact fetches
-	ABIndex   *trust.Index  // signed, verified artifact index
-	ABVersion string        // resolved release version (14 digits)
-	ABSize    int64         // decompressed disk-image size in bytes
-	VarDev    string        // var filesystem device (mapper path when encrypted)
-	VarPart   string        // var partition node
-	VarMount  string        // where the target /var filesystem is mounted
-	RootMount string        // where the read-only erofs root is mounted
-	// Recovery-key output reservation is created by A/B preflight before any
-	// target write and retained only after the atomic key commit.
-	RecoveryKeyOut     string
-	RecoveryKeyTemp    string
-	RecoveryKeyWritten bool
 
 	// CurrentStep is the 0-based index of the running step, for
 	// StepProgress events emitted from inside step Runs.

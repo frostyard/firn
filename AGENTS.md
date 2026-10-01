@@ -1,7 +1,7 @@
 # Firn
 
-Firn is the single installer for all snosi image families — bootc OCI
-images and native A/B disk images — recipe-driven, with a built-in TUI.
+Firn installs snosi bootc OCI images from version-2 recipes (with temporary
+bootc-v1 compatibility), with a built-in TUI.
 It is a deeply-inspired GPL-3.0-only rewrite of fisherman (attribution in
 `NOTICE`, rationale in ADR-0003). Start at
 [docs/README.md](docs/README.md).
@@ -24,9 +24,9 @@ Start from .agents/skills/TEMPLATE/SKILL.md. -->
 - **Changing a wizard page or debugging `make e2e-tui`** →
   [.agents/skills/drive-tui-e2e/SKILL.md](.agents/skills/drive-tui-e2e/SKILL.md)
   — the tmux expect-driver is a contract with `internal/tui/wizard_pages.go`.
-- **Extending or debugging any nested-VM E2E** (`e2e-ab`, `e2e-tui`) →
+- **Extending or debugging any nested-VM E2E** (`e2e-tui`, `e2e-bootc-secure`) →
   [.agents/skills/nested-vm-e2e/SKILL.md](.agents/skills/nested-vm-e2e/SKILL.md)
-  — includes the ADR-0009 isolation rules and artifact locations.
+  — includes guest isolation and artifact locations.
 - **Implementing anything fisherman or snosi-install already does** →
   [.agents/skills/port-from-parents/SKILL.md](.agents/skills/port-from-parents/SKILL.md)
   — provenance, incident comments, runner seam, fake-runner tests.

@@ -20,7 +20,6 @@ import (
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/runner"
 	"github.com/frostyard/firn/internal/steps"
-	"github.com/frostyard/firn/internal/trust"
 	"github.com/frostyard/firn/internal/tui"
 )
 
@@ -31,7 +30,6 @@ type tuiOptions struct {
 	secureBoot string // tristate: auto|on|off
 	tpm        string
 	uefi       string
-	pubring    string
 }
 
 type tuiRuntime struct {
@@ -97,7 +95,6 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) (ret
 		Machine: recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
 		Runner:  runner.New(),
 		Version: Version,
-		Trust:   trust.Options{PubringPath: o.pubring},
 	}
 	var err error
 	if env.Machine.SecureBoot, err = tristate(o.secureBoot, platform.SecureBoot); err != nil {
@@ -184,7 +181,7 @@ func runTUIInstall(ctx context.Context, env *pipeline.Env, l *recipe.Loaded) (tu
 	// The in-process channel is the interactive flow's only progress consumer
 	// (ADR-0007). NDJSON is headless-only because the TUI owns stdout.
 	ch := progress.NewChannel(64)
-	env.Emitter = ch
+	env.Emitter = deprecationEmitter{Emitter: ch, issues: recipe.Deprecations(l)}
 
 	ictx, cancel := context.WithCancel(ctx)
 	defer cancel()

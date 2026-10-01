@@ -119,24 +119,22 @@ func (m *fieldBackAfterInit) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func TestPreviousPageSkipsUnavailableFamilyPage(t *testing.T) {
+func TestPreviousPage(t *testing.T) {
 	tests := []struct {
-		name          string
-		current       wizardPage
-		hasFamilyPage bool
-		want          wizardPage
+		name    string
+		current wizardPage
+		want    wizardPage
 	}{
-		{name: "welcome stays at welcome", current: pageWelcome, hasFamilyPage: true, want: pageWelcome},
-		{name: "mixed catalog image returns to family", current: pageImage, hasFamilyPage: true, want: pageFamily},
-		{name: "single-family image returns to welcome", current: pageImage, hasFamilyPage: false, want: pageWelcome},
-		{name: "ordinary page decrements", current: pageSecurity, hasFamilyPage: true, want: pageFilesystem},
-		{name: "review returns to flatpaks", current: pageReview, hasFamilyPage: true, want: pageFlatpaks},
+		{name: "welcome stays at welcome", current: pageWelcome, want: pageWelcome},
+		{name: "image returns to welcome", current: pageImage, want: pageWelcome},
+		{name: "ordinary page decrements", current: pageSecurity, want: pageFilesystem},
+		{name: "review returns to flatpaks", current: pageReview, want: pageFlatpaks},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := previousPage(tt.current, tt.hasFamilyPage); got != tt.want {
-				t.Fatalf("previousPage(%v, %v) = %v, want %v", tt.current, tt.hasFamilyPage, got, tt.want)
+			if got := previousPage(tt.current); got != tt.want {
+				t.Fatalf("previousPage(%v) = %v, want %v", tt.current, got, tt.want)
 			}
 		})
 	}
@@ -203,10 +201,6 @@ func TestRunWizardRequiresSessionDirectoryBeforeUI(t *testing.T) {
 
 func bootcEntry() CatalogEntry {
 	return CatalogEntry{Family: recipe.FamilyBootc, Name: "snow", Description: "d", Ref: "ghcr.io/frostyard/snow:latest"}
-}
-
-func abEntry() CatalogEntry {
-	return CatalogEntry{Family: recipe.FamilyAB, Name: "snow-ab", Description: "d", Product: "snow-ab"}
 }
 
 func baseChoices(entry CatalogEntry) wizardChoices {
@@ -305,49 +299,6 @@ func TestAssembleRecipeMatrix(t *testing.T) {
 			}(),
 			env: recipe.Env{SecureBoot: true},
 		},
-		{
-			name: "ab none ext4 no secure boot",
-			c: func() wizardChoices {
-				c := baseChoices(abEntry())
-				c.varFilesystem = "ext4"
-				return c
-			}(),
-		},
-		{
-			name: "ab luks btrfs subvolumes mok skip",
-			c: func() wizardChoices {
-				c := withUser(baseChoices(abEntry()))
-				c.varFilesystem = "btrfs"
-				c.varSubvolumes = true
-				c.encryption = "luks"
-				c.mok = "skip"
-				return c
-			}(),
-			env: recipe.Env{SecureBoot: true},
-		},
-		{
-			name: "ab tpm2-luks mok enroll",
-			c: func() wizardChoices {
-				c := withUser(baseChoices(abEntry()))
-				c.varFilesystem = "ext4"
-				c.encryption = "tpm2-luks"
-				c.mok = "enroll"
-				c.mokPassword = "mok-pw"
-				return c
-			}(),
-			env: recipe.Env{SecureBoot: true, TPM: true},
-		},
-		{
-			name: "ab none mok enroll",
-			c: func() wizardChoices {
-				c := baseChoices(abEntry())
-				c.varFilesystem = "ext4"
-				c.mok = "enroll"
-				c.mokPassword = "mok-pw"
-				return c
-			}(),
-			env: recipe.Env{SecureBoot: true},
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -386,9 +337,15 @@ func TestAssembleRecipeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assembleRecipe: %v", err)
 	}
+	if rec.Version != 2 {
+		t.Fatalf("wizard version = %d, want 2", rec.Version)
+	}
 	reviewed, err := marshalAssembled(rec)
 	if err != nil {
 		t.Fatalf("marshalAssembled: %v", err)
+	}
+	if !strings.Contains(string(reviewed), "version = 2") {
+		t.Fatalf("reviewed recipe lacks v2: %s", reviewed)
 	}
 	l, err := recipe.Parse(reviewed)
 	if err != nil {
@@ -452,22 +409,6 @@ func TestAssembleRecipeAdvancedImageOptions(t *testing.T) {
 		assertValid(t, rec)
 	})
 
-	t.Run("ab", func(t *testing.T) {
-		c := baseChoices(abEntry())
-		c.varFilesystem = "ext4"
-		c.advancedImage = true
-		c.origin = " https://mirror.example.test "
-		c.release = "20260814010203"
-		rec, err := assembleRecipe(c, t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if rec.Image.Origin != "https://mirror.example.test" || rec.Image.Release != "20260814010203" {
-			t.Fatalf("A/B advanced fields = origin:%q release:%q", rec.Image.Origin, rec.Image.Release)
-		}
-		assertValid(t, rec)
-	})
-
 	t.Run("disabled ignores stale answers", func(t *testing.T) {
 		c := baseChoices(bootcEntry())
 		c.filesystem = "btrfs"
@@ -485,8 +426,8 @@ func TestAssembleRecipeAdvancedImageOptions(t *testing.T) {
 
 func TestAssembleRecipeSecretFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "secrets")
-	c := baseChoices(abEntry())
-	c.varFilesystem = "ext4"
+	c := baseChoices(bootcEntry())
+	c.filesystem = "ext4"
 	c.encryption = "tpm2-luks"
 	c.mok = "enroll"
 	c.mokPassword = "mok-pw"
@@ -538,22 +479,6 @@ func TestAssembleRecipeSecretFiles(t *testing.T) {
 		t.Fatalf("assembleRecipe (bootc): %v", err)
 	}
 	checkSecret(recb.Security.PassphraseFile, "s3cret")
-}
-
-func TestAssembleRecipeDefaultsABRecoveryKeyToSession(t *testing.T) {
-	dir := t.TempDir()
-	for _, encryption := range []string{"luks", "tpm2-luks"} {
-		c := baseChoices(abEntry())
-		c.varFilesystem = "ext4"
-		c.encryption = encryption
-		rec, err := assembleRecipe(c, dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if want := filepath.Join(dir, "recovery-key"); rec.Security.RecoveryKeyOut != want {
-			t.Fatalf("%s recovery_key_out = %q, want %q", encryption, rec.Security.RecoveryKeyOut, want)
-		}
-	}
 }
 
 func TestAssembleRecipeSessionsDoNotOverwriteSecrets(t *testing.T) {
@@ -642,15 +567,15 @@ func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 		t.Error("passphrase mode without passphrase: want error, got nil")
 	}
 
-	c = baseChoices(abEntry())
-	c.varFilesystem = "ext4"
+	c = baseChoices(bootcEntry())
+	c.filesystem = "ext4"
 	c.mok = "enroll" // no MOK password provided
 	if _, err := assembleRecipe(c, dir); err == nil {
 		t.Error("mok enroll without password: want error, got nil")
 	}
 
-	c = baseChoices(abEntry())
-	c.varFilesystem = "ext4"
+	c = baseChoices(bootcEntry())
+	c.filesystem = "ext4"
 	c.createUser = true
 	c.username = "bjk" // no password provided
 	if _, err := assembleRecipe(c, dir); err == nil {
@@ -670,16 +595,16 @@ func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 		t.Error("whitespace-only passphrase: want error, got nil")
 	}
 
-	c = baseChoices(abEntry())
-	c.varFilesystem = "ext4"
+	c = baseChoices(bootcEntry())
+	c.filesystem = "ext4"
 	c.mok = "enroll"
 	c.mokPassword = " \t "
 	if _, err := assembleRecipe(c, dir); err == nil {
 		t.Error("whitespace-only MOK password: want error, got nil")
 	}
 
-	c = baseChoices(abEntry())
-	c.varFilesystem = "ext4"
+	c = baseChoices(bootcEntry())
+	c.filesystem = "ext4"
 	c.createUser = true
 	c.username = "bjk"
 	c.password = " \t "
@@ -689,26 +614,6 @@ func TestAssembleRecipeWizardBugGuards(t *testing.T) {
 }
 
 func TestWizardInteractiveBranchContracts(t *testing.T) {
-	t.Run("one-family catalogs skip the family form", func(t *testing.T) {
-		for _, entry := range []CatalogEntry{bootcEntry(), abEntry()} {
-			w := &wizard{catalog: []CatalogEntry{entry}}
-			family, quit, err := w.familyPage(context.Background(), "")
-			if err != nil || quit || family != entry.Family {
-				t.Fatalf("familyPage(%s-only) = (%q, %v, %v)", entry.Family, family, quit, err)
-			}
-		}
-	})
-
-	t.Run("start-over family preference", func(t *testing.T) {
-		families := []string{recipe.FamilyBootc, recipe.FamilyAB}
-		if got := preferredFamily(families, recipe.FamilyAB); got != recipe.FamilyAB {
-			t.Fatalf("preferredFamily() = %q, want prior A/B choice", got)
-		}
-		if got := preferredFamily(families, "missing"); got != recipe.FamilyBootc {
-			t.Fatalf("preferredFamily() fallback = %q, want first represented family", got)
-		}
-	})
-
 	t.Run("review start-over quit and install", func(t *testing.T) {
 		for _, tc := range []struct {
 			action          string
@@ -739,8 +644,8 @@ func TestWizardInteractiveBranchContracts(t *testing.T) {
 	})
 
 	t.Run("no user", func(t *testing.T) {
-		c := baseChoices(abEntry())
-		c.varFilesystem = "ext4"
+		c := baseChoices(bootcEntry())
+		c.filesystem = "ext4"
 		rec, err := assembleRecipe(c, t.TempDir())
 		if err != nil {
 			t.Fatal(err)
@@ -797,7 +702,6 @@ func TestSecurityFormInitialSelectionsAndRebuild(t *testing.T) {
 		entry       CatalogEntry
 		alternative string
 	}{
-		{entry: abEntry(), alternative: "luks"},
 		{entry: bootcEntry(), alternative: "luks-passphrase"},
 	} {
 		w := &wizard{
@@ -820,8 +724,8 @@ func TestSecurityFormInitialSelectionsAndRebuild(t *testing.T) {
 	}
 
 	// Preserve an explicit choice when rebuilding the form, and do not
-	// populate an irrelevant A/B field when Secure Boot is inactive.
-	w := &wizard{opts: WizardOpts{Machine: recipe.Env{SecureBoot: true}}, c: wizardChoices{entry: abEntry()}}
+	// populate a MOK choice when Secure Boot is inactive.
+	w := &wizard{opts: WizardOpts{Machine: recipe.Env{SecureBoot: true}}, c: wizardChoices{entry: bootcEntry()}}
 	w.c.mok = "skip"
 	w.securityForm()
 	if w.c.mok != "skip" {
@@ -874,11 +778,6 @@ func TestAdvancedImageFormsPreserveAnswersWhenRebuilt(t *testing.T) {
 		t.Fatalf("rebuilt bootc advanced form changed answers: %+v", bootc.c)
 	}
 
-	ab := &wizard{c: wizardChoices{entry: abEntry(), advancedImage: true, origin: "https://mirror.example.test", release: "20260814010203"}}
-	ab.advancedImageForm()
-	if ab.c.origin != "https://mirror.example.test" || ab.c.release != "20260814010203" {
-		t.Fatalf("rebuilt A/B advanced form changed answers: %+v", ab.c)
-	}
 }
 
 func TestSystemFormDoesNotSeedOptionalImageDefaults(t *testing.T) {
@@ -923,23 +822,6 @@ func TestReviewedTOMLScoping(t *testing.T) {
 		}
 	}
 
-	ca := baseChoices(abEntry())
-	ca.varFilesystem = "btrfs"
-	ca.varSubvolumes = true
-	reca, err := assembleRecipe(ca, t.TempDir())
-	if err != nil {
-		t.Fatalf("assembleRecipe (ab): %v", err)
-	}
-	reviewedA, err := marshalAssembled(reca)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tomlA := string(reviewedA)
-	for _, banned := range []string{"ref =", "\nfilesystem =", "btrfs_subvolumes", "bootloader", "passphrase"} {
-		if strings.Contains(tomlA, banned) {
-			t.Errorf("ab TOML must not contain %q:\n%s", banned, tomlA)
-		}
-	}
 }
 
 func TestSplitListAndMergeGroups(t *testing.T) {
@@ -1121,19 +1003,6 @@ func TestLiveValidators(t *testing.T) {
 	if validateTargetRefInput("ghcr.io/frostyard/snow: bad") == nil {
 		t.Error("target ref with whitespace accepted")
 	}
-	if err := validateOriginInput("https://mirror.example.test"); err != nil {
-		t.Errorf("valid artifact origin rejected: %v", err)
-	}
-	if validateOriginInput("file:///tmp/repo") == nil {
-		t.Error("non-HTTP artifact origin accepted")
-	}
-	if err := validateReleaseInput("20260814010203"); err != nil {
-		t.Errorf("valid release rejected: %v", err)
-	}
-	if validateReleaseInput("latest") == nil {
-		t.Error("non-version release accepted")
-	}
-
 	tzdir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(tzdir, "America"), 0o755); err != nil {
 		t.Fatal(err)

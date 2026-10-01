@@ -6,9 +6,8 @@ import (
 	"testing"
 )
 
-// The deployment writer's locale/timezone/keyboard must produce the
-// exact same artifacts as the overlay writer (shared builders in
-// locale.go), landing in the deployment's writable /etc.
+// The deployment writer's locale/timezone/keyboard artifacts (shared
+// builders in locale.go) land in the deployment's writable /etc.
 func TestDeploymentWriterLocaleTimezoneKeyboard(t *testing.T) {
 	target := composefsTarget(t, "aaa")
 	etcDir := filepath.Join(target, "state", "deploy", "aaa", "etc")

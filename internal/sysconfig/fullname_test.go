@@ -9,7 +9,7 @@ import (
 	"github.com/frostyard/firn/internal/recipe"
 )
 
-func TestCreateUserFullnameParity(t *testing.T) {
+func TestDeploymentCreateUserFullname(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		fullname string
@@ -35,23 +35,8 @@ func TestCreateUserFullnameParity(t *testing.T) {
 				}
 			}
 
-			stubChown(t)
-			overlay := newOverlayWriter(t)
-			if _, err := overlay.CreateUser(recipe.User{Name: "dev", Fullname: tt.fullname}); err != nil {
-				t.Fatal(err)
-			}
-			passwd := readOverlayFile(t, filepath.Join(upperOf(overlay), "passwd"), 0o644)
-			var overlayGECOS string
-			for line := range strings.SplitSeq(passwd, "\n") {
-				fields := strings.Split(line, ":")
-				if len(fields) == 7 && fields[0] == "dev" {
-					overlayGECOS = fields[4]
-					break
-				}
-			}
-
-			if deploymentGECOS != tt.fullname || overlayGECOS != tt.fullname || deploymentGECOS != overlayGECOS {
-				t.Fatalf("GECOS mismatch: deployment=%q overlay=%q want=%q", deploymentGECOS, overlayGECOS, tt.fullname)
+			if deploymentGECOS != tt.fullname {
+				t.Fatalf("GECOS = %q, want %q", deploymentGECOS, tt.fullname)
 			}
 		})
 	}

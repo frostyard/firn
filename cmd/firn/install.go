@@ -14,8 +14,32 @@ import (
 	"github.com/frostyard/firn/internal/recipe"
 	"github.com/frostyard/firn/internal/runner"
 	"github.com/frostyard/firn/internal/steps"
-	"github.com/frostyard/firn/internal/trust"
 )
+
+// assembleInstall is the command's assembly seam; tests supply a harmless
+// pipeline to exercise the real command and progress emission without disks.
+var assembleInstall = steps.Assemble
+
+// deprecationEmitter keeps Start first in the progress protocol and sends
+// each compatibility warning before the first step event.
+type deprecationEmitter struct {
+	progress.Emitter
+	issues []recipe.Issue
+}
+
+func (e deprecationEmitter) Emit(event progress.Event) error {
+	if err := e.Emitter.Emit(event); err != nil {
+		return err
+	}
+	if _, ok := event.(progress.Start); ok {
+		for _, issue := range e.issues {
+			if err := e.Emitter.Emit(progress.Warning{Code: progress.CodeRecipeV1Deprecated, Message: issue.Message}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 func newInstallCmd() *cobra.Command {
 	var (
@@ -23,7 +47,6 @@ func newInstallCmd() *cobra.Command {
 		dryRun       bool
 		confirm      string
 		jsonProgress bool
-		pubring      string
 	)
 	cmd := &cobra.Command{
 		Use:   "install [recipe.toml]",
@@ -37,19 +60,13 @@ func newInstallCmd() *cobra.Command {
 				// No recipe path: the TUI wizard (ADR-0007) with this
 				// invocation's platform overrides. Headless-only flags were
 				// rejected by validateInstallMode before entering the wizard.
-				return runTUI(cmd.Context(), tuiOptions{
-					secureBoot: probes.secureBoot,
-					tpm:        probes.tpm,
-					uefi:       probes.uefi,
-					pubring:    pubring,
-				})
+				return runTUI(cmd.Context(), tuiOptions(probes))
 			}
 
 			env := &pipeline.Env{
 				Machine: recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
 				Runner:  runner.New(),
 				Version: Version,
-				Trust:   trust.Options{PubringPath: pubring},
 			}
 			var err error
 			if env.Machine.SecureBoot, env.Machine.TPM, env.UEFI, err = probes.resolve(); err != nil {
@@ -85,11 +102,12 @@ func newInstallCmd() *cobra.Command {
 					return nil
 				})
 			}
+			env.Emitter = deprecationEmitter{Emitter: env.Emitter, issues: recipe.Deprecations(l)}
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			p := steps.Assemble(l)
+			p := assembleInstall(l)
 			if err := p.Run(ctx, env, dryRun); err != nil {
 				return err
 			}
@@ -103,7 +121,6 @@ func newInstallCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate, assemble, and run preflight only")
 	cmd.Flags().StringVar(&confirm, "confirm", "", "typed confirmation: must equal the recipe's target disk path")
 	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit NDJSON progress events on stdout (requires recipe path)")
-	cmd.Flags().StringVar(&pubring, "pubring", "", "OpenPGP keyring for A/B index verification (default: search known locations)")
 	return cmd
 }
 
