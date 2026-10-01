@@ -62,7 +62,7 @@ func RunWizard(ctx context.Context, o WizardOpts) ([]byte, error) {
 	}
 	w := &wizard{
 		opts:       o,
-		catalog:    orderedCatalog(catalog),
+		catalog:    catalog,
 		theme:      huh.ThemeBase16(), // ANSI 16-color: safe on consoles and serial terminals
 		secretsDir: o.SessionDir,
 	}
@@ -82,7 +82,6 @@ type wizardPage int
 
 const (
 	pageWelcome wizardPage = iota
-	pageFamily
 	pageImage
 	pageAdvancedImage
 	pageDisk
@@ -107,21 +106,16 @@ type wizardChoices struct {
 	advancedImage bool
 	targetRef     string
 	bootloader    string
-	origin        string
-	release       string
 
 	disk string
 
 	// bootc filesystem choices.
 	filesystem      string
 	btrfsSubvolumes bool
-	// ab filesystem choices.
-	varFilesystem string
-	varSubvolumes bool
 
 	encryption  string
 	passphrase  string // secret; never enters the recipe inline
-	mok         string // "", "enroll", or "skip" (ab + Secure Boot only)
+	mok         string // "", "enroll", or "skip" (Secure Boot only)
 	mokPassword string // secret
 
 	hostname   string
@@ -151,8 +145,6 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 		return nil, errors.New("tui: image catalog is empty")
 	}
 
-	hasFamilyPage := len(catalogFamilies(w.catalog)) > 1
-	family := ""
 	current := pageWelcome
 	for {
 		var quit bool
@@ -160,13 +152,8 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 		switch current {
 		case pageWelcome:
 			quit, err = w.page(ctx, w.welcomeForm())
-		case pageFamily:
-			family, quit, err = w.familyPage(ctx, family)
 		case pageImage:
-			if !hasFamilyPage {
-				family = catalogFamilies(w.catalog)[0]
-			}
-			quit, err = w.imagePage(ctx, family)
+			quit, err = w.imagePage(ctx)
 		case pageAdvancedImage:
 			quit, err = w.page(ctx, w.advancedImageForm())
 		case pageDisk:
@@ -192,9 +179,8 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 				return nil, nil
 			}
 			if startOver {
-				family = w.c.entry.Family
 				w.c = wizardChoices{}
-				current = firstChoicePage(hasFamilyPage)
+				current = pageImage
 				continue
 			}
 		}
@@ -203,7 +189,7 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 			return nil, nil
 		}
 		if errors.Is(err, errPageBack) {
-			current = previousPage(current, hasFamilyPage)
+			current = previousPage(current)
 			continue
 		}
 		if err != nil {
@@ -213,18 +199,8 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 	}
 }
 
-func firstChoicePage(hasFamilyPage bool) wizardPage {
-	if hasFamilyPage {
-		return pageFamily
-	}
-	return pageImage
-}
-
-func previousPage(current wizardPage, hasFamilyPage bool) wizardPage {
+func previousPage(current wizardPage) wizardPage {
 	if current <= pageWelcome {
-		return pageWelcome
-	}
-	if current == pageImage && !hasFamilyPage {
 		return pageWelcome
 	}
 	return current - 1
@@ -402,23 +378,12 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 			r.Image.TargetRef = strings.TrimSpace(c.targetRef)
 			r.Target.Bootloader = c.bootloader
 		}
-	case recipe.FamilyAB:
-		r.Image.Product = c.entry.Product
-		r.Target.VarFilesystem = c.varFilesystem
-		r.Target.VarSubvolumes = c.varSubvolumes && c.varFilesystem == "btrfs"
-		if c.advancedImage {
-			r.Image.Origin = strings.TrimSpace(c.origin)
-			r.Image.Release = strings.TrimSpace(c.release)
-		}
 	default:
 		return nil, fmt.Errorf("tui: catalog entry %q has unknown family %q", c.entry.Name, c.entry.Family)
 	}
 
 	r.Security.Encryption = c.encryption
-	if c.entry.Family == recipe.FamilyAB && c.encryption != "none" {
-		r.Security.RecoveryKeyOut = filepath.Join(secretsDir, "recovery-key")
-	}
-	if c.entry.Family == recipe.FamilyBootc && needsPassphrase(c.encryption) {
+	if needsPassphrase(c.encryption) {
 		if strings.TrimSpace(c.passphrase) == "" {
 			return nil, fmt.Errorf("tui: encryption %q selected without a passphrase (wizard bug)", c.encryption)
 		}
@@ -428,9 +393,7 @@ func assembleRecipe(c wizardChoices, secretsDir string) (*recipe.Recipe, error) 
 		}
 		r.Security.PassphraseFile = p
 	}
-	// MOK enrollment is family-independent under Secure Boot. A/B and
-	// bootc use different pipeline staging implementations, but share the
-	// same recipe fields and one-time MokManager password (ADR-0014).
+	// MOK enrollment uses the one-time MokManager password (ADR-0014).
 	if c.mok != "" {
 		r.Security.Mok = c.mok
 		if c.mok == "enroll" {
@@ -583,7 +546,6 @@ var (
 	timezoneInputRe      = regexp.MustCompile(`^[A-Za-z_+-]+(/[A-Za-z0-9_+-]+)*$`)
 	keyboardInputRe      = regexp.MustCompile(`^[a-z0-9_-]+(:[a-z0-9_-]+(:[a-z0-9_-]+)?)?$`)
 	usernameInputRe      = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
-	releaseInputRe       = regexp.MustCompile(`^[0-9]{14}$`)
 )
 
 func validateHostnameInput(h string) error {
@@ -664,22 +626,6 @@ func validateTargetRefInput(ref string) error {
 	ref = strings.TrimSpace(ref)
 	if ref != "" && strings.ContainsAny(ref, " \t\r\n") {
 		return errors.New("must be an OCI image reference without whitespace")
-	}
-	return nil
-}
-
-func validateOriginInput(origin string) error {
-	origin = strings.TrimSpace(origin)
-	if origin != "" && !strings.HasPrefix(origin, "https://") && !strings.HasPrefix(origin, "http://") {
-		return errors.New("must be an HTTP(S) URL")
-	}
-	return nil
-}
-
-func validateReleaseInput(release string) error {
-	release = strings.TrimSpace(release)
-	if release != "" && !releaseInputRe.MatchString(release) {
-		return errors.New("must be a 14-digit release version")
 	}
 	return nil
 }

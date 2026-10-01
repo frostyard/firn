@@ -1,7 +1,6 @@
 // Package recipe loads and validates firn's TOML recipe — the sole
-// configuration input, per docs/specs/recipe-schema.md (version 1).
-// Validation is fail-closed: unknown fields, unknown enum values, and
-// fields belonging to the other image family are errors.
+// configuration input, per docs/specs/recipe-schema.md (version 2).
+// Validation is fail-closed: unknown fields and enum values are errors.
 package recipe
 
 import (
@@ -12,12 +11,14 @@ import (
 )
 
 // SchemaVersion is the recipe schema version this package implements.
-const SchemaVersion = 1
+const SchemaVersion = 2
+
+// SchemaVersionV1Bootc remains accepted during the bootc migration window.
+const SchemaVersionV1Bootc = 1
 
 // Families.
 const (
 	FamilyBootc = "bootc"
-	FamilyAB    = "ab"
 )
 
 // Recipe is the top-level schema. Field presence (as opposed to zero
@@ -32,36 +33,22 @@ type Recipe struct {
 
 // Image selects what to install. family is never inferred (ADR-0005).
 //
-// All optional/family-scoped leaves carry omitempty so that a Recipe
-// marshaled by the TUI wizard round-trips: family scoping (spec rule 1)
-// rejects fields of the other family by PRESENCE (IsSet), so encoding
-// zero values would make every wizard-written recipe invalid.
+// Optional leaves carry omitempty so that wizard-written recipes round-trip.
 type Image struct {
 	Family string `toml:"family,omitempty"`
 
-	// bootc-only fields.
 	Ref          string `toml:"ref,omitempty"`
 	TargetRef    string `toml:"target_ref,omitempty"`
 	CosignPubKey string `toml:"cosign_pub_key,omitempty"`
-
-	// ab-only fields.
-	Product string `toml:"product,omitempty"`
-	Origin  string `toml:"origin,omitempty"`
-	Release string `toml:"release,omitempty"`
 }
 
 // Target selects the disk and (where genuinely variable) the layout.
 type Target struct {
 	Disk string `toml:"disk,omitempty"`
 
-	// bootc-only fields.
 	Filesystem      string `toml:"filesystem,omitempty"`
 	BtrfsSubvolumes bool   `toml:"btrfs_subvolumes,omitempty"`
 	Bootloader      string `toml:"bootloader,omitempty"`
-
-	// ab-only fields (ADR-0008).
-	VarFilesystem string `toml:"var_filesystem,omitempty"`
-	VarSubvolumes bool   `toml:"var_subvolumes,omitempty"`
 }
 
 // Security holds the always-explicit security choices (ADR-0004).
@@ -70,8 +57,6 @@ type Security struct {
 	Passphrase     string `toml:"passphrase,omitempty"`
 	PassphraseFile string `toml:"passphrase_file,omitempty"`
 
-	// ab-only fields.
-	RecoveryKeyOut  string `toml:"recovery_key_out,omitempty"`
 	Mok             string `toml:"mok,omitempty"`
 	MokPasswordFile string `toml:"mok_password_file,omitempty"`
 }
@@ -103,14 +88,13 @@ type User struct {
 // Loaded pairs a decoded Recipe with the decode metadata needed to
 // distinguish "absent" from "zero value" during validation.
 type Loaded struct {
-	Recipe Recipe
-	meta   toml.MetaData
+	Recipe   Recipe
+	meta     toml.MetaData
+	legacyAB bool
 }
 
 // Marshal encodes a recipe using the canonical schema representation. The
-// omitempty tags on family-scoped and optional fields are part of the contract:
-// fail-closed validation distinguishes an absent field from a present zero
-// value.
+// omitempty tags on optional fields avoid emitting absent leaves.
 func Marshal(r *Recipe) ([]byte, error) {
 	return toml.Marshal(*r)
 }
@@ -131,6 +115,18 @@ func Load(path string) (*Loaded, error) {
 
 // Parse decodes recipe bytes. See Load.
 func Parse(data []byte) (*Loaded, error) {
+	// Recognize only the explicit v1 A/B discriminator before strict decode,
+	// so Validate can give a targeted rejection without accepting its old keys.
+	var discriminator struct {
+		Version int
+		Image   struct{ Family string }
+	}
+	if _, err := toml.Decode(string(data), &discriminator); err != nil {
+		return nil, fmt.Errorf("recipe: %w", err)
+	}
+	if discriminator.Version == SchemaVersionV1Bootc && discriminator.Image.Family == "ab" {
+		return &Loaded{Recipe: Recipe{Version: discriminator.Version, Image: Image{Family: discriminator.Image.Family}}, legacyAB: true}, nil
+	}
 	var r Recipe
 	meta, err := toml.Decode(string(data), &r)
 	if err != nil {

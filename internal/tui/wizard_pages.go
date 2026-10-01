@@ -48,64 +48,10 @@ func (w *wizard) welcomeForm() *huh.Form {
 	))
 }
 
-// familyPage offers only families represented by the loaded catalog. A
-// one-family catalog proceeds directly to image selection without presenting
-// a choice that cannot lead to a valid recipe.
-func (w *wizard) familyPage(ctx context.Context, preferred string) (family string, quit bool, err error) {
-	families := catalogFamilies(w.catalog)
-	if len(families) == 0 {
-		return "", false, errors.New("tui: image catalog has no families")
-	}
-	if len(families) == 1 {
-		return families[0], false, nil
-	}
-	family = preferredFamily(families, preferred)
-	opts := make([]huh.Option[string], 0, len(families))
-	for _, available := range families {
-		switch available {
-		case recipe.FamilyBootc:
-			opts = append(opts, huh.NewOption("bootc — the long-term path, a little bolder today", available))
-		case recipe.FamilyAB:
-			opts = append(opts, huh.NewOption("A/B  — the proven path, for now", available))
-		}
-	}
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("Update mechanism").
-			Description("Both are image-based and update atomically; they differ in how.\n\n" +
-				"bootc is where frostyard images are headed long-term — updates\n" +
-				"arrive as OCI container pulls. It is still maturing on Debian,\n" +
-				"so it carries a little more risk today.\n\n" +
-				"A/B keeps two complete system copies and flips between them —\n" +
-				"proven and boring, at the cost of extra disk space. It will\n" +
-				"retire once bootc is rock solid.").
-			Options(opts...).
-			Value(&family),
-	))
-	if quit, err = w.page(ctx, form); quit || err != nil {
-		return family, quit, err
-	}
-	return family, false, nil
-}
-
-func preferredFamily(families []string, preferred string) string {
-	for _, family := range families {
-		if family == preferred {
-			return preferred
-		}
-	}
-	return families[0]
-}
-
-func (w *wizard) imagePage(ctx context.Context, family string) (quit bool, err error) {
-	var entries []CatalogEntry
-	for _, e := range w.catalog {
-		if e.Family == family {
-			entries = append(entries, e)
-		}
-	}
+func (w *wizard) imagePage(ctx context.Context) (quit bool, err error) {
+	entries := w.catalog
 	if len(entries) == 0 {
-		return false, fmt.Errorf("tui: catalog has no %s images", family)
+		return false, errors.New("tui: catalog has no images")
 	}
 	idx := 0
 	opts := make([]huh.Option[int], len(entries))
@@ -138,58 +84,41 @@ func (w *wizard) setEntry(entry CatalogEntry) {
 
 // advancedImageForm exposes engine-supported image and target overrides while
 // keeping the common catalog-driven path short. Image identity itself remains
-// catalog-controlled; /etc/firn/catalog.json is the custom ref/product escape
+// catalog-controlled; /etc/firn/catalog.json is the custom ref escape
 // hatch and carries the matching trust metadata with the selection.
 func (w *wizard) advancedImageForm() *huh.Form {
 	hidden := func() bool { return !w.c.advancedImage }
 	groups := []*huh.Group{huh.NewGroup(
 		huh.NewConfirm().
 			Title("Advanced image options?").
-			Description("Override update tracking, release selection, or bootloader. Initially No.").
+			Description("Override update tracking or bootloader. Initially No.").
 			Value(&w.c.advancedImage),
 	)}
-	if w.c.entry.Family == recipe.FamilyBootc {
-		if w.c.bootloader == "" {
-			w.c.bootloader = "systemd"
-		}
-		bootloaderOptions := []huh.Option[string]{
-			huh.NewOption("systemd-boot (default)", "systemd"),
-		}
-		bootloaderDescription := "GRUB 2 is also available when Secure Boot is inactive."
-		if !w.opts.Machine.SecureBoot {
-			bootloaderOptions = append(bootloaderOptions, huh.NewOption("GRUB 2", "grub2"))
-		} else {
-			bootloaderDescription = "systemd-boot is required for Firn's Secure Boot enrollment path."
-		}
-		groups = append(groups, huh.NewGroup(
-			huh.NewInput().
-				Title("Post-install upgrade reference (optional)").
-				Description("Leave empty to track the selected install reference.").
-				Placeholder(w.c.entry.Ref).
-				Value(&w.c.targetRef).
-				Validate(validateTargetRefInput),
-			huh.NewSelect[string]().
-				Title("Bootloader").
-				Description(bootloaderDescription).
-				Options(bootloaderOptions...).
-				Value(&w.c.bootloader),
-		).WithHideFunc(hidden))
-	} else {
-		groups = append(groups, huh.NewGroup(
-			huh.NewInput().
-				Title("Artifact origin (optional)").
-				Description("HTTP(S) repository root; empty uses the frostyard origin.").
-				Placeholder("https://repository.frostyard.org").
-				Value(&w.c.origin).
-				Validate(validateOriginInput),
-			huh.NewInput().
-				Title("Pinned release (optional)").
-				Description("14-digit release version; empty installs the newest signed release.").
-				Placeholder("20260814010203").
-				Value(&w.c.release).
-				Validate(validateReleaseInput),
-		).WithHideFunc(hidden))
+	if w.c.bootloader == "" {
+		w.c.bootloader = "systemd"
 	}
+	bootloaderOptions := []huh.Option[string]{
+		huh.NewOption("systemd-boot (default)", "systemd"),
+	}
+	bootloaderDescription := "GRUB 2 is also available when Secure Boot is inactive."
+	if !w.opts.Machine.SecureBoot {
+		bootloaderOptions = append(bootloaderOptions, huh.NewOption("GRUB 2", "grub2"))
+	} else {
+		bootloaderDescription = "systemd-boot is required for Firn's Secure Boot enrollment path."
+	}
+	groups = append(groups, huh.NewGroup(
+		huh.NewInput().
+			Title("Post-install upgrade reference (optional)").
+			Description("Leave empty to track the selected install reference.").
+			Placeholder(w.c.entry.Ref).
+			Value(&w.c.targetRef).
+			Validate(validateTargetRefInput),
+		huh.NewSelect[string]().
+			Title("Bootloader").
+			Description(bootloaderDescription).
+			Options(bootloaderOptions...).
+			Value(&w.c.bootloader),
+	).WithHideFunc(hidden))
 	return huh.NewForm(groups...)
 }
 
@@ -257,30 +186,7 @@ func diskChoiceError(reasons map[string]string, choice string) error {
 func isRescanChoice(choice string) bool { return choice == rescanValue }
 
 func (w *wizard) filesystemForm() *huh.Form {
-	if w.c.entry.Family == recipe.FamilyAB {
-		if w.c.varFilesystem == "" {
-			w.c.varFilesystem = "ext4"
-		}
-		return huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("/var filesystem").
-					Description("The A/B root is part of the image; only /var is formatted here.").
-					Options(
-						huh.NewOption("ext4 (default)", "ext4"),
-						huh.NewOption("btrfs", "btrfs"),
-					).
-					Value(&w.c.varFilesystem),
-			),
-			huh.NewGroup(
-				huh.NewConfirm().
-					Title("Create btrfs subvolumes in /var?").
-					Description("Nested subvolumes home and snapshots inside /var.").
-					Value(&w.c.varSubvolumes),
-			).WithHideFunc(func() bool { return w.c.varFilesystem != "btrfs" }),
-		)
-	}
-	// bootc. ZFS is deliberately absent: schema v1 rejects it until the
+	// ZFS is deliberately absent: the schema rejects it until the
 	// installer has a complete, bootable ZFS path.
 	if w.c.filesystem == "" {
 		w.c.filesystem = "btrfs"
@@ -306,7 +212,7 @@ func (w *wizard) filesystemForm() *huh.Form {
 }
 
 // securityForm covers encryption (always explicit, ADR-0004) and, for
-// either family under Secure Boot, the MOK enrollment choice (ADR-0014).
+// under Secure Boot, the MOK enrollment choice (ADR-0014).
 func (w *wizard) securityForm() *huh.Form {
 	tpm := w.opts.Machine.TPM
 	noTPMNote := ""
@@ -315,29 +221,6 @@ func (w *wizard) securityForm() *huh.Form {
 	}
 
 	var groups []*huh.Group
-	if w.c.entry.Family == recipe.FamilyAB {
-		encOpts := []huh.Option[string]{
-			huh.NewOption("none — no encryption", "none"),
-			huh.NewOption("luks — encrypted /var, generated recovery key only", "luks"),
-		}
-		if tpm {
-			encOpts = append(encOpts,
-				huh.NewOption("tpm2-luks — encrypted /var, TPM unlock plus recovery key", "tpm2-luks"))
-		}
-		if w.c.encryption == "" {
-			w.c.encryption = "none"
-		}
-		groups = append(groups, huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Disk encryption").
-				Description("Choose explicitly. Initial selection: none (no encryption)."+noTPMNote).
-				Options(encOpts...).
-				Value(&w.c.encryption),
-		))
-		groups = w.appendMOKGroups(groups)
-		return huh.NewForm(groups...)
-	}
-
 	// bootc.
 	encOpts := []huh.Option[string]{
 		huh.NewOption("none — no encryption", "none"),
@@ -383,10 +266,7 @@ func (w *wizard) securityForm() *huh.Form {
 	return huh.NewForm(groups...)
 }
 
-// appendMOKGroups adds the family-independent Secure Boot choice. The parent
-// secure bootc installer required a MOK password file unconditionally; firn's
-// recipe-driven divergence permits an explicit skip (ADR-0014), identically
-// for bootc and A/B.
+// appendMOKGroups adds the Secure Boot choice (ADR-0014).
 func (w *wizard) appendMOKGroups(groups []*huh.Group) []*huh.Group {
 	if !w.opts.Machine.SecureBoot {
 		return groups

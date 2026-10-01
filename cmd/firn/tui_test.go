@@ -20,7 +20,7 @@ import (
 func commandTUIRecipe(t *testing.T) ([]byte, *recipe.Loaded) {
 	t.Helper()
 	l, err := recipe.Parse([]byte(`
-version = 1
+version = 2
 [image]
 family = "bootc"
 ref = "ghcr.io/frostyard/floe:latest"
@@ -40,6 +40,34 @@ hostname = "frost01"
 		t.Fatal(err)
 	}
 	return reviewed, l
+}
+
+func TestTUIDeprecationEventsFollowStartBeforeStep(t *testing.T) {
+	loaded, err := recipe.Parse([]byte(`version = 1
+[image]
+family = "bootc"
+ref = "ghcr.io/frostyard/floe:latest"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []progress.Event
+	e := deprecationEmitter{Emitter: progress.EmitterFunc(func(event progress.Event) error {
+		events = append(events, event)
+		return nil
+	}), issues: recipe.Deprecations(loaded)}
+	for _, event := range []progress.Event{progress.Start{}, progress.StepStart{}} {
+		if err := e.Emit(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(events) != 3 || events[0].Kind() != "start" || events[2].Kind() != "step_start" {
+		t.Fatalf("TUI event order: %+v", events)
+	}
+	w, ok := events[1].(progress.Warning)
+	if !ok || w.Code != progress.CodeRecipeV1Deprecated || w.Message != recipe.Deprecations(loaded)[0].Message {
+		t.Fatalf("TUI deprecation event: %+v", events[1])
+	}
 }
 
 func TestRunTUIRejectsNonUEFIBeforeWizardOrPipeline(t *testing.T) {
@@ -100,7 +128,7 @@ func TestRunTUISetupReachesWizardAndQuitStopsBridge(t *testing.T) {
 		stderr: new(bytes.Buffer),
 	}
 	err := runTUIWithRuntime(context.Background(), tuiOptions{
-		secureBoot: "on", tpm: "on", uefi: "on", pubring: "/keys/update.gpg",
+		secureBoot: "on", tpm: "on", uefi: "on",
 	}, rt)
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +178,9 @@ func TestRunTUISetupErrorsUseRuntimeErrorView(t *testing.T) {
 
 func TestWriteRecipeToPersistsExactReviewedArtifact(t *testing.T) {
 	reviewed, expected := commandTUIRecipe(t)
+	if !bytes.Contains(reviewed, []byte("version = 2")) {
+		t.Fatalf("reviewed wizard recipe lacks version 2: %s", reviewed)
+	}
 	parsed, err := recipe.Parse(reviewed)
 	if err != nil {
 		t.Fatalf("parse reviewed TOML: %v", err)
@@ -240,7 +271,7 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 			root := t.TempDir()
 			var sessionDir string
 			err := runTUIWithRuntime(context.Background(), tuiOptions{
-				secureBoot: "off", tpm: "off", uefi: "on", pubring: "/keys/update.gpg",
+				secureBoot: "off", tpm: "off", uefi: "on",
 			}, tuiRuntime{
 				holdError: func(_ context.Context, _ string, err error) error { return err },
 				createSession: func() (string, error) {
@@ -264,7 +295,7 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 					return filepath.Join(dir, "recipe.toml"), loaded, nil
 				},
 				runInstall: func(_ context.Context, env *pipeline.Env, got *recipe.Loaded) (tui.InstallResult, error) {
-					if got != loaded || env.Recipe != &loaded.Recipe || env.Trust.PubringPath != "/keys/update.gpg" {
+					if got != loaded || env.Recipe != &loaded.Recipe {
 						t.Fatalf("engine bridge received env=%+v recipe=%p", env, got)
 					}
 					return tc.result, tc.uiErr

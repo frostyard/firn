@@ -3,7 +3,6 @@ package tui
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -17,9 +16,12 @@ func TestBuiltinCatalog(t *testing.T) {
 	}
 	names := make(map[string]CatalogEntry, len(entries))
 	for _, e := range entries {
+		if e.Family != recipe.FamilyBootc {
+			t.Errorf("builtin %q is not bootc: %q", e.Name, e.Family)
+		}
 		names[e.Name] = e
 	}
-	for _, want := range []string{"snow", "snowfield", "floe", "snow-ab", "snowfield-ab", "floe-ab"} {
+	for _, want := range []string{"snow", "snowfield", "floe"} {
 		if _, ok := names[want]; !ok {
 			t.Errorf("built-in catalog missing %q", want)
 		}
@@ -28,12 +30,6 @@ func TestBuiltinCatalog(t *testing.T) {
 		e := names[n]
 		if e.Family != recipe.FamilyBootc || !strings.HasPrefix(e.Ref, "ghcr.io/frostyard/") || e.CosignPubKey != builtinCosignPubKey {
 			t.Errorf("entry %q: want signed frostyard bootc ref, got family=%q ref=%q key=%q", n, e.Family, e.Ref, e.CosignPubKey)
-		}
-	}
-	for _, n := range []string{"snow-ab", "snowfield-ab", "floe-ab"} {
-		e := names[n]
-		if e.Family != recipe.FamilyAB || e.Product != n {
-			t.Errorf("entry %q: want ab with product %q, got family=%q product=%q", n, n, e.Family, e.Product)
 		}
 	}
 	for _, e := range entries {
@@ -55,10 +51,7 @@ func TestLoadCatalogNoOverride(t *testing.T) {
 
 func TestLoadCatalogOverrideReplaces(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "catalog.json")
-	body := `[
-		{"family": "bootc", "name": "custom", "description": "in-house image", "ref": "registry.example.com/custom:1"},
-		{"family": "ab", "name": "custom-ab", "description": "in-house ab", "product": "custom-ab"}
-	]`
+	body := `[{"family": "bootc", "name": "custom", "description": "in-house image", "ref": "registry.example.com/custom:1"}]`
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +59,7 @@ func TestLoadCatalogOverrideReplaces(t *testing.T) {
 	if warn != nil {
 		t.Fatalf("valid override must not warn: %v", warn)
 	}
-	if len(entries) != 2 || entries[0].Name != "custom" || entries[1].Product != "custom-ab" {
+	if len(entries) != 1 || entries[0].Name != "custom" {
 		t.Errorf("override must replace built-ins entirely, got %+v", entries)
 	}
 }
@@ -84,6 +77,8 @@ func TestLoadCatalogOverrideErrors(t *testing.T) {
 		"ab with ref":        `[{"family": "ab", "name": "x", "product": "p", "ref": "r"}]`,
 		"bootc w product":    `[{"family": "bootc", "name": "x", "ref": "r", "product": "p"}]`,
 		"ab with cosign key": `[{"family": "ab", "name": "x", "product": "p", "cosign_pub_key": "/key.pub"}]`,
+		"ab after bootc":     `[{"family":"bootc","name":"floe","ref":"r"},{"family":"ab","name":"legacy","ref":"r"}]`,
+		"unknown field":      `[{"family":"bootc","name":"floe","ref":"r","unexpected":true}]`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -98,47 +93,23 @@ func TestLoadCatalogOverrideErrors(t *testing.T) {
 			if len(entries) != len(builtinCatalog()) {
 				t.Errorf("bad override must fall back to built-ins, got %d entries", len(entries))
 			}
-		})
-	}
-}
-
-func TestCatalogFamiliesRepresented(t *testing.T) {
-	tests := []struct {
-		name    string
-		entries []CatalogEntry
-		want    []string
-	}{
-		{name: "bootc only", entries: []CatalogEntry{bootcEntry()}, want: []string{recipe.FamilyBootc}},
-		{name: "A/B only", entries: []CatalogEntry{abEntry()}, want: []string{recipe.FamilyAB}},
-		{
-			name:    "mixed",
-			entries: []CatalogEntry{bootcEntry(), abEntry()},
-			want:    []string{recipe.FamilyBootc, recipe.FamilyAB},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := catalogFamilies(orderedCatalog(tt.entries))
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("catalogFamilies() = %v, want %v", got, tt.want)
+			for _, entry := range entries {
+				if entry.Family != recipe.FamilyBootc {
+					t.Fatalf("fallback includes unsupported family: %+v", entry)
+				}
 			}
 		})
 	}
 }
 
-func TestOrderedCatalogGroupsByFamily(t *testing.T) {
-	in := []CatalogEntry{
-		{Family: recipe.FamilyAB, Name: "b-ab", Product: "b-ab"},
-		{Family: recipe.FamilyBootc, Name: "a", Ref: "r1"},
-		{Family: recipe.FamilyAB, Name: "c-ab", Product: "c-ab"},
-		{Family: recipe.FamilyBootc, Name: "d", Ref: "r2"},
+func TestCheckCatalogRejectsABAfterBootc(t *testing.T) {
+	entries := []CatalogEntry{
+		{Family: recipe.FamilyBootc, Name: "floe", Ref: "ghcr.io/frostyard/floe:latest"},
+		{Family: "ab", Name: "legacy", Ref: "ghcr.io/frostyard/floe:latest"},
 	}
-	got := orderedCatalog(in)
-	wantOrder := []string{"a", "d", "b-ab", "c-ab"}
-	for i, name := range wantOrder {
-		if got[i].Name != name {
-			t.Fatalf("orderedCatalog order = %v, want %v", got, wantOrder)
-		}
+	err := checkCatalog(entries)
+	if err == nil || !strings.Contains(err.Error(), `entry "legacy": family must be "bootc", got "ab"`) {
+		t.Fatalf("checkCatalog error = %v, want A/B family rejection", err)
 	}
 }
 
@@ -147,9 +118,8 @@ func TestFormatCatalogOption(t *testing.T) {
 	if !strings.Contains(b, "snow") || !strings.Contains(b, "GNOME desktop") || !strings.Contains(b, "bootc") {
 		t.Errorf("bootc option line missing detail: %q", b)
 	}
-	a := formatCatalogOption(CatalogEntry{Family: recipe.FamilyAB, Name: "snow-ab", Description: "A/B desktop", Product: "snow-ab"})
-	if !strings.Contains(a, "snow-ab") || !strings.Contains(a, "A/B") {
-		t.Errorf("ab option line missing detail: %q", a)
+	if strings.Contains(b, "A/B") {
+		t.Fatalf("bootc picker includes A/B label: %q", b)
 	}
 }
 
@@ -158,7 +128,7 @@ func TestCatalogDefaultGroups(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	body := `[
 		{"family": "bootc", "name": "desk", "description": "d", "ref": "r:1", "default_groups": ["sudo", "video", "lpadmin"]},
-		{"family": "ab", "name": "plain", "description": "p", "product": "plain-ab"}
+		{"family": "bootc", "name": "plain", "description": "p", "ref": "r:2"}
 	]`
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)

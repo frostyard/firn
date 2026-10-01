@@ -124,6 +124,7 @@ const (
 	CodeStoreUnmountFailed = "store_umount_failed"
 	CodeStoreCleanupFailed = "store_cleanup_failed"
 	CodeStreamTruncated    = "stream_truncated"
+	CodeRecipeV1Deprecated = "recipe_v1_deprecated"
 )
 
 func isTerminal(e Event) bool {

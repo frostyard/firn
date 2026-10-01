@@ -99,6 +99,9 @@ type installModel struct {
 	currentName  string
 	stepFraction float64
 	tail         []tailLine
+	// Deprecations must survive the rolling activity tail so they remain
+	// visible on the held completion/failure screen.
+	deprecations []tailLine
 
 	gated     bool // recovery-key screen is blocking the view
 	canceling bool // Ctrl+C seen; waiting for the pipeline to stop
@@ -204,7 +207,11 @@ func (m installModel) handleEvent(e progress.Event) (tea.Model, tea.Cmd) {
 		m.tail = pushTail(m.tail, tailLine{text: e.Message})
 
 	case progress.Warning:
-		m.tail = pushTail(m.tail, tailLine{warning: true, code: e.Code, text: e.Message})
+		line := tailLine{warning: true, code: e.Code, text: e.Message}
+		m.tail = pushTail(m.tail, line)
+		if e.Code == progress.CodeRecipeV1Deprecated {
+			m.deprecations = append(m.deprecations, line)
+		}
 
 	case progress.Summary:
 		m.result.Summary = e.Items
@@ -349,7 +356,7 @@ func (m installModel) finalView() string {
 		}
 		b.WriteString(ansi.Wrap(m.result.ErrorMessage, textWidth, "/:.-"))
 		b.WriteString("\n")
-		if warnings := warningTail(m.tail); len(warnings) > 0 {
+		if warnings := m.finalWarnings(); len(warnings) > 0 {
 			b.WriteString("\n")
 			b.WriteString(warnStyle.Render("recent warnings"))
 			b.WriteString("\n")
@@ -361,6 +368,10 @@ func (m installModel) finalView() string {
 	} else if m.result.Done {
 		b.WriteString(okStyle.Render("install complete"))
 		b.WriteString("\n")
+		for _, warning := range m.finalWarnings() {
+			b.WriteString(warnStyle.Render(ansi.Wrap(formatWarning(warning.code, warning.text), textWidth, "/:.-")))
+			b.WriteString("\n")
+		}
 	}
 	if len(m.result.Summary) > 0 {
 		b.WriteString("\n")
@@ -396,6 +407,19 @@ func warningTail(tail []tailLine) []tailLine {
 		if line.warning {
 			warnings = append(warnings, line)
 		}
+	}
+	return warnings
+}
+
+// finalWarnings combines retained deprecations with recent warnings without
+// printing a deprecation twice when it is still in the rolling tail.
+func (m installModel) finalWarnings() []tailLine {
+	warnings := append([]tailLine(nil), m.deprecations...)
+	for _, line := range warningTail(m.tail) {
+		if line.code == progress.CodeRecipeV1Deprecated {
+			continue
+		}
+		warnings = append(warnings, line)
 	}
 	return warnings
 }

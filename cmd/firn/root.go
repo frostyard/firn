@@ -21,9 +21,8 @@ func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "firn",
 		Short: "The installer for snosi images",
-		Long: `firn installs every snosi image family — bootc OCI images and
-native A/B disk images — from a TOML recipe, headless or through the
-built-in wizard.
+		Long: `firn installs snosi bootc OCI images from a TOML recipe,
+headless or through the built-in wizard.
 
 Run with no arguments to launch the interactive installer. Automation
 uses 'firn install <recipe.toml>' (see docs/specs/recipe-schema.md).

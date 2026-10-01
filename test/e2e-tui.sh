@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 # E2E: drive the REAL firn TUI wizard inside a throwaway QEMU guest via
-# tmux, install floe-ab to an NVMe target disk, then boot and verify it.
+# tmux, install bootc floe to an NVMe target disk, then boot and verify it.
 #
-# WHY NESTED (ADR-0009, docs/adr/0009-ab-installs-require-partition-
-# isolation.md): this test installs an A/B image, so it MUST run nested,
-# exactly like test/e2e-ab.sh. The streamed snosi whole-disk image
-# carries the same Discoverable-Partitions type GUIDs and labels
-# (esp/var/root) as a snosi A/B host's own disk; on a host-visible loop
-# device the HOST's udev acts on the cloned partitions (it tore down a
-# live GNOME session on a snow-ab dev box, 2026-08-11). Inside a VM the
-# target is a virtual NVMe disk the host kernel never scans — safe by
-# construction.
+# WHY NESTED: the wizard writes to a virtual NVMe disk inside the guest;
+# the host kernel never sees or scans the target's partitions.
 #
 # Flow: boot a Debian cloud guest with the blank NVMe target as a second
 # disk; install tmux; run `sudo /tmp/firn` (bare — the TUI) in an
@@ -34,24 +27,9 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 work=${FIRN_E2E_DIR:-$(mktemp -d /var/tmp/firn-e2e-tui.XXXXXX)}
 timeout=${FIRN_E2E_TIMEOUT:-600}
-# Default under /var: on a snosi A/B host root (and /root) is read-only
-# erofs, so $HOME/.cache is unwritable under sudo.
+# Use /var/tmp for the shared VM image cache.
 cache=${FIRN_E2E_CACHE:-/var/tmp/firn-e2e-cache}
 hostname=frn-tui-e2e
-# Which family the wizard installs: ab (default) or bootc. Run both to
-# satisfy the phase Done-when.
-family=${FIRN_E2E_TUI_FAMILY:-ab}
-case $family in
-  ab|bootc) ;;
-  *) echo "e2e-tui: FIRN_E2E_TUI_FAMILY must be ab or bootc" >&2; exit 2 ;;
-esac
-# A mixed fixture exercises the family picker; a single-family fixture proves
-# the wizard skips that page rather than offering an unavailable family.
-catalog_mode=${FIRN_E2E_TUI_CATALOG:-mixed}
-case $catalog_mode in
-  mixed|single) ;;
-  *) echo "e2e-tui: FIRN_E2E_TUI_CATALOG must be mixed or single" >&2; exit 2 ;;
-esac
 sshport=2225
 inst_port=2226
 base_url=https://cloud.debian.org/images/cloud/trixie/latest
@@ -96,8 +74,6 @@ truncate -s 30G "$work/target.raw"
 # with it (cloud-init), and the driver pastes its pubkey into the
 # wizard's root-key page so the verify phase can SSH into the target.
 ssh-keygen -t ed25519 -N "" -f "$work/id_e2e" -C firn-e2e >/dev/null
-cp /usr/lib/systemd/import-pubring.gpg "$work/pubring.gpg" 2>/dev/null \
-  || cp /usr/lib/snosi/os-update-pubring.gpg "$work/pubring.gpg"
 
 # The production ISO ships cosign plus /usr/lib/snosi/cosign.pub. This Debian
 # guest is only a TUI/pipeline driver, so provide a strict test double that
@@ -113,13 +89,7 @@ set -euo pipefail
 COSIGN
 chmod 0755 "$work/cosign"
 printf '%s\n' 'e2e-tui public-key placeholder' >"$work/cosign.pub"
-if [[ $catalog_mode == single && $family == bootc ]]; then
-  printf '%s\n' '[{"family":"bootc","name":"floe","description":"E2E bootc image","ref":"ghcr.io/frostyard/floe:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"}]' >"$work/catalog.json"
-elif [[ $catalog_mode == single ]]; then
-  printf '%s\n' '[{"family":"ab","name":"floe-ab","description":"E2E A/B image","product":"floe-ab"}]' >"$work/catalog.json"
-else
-  printf '%s\n' '[{"family":"bootc","name":"floe","description":"E2E bootc image","ref":"ghcr.io/frostyard/floe:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"},{"family":"ab","name":"floe-ab","description":"E2E A/B image","product":"floe-ab"}]' >"$work/catalog.json"
-fi
+printf '%s\n' '[{"family":"bootc","name":"floe","description":"E2E bootc image","ref":"ghcr.io/frostyard/floe:latest","cosign_pub_key":"/usr/lib/snosi/cosign.pub"}]' >"$work/catalog.json"
 
 # The tmux driver script, run INSIDE the guest. Quoted heredoc: nothing
 # here is host-expanded; the pubkey is read in-guest from /tmp/id_e2e.pub.
@@ -136,8 +106,6 @@ set -uo pipefail
 
 S=firn
 INSTALL_TIMEOUT=${INSTALL_TIMEOUT:-540}
-FAMILY=${FAMILY:-ab}
-CATALOG_MODE=${CATALOG_MODE:-mixed}
 
 cap() { tmux capture-pane -pt "$S" 2>/dev/null || true; }
 
@@ -249,57 +217,26 @@ expect_screen 'snosi installer'        # welcome note
 cap | grep -Eiq 'Secure Boot inactive' \
   || fail 'e2e-tui requires Secure Boot inactive; the welcome page reported a different state (MOK flow is not scripted)'
 tmux send-keys -t "$S" Enter
-if [[ $CATALOG_MODE == mixed ]]; then
-  expect_screen 'Update mechanism'     # family guidance: represented families only
-  if [[ $FAMILY == bootc ]]; then
-    choose 'long-term path'
-  else
-    choose 'proven path'
-  fi
-fi
 expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$' # stable image-page title
-if [[ $FAMILY == bootc ]]; then
-  choose 'floe[[:space:]]+\(bootc image\)'
-else
-  choose 'floe-ab[[:space:]]+\(A/B image\)'
-fi
+choose 'floe[[:space:]]+\(bootc image\)'
 expect_screen 'Advanced image options'
 # Shift-Tab is wizard-level back navigation, not merely field navigation.
 tmux send-keys -t "$S" BTab
 expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$'
-# Exercise the preceding boundary too, including the skipped family page when
-# the catalog exposes only one family.
+# Exercise the preceding boundary back to the welcome screen.
 tmux send-keys -t "$S" BTab
-if [[ $CATALOG_MODE == mixed ]]; then
-  expect_screen 'Update mechanism'
-  if [[ $FAMILY == bootc ]]; then
-    choose 'long-term path'
-  else
-    choose 'proven path'
-  fi
-else
-  expect_screen 'snosi installer'
-  tmux send-keys -t "$S" Enter
-fi
+expect_screen 'snosi installer'
+tmux send-keys -t "$S" Enter
 expect_screen '^[┃│|[:space:]]*Image[[:space:]]*$'
-if [[ $FAMILY == bootc ]]; then
-  choose 'floe[[:space:]]+\(bootc image\)'
-else
-  choose 'floe-ab[[:space:]]+\(A/B image\)'
-fi
+choose 'floe[[:space:]]+\(bootc image\)'
 expect_screen 'Advanced image options'
 accept_field 'Advanced image options' # keep catalog/default image policy
 expect_screen 'Target disk'            # vda=installer, nvme0n1=blank target, vdb=seed
 expect_screen 'FIRN_E2E_TARGET'         # hardware serial must be visible in the picker
 choose_disk 'nvme0n1' '/dev/nvme0n1'
-if [[ $FAMILY == bootc ]]; then
-  expect_screen 'Root filesystem'
-  choose 'btrfs'
-  accept_field 'Create btrfs subvolumes' # initially Yes
-else
-  expect_screen '/var filesystem'      # A/B: only /var is variable
-  choose 'ext4'
-fi
+expect_screen 'Root filesystem'
+choose 'btrfs'
+accept_field 'Create btrfs subvolumes' # initially Yes
 expect_screen 'Disk encryption'        # SB inactive in this VM: no MOK group
 choose 'none'
 # System form: Hostname, Locale, Timezone, Keyboard, Root SSH key — one
@@ -387,7 +324,7 @@ gssh() { ssh "${sshopts[@]}" -p "$inst_port" debian@127.0.0.1 "$@"; }
 gscp() { scp "${sshopts[@]}" -P "$inst_port" "$@"; }
 
 cp "$ovmf_vars" "$work/vars.fd"
-echo "e2e-tui: booting installer VM (the TUI installs floe for family $family to the guest's /dev/nvme0n1)"
+echo "e2e-tui: booting installer VM (the TUI installs bootc floe to the guest's /dev/nvme0n1)"
 qemu-system-x86_64 \
   -m 4096 -smp 2 -enable-kvm -cpu host \
   -drive if=pflash,format=raw,readonly=on,file="$ovmf_code" \
@@ -412,22 +349,16 @@ done
 ((up)) || { echo "e2e-tui: FAIL — installer VM never reachable over SSH (console: $work/installer-console.log)" >&2; exit 1; }
 
 echo "e2e-tui: staging firn + driver into the installer VM"
-gscp "$work/firn" "$work/pubring.gpg" "$work/cosign" "$work/cosign.pub" "$work/catalog.json" "$work/id_e2e.pub" "$work/driver.sh" debian@127.0.0.1:/tmp/ >/dev/null
-# tmux drives the TUI; xz/gpgv are the A/B pipeline's tools. The
-extra_pkgs=""
-[[ $family == bootc ]] && extra_pkgs="podman skopeo btrfs-progs dosfstools parted"
-# pubring goes to firn's first default search location so the bare
-# `firn` invocation needs no flags at all (as on real installer media).
-gssh "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update -q && apt-get install -y -q tmux xz-utils gpgv $extra_pkgs' \
-  && sudo install -D -m 0644 /tmp/pubring.gpg /usr/lib/snosi/os-update-pubring.gpg \
+gscp "$work/firn" "$work/cosign" "$work/cosign.pub" "$work/catalog.json" "$work/id_e2e.pub" "$work/driver.sh" debian@127.0.0.1:/tmp/ >/dev/null
+gssh "sudo DEBIAN_FRONTEND=noninteractive sh -c 'apt-get update -q && apt-get install -y -q tmux podman skopeo btrfs-progs dosfstools parted' \
   && sudo install -D -m 0644 /tmp/cosign.pub /usr/lib/snosi/cosign.pub \
   && sudo install -D -m 0644 /tmp/catalog.json /etc/firn/catalog.json \
   && sudo install -m 0755 /tmp/cosign /usr/local/bin/cosign" >/dev/null 2>&1 || {
   echo "e2e-tui: FAIL — could not prepare the guest (tmux/tools/trust roots)" >&2; exit 1; }
 
-echo "e2e-tui: driving the TUI wizard inside the VM (tmux, 80x24, family $family, catalog $catalog_mode)"
+echo "e2e-tui: driving the bootc TUI wizard inside the VM (tmux, 80x24)"
 set +e
-gssh "INSTALL_TIMEOUT=$timeout FAMILY=$family CATALOG_MODE=$catalog_mode bash /tmp/driver.sh" >"$work/driver.log" 2>&1
+gssh "INSTALL_TIMEOUT=$timeout bash /tmp/driver.sh" >"$work/driver.log" 2>&1
 drc=$?
 set -e
 # Pull debug artifacts regardless of outcome.
@@ -445,8 +376,8 @@ gscp debian@127.0.0.1:/tmp/recipe-out.toml "$work/recipe-out.toml" >/dev/null
 
 # The wizard's written recipe must be reusable headless: `firn install
 # --confirm /dev/nvme0n1 <recipe>` in this same environment. Assert that to
-# the validation level (a full second headless install is e2e-ab.sh's
-# job) — IN THE GUEST, because the wizard stores interactive secrets as
+# the validation level (the bootc E2Es cover headless execution) — IN THE
+# GUEST, because the wizard stores interactive secrets as
 # *_file paths under /run/firn (spec rule 6) and validation fail-closed
 # requires those files to exist. Must run before poweroff: /run is tmpfs.
 echo "e2e-tui: validating the generated recipe inside the guest"
@@ -455,8 +386,10 @@ gssh "sudo /tmp/firn validate --secure-boot off --tpm off /tmp/recipe-out.toml" 
   cat "$work/recipe-out.toml" >&2
   exit 1
 }
-grep -q "family = \"$family\"" "$work/recipe-out.toml" \
-  || { echo "e2e-tui: FAIL — generated recipe is not family $family" >&2; exit 1; }
+grep -q 'family = "bootc"' "$work/recipe-out.toml" \
+  || { echo "e2e-tui: FAIL — generated recipe is not bootc" >&2; exit 1; }
+grep -q 'version = 2' "$work/recipe-out.toml" \
+  || { echo "e2e-tui: FAIL — generated recipe is not v2" >&2; exit 1; }
 if grep -Eq '^[[:space:]]*(locale|timezone|keyboard)[[:space:]]*=' "$work/recipe-out.toml"; then
   echo "e2e-tui: FAIL — skipped system fields must preserve image defaults" >&2
   cat "$work/recipe-out.toml" >&2
@@ -501,4 +434,4 @@ ssh "${sshopts[@]}" root@127.0.0.1 poweroff 2>/dev/null || true
 wait "$qemu_pid" 2>/dev/null || true; qemu_pid=""
 
 ((fail == 0)) || { echo "e2e-tui: FAIL (details above; $work)" >&2; exit 1; }
-echo "e2e-tui: PASS — the wizard installed $family (floe) inside a VM, the disk boots, and the generated recipe validates ($work)"
+echo "e2e-tui: PASS — the wizard installed bootc floe inside a VM, the disk boots, and the generated recipe validates ($work)"

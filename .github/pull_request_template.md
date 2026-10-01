@@ -50,7 +50,7 @@ log reads as empty to the completion check. -->
       diff, `gofmt -l`, pinned golangci-lint, `go vet`, `go test`
 - [ ] New or changed behavior has focused tests, including failure paths;
       pipeline steps are covered through the `runner` fake, not real devices
-- [ ] Wizard-page or nested-VM changes: `make e2e-tui` / `make e2e-ab`
+- [ ] Wizard-page or nested-VM changes: `make e2e-tui` / `make e2e-bootc-secure`
       considered, and the result stated below
 
 ```

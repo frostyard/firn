@@ -1,10 +1,11 @@
-# Spec: Firn recipe schema (version 1)
+# Spec: Firn recipe schema (version 2)
 
 This contract governs the TOML recipe file — firn's sole configuration
 input. Consumers: the recipe loader/validator (`internal/recipe`), the
 TUI (which generates recipes), automation and provisioning scripts, and
 the test suites. Per
-[ADR-0005](../adr/0005-toml-recipe-model.md) this file changes only
+[ADR-0005](../adr/0005-toml-recipe-model.md) and
+[ADR-0016](../adr/0016-bootc-only-recipe-contract.md), this file changes only
 alongside the code that implements it.
 
 ## Interface
@@ -13,7 +14,7 @@ Top level:
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
-| `version` | integer | yes | MUST be `1`. Unknown versions are rejected. |
+| `version` | integer | yes | `2` is the operative contract; bootc `1` is temporarily accepted with a deprecation warning (see compatibility below). All other versions are rejected. |
 | `[image]` | table | yes | See below. |
 | `[target]` | table | yes | See below. |
 | `[security]` | table | yes | See below. |
@@ -23,24 +24,19 @@ Top level:
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
-| `family` | string | yes | `"bootc"` or `"ab"`. Never inferred. |
-| `ref` | string | bootc: yes | OCI image reference. bootc-only field. |
-| `target_ref` | string | no | Post-install upgrade ref; defaults to `ref`. bootc-only. |
-| `cosign_pub_key` | string (path) | no | Enables independent cosign verification of a registry `ref`. Before any destructive step, Firn selects the source it would install (preferring a valid embedded containers-storage image), resolves it to an immutable `sha256` digest, runs `cosign verify --key` against that digest, and installs that same digest. Verification failure emits `image_verification_failed`. bootc-only. |
-| `product` | string | ab: yes | A/B publication channel matching `^[a-z0-9][a-z0-9._-]*$`; bare names such as `"snow"` and channel names such as `"snow-ab"` are valid. ab-only field. |
-| `origin` | string (URL) | no | Artifact origin; default `https://repository.frostyard.org`. ab-only. |
-| `release` | string | no | Pin an A/B release (14-digit version); default: newest in the signed index. ab-only. |
+| `family` | string | yes | MUST be `"bootc"`. Never inferred. |
+| `ref` | string | yes | OCI image reference. |
+| `target_ref` | string | no | Post-install upgrade ref; defaults to `ref`. |
+| `cosign_pub_key` | string (path) | no | Enables independent cosign verification of a registry `ref`. Before any destructive step, Firn selects the source it would install (preferring a valid embedded containers-storage image), resolves it to an immutable `sha256` digest, runs `cosign verify --key` against that digest, and installs that same digest. Verification failure emits `image_verification_failed`. |
 
 ### `[target]`
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `disk` | string (path) | yes | Whole-disk block device (`/dev/…`, `by-id` paths allowed). Never a partition. |
-| `filesystem` | string | bootc: yes | `"btrfs"`, `"xfs"`, or `"ext4"`. bootc-only (the A/B *root* is image-fixed; see `var_filesystem`). ZFS is not part of schema v1 because the installer does not yet have a complete bootable ZFS path. |
-| `btrfs_subvolumes` | bool | no | bootc + btrfs only: create top-level `@`, `@home`, `@snapshots`. Default `false`. |
-| `bootloader` | string | no | bootc only: `"systemd"` (default) or `"grub2"`. |
-| `var_filesystem` | string | no | ab only: `"ext4"` (default) or `"btrfs"` for the `/var` partition ([ADR-0008](../adr/0008-ab-var-filesystem-choice.md)). |
-| `var_subvolumes` | bool | no | ab only, requires `var_filesystem = "btrfs"`: create nested subvolumes `home` and `snapshots` inside `/var`. Default `false`. |
+| `filesystem` | string | yes | `"btrfs"`, `"xfs"`, or `"ext4"`. ZFS is not part of schema v2 because the installer does not yet have a complete bootable ZFS path. |
+| `btrfs_subvolumes` | bool | no | With btrfs only: create top-level `@`, `@home`, `@snapshots`. Default `false`. |
+| `bootloader` | string | no | `"systemd"` (default) or `"grub2"`. |
 
 ### `[security]`
 
@@ -54,10 +50,9 @@ advance past each prompt; the recipe always serializes the accepted values.
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
-| `encryption` | string | yes | bootc: `"none"`, `"luks-passphrase"`, `"tpm2-luks"`, `"tpm2-luks-passphrase"`. ab: `"none"`, `"luks"` (recovery key only), `"tpm2-luks"` (recovery key + TPM). |
+| `encryption` | string | yes | `"none"`, `"luks-passphrase"`, `"tpm2-luks"`, `"tpm2-luks-passphrase"`. |
 | `passphrase` / `passphrase_file` | string / path | conditional | Exactly one MUST be set when `encryption` includes `passphrase`; MUST NOT be set otherwise. |
-| `recovery_key_out` | string (path) | no | ab only with `encryption = "luks"` or `"tpm2-luks"`: also write the generated recovery key to this non-empty path. Preflight refuses an existing path and reserves a new 0600 file before any destructive step (including in dry-run); the final byte-exact key is committed by same-directory atomic rename. The key is always disclosed via the progress protocol. |
-| `mok` | string | ab or bootc: yes when Secure Boot is active | `"enroll"` or `"skip"`. With `"enroll"`, `mok_password_file` MUST be set. bootc uses it for the secure-install schema-1 path ([ADR-0014](../adr/0014-port-secure-install-schema-1-for-bootc.md)). |
+| `mok` | string | yes when Secure Boot is active | `"enroll"` or `"skip"`. With `"enroll"`, `mok_password_file` MUST be set. Used for the secure-install schema-1 path ([ADR-0014](../adr/0014-port-secure-install-schema-1-for-bootc.md)). |
 | `mok_password_file` | string (path) | conditional | Existing regular file that is not world-readable (rule 2); content is the one-time MokManager password. |
 
 ### `[system]`
@@ -81,7 +76,7 @@ accepted values rather than reapplying these initial selections.
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `name` | string | yes | POSIX username, `[a-z_][a-z0-9_-]*`, ≤ 32 chars. |
-| `fullname` | string | no | GECOS comment. Empty and Unicode values are valid; `:`, CR, and LF are rejected so both image-family writers produce the same passwd field. |
+| `fullname` | string | no | GECOS comment. Empty and Unicode values are valid; `:`, CR, and LF are rejected before writing the passwd field. |
 | `password_file` | string (path) | one of these two | Existing regular file that is not world-readable (rule 2), containing the plaintext password (hashed by firn, SHA-512 crypt). |
 | `password_hash` | string | one of these two | Pre-computed `$…` crypt hash, passed through verbatim. |
 | `groups` | array of string | no | Supplementary groups; validated only for name syntax (`internal/recipe/validate.go`'s `usernameRe`), not existence in the image. At install time only groups present in the deployment's `etc/group` are joined (`internal/sysconfig/user.go`'s `filterGroups`); a group missing from the image is silently skipped, not rejected, and reported via a `progress.CodeGroupMissing` warning. |
@@ -94,10 +89,9 @@ OpenSSH `sk-*` security-key types. A final newline is allowed; blank lines,
 ### Interactive wizard parity
 
 The wizard exposes the common schema plus an opt-in **Advanced image options**
-page. For bootc that page sets `target_ref` and `bootloader`; for A/B it sets
-`origin` and `release`. The wizard offers GRUB 2 only when Secure Boot is
+page for `target_ref` and `bootloader`. The wizard offers GRUB 2 only when Secure Boot is
 inactive because Firn's MOK enrollment path stages a signed systemd-boot
-chain. Image identity (`ref` or `product`) and bootc
+chain. Image identity (`ref`) and
 `cosign_pub_key` come from the selected catalog entry; operators customize
 that tuple together through `/etc/firn/catalog.json` rather than entering an
 untrusted reference independently of its trust policy.
@@ -109,47 +103,71 @@ the interactive secret/path surface smaller:
 | --- | --- |
 | `passphrase` / `passphrase_file` | Collect the passphrase and write a session-owned 0600 `passphrase_file`; never serialize it inline. |
 | `mok_password_file` | Collect the one-time password and write a session-owned 0600 file. |
-| `recovery_key_out` | For encrypted A/B installs, reserve `recovery-key` in the private wizard session. |
 | SSH inline / `_file` variants | Accept validated inline pasted keys. Installer-environment file paths are headless-only. |
 | User `password_file` / `password_hash` | Collect a password into a session-owned 0600 file. Precomputed hashes are headless-only. |
 
 ```toml
-# minimal valid example (A/B install)
-version = 1
+# minimal valid example (bootc install, Secure Boot off)
+version = 2
 
 [image]
-family = "ab"
-product = "snow-ab"
+family = "bootc"
+ref = "ghcr.io/frostyard/snow:latest"
 
 [target]
 disk = "/dev/nvme0n1"
+filesystem = "btrfs"
 
 [security]
-encryption = "tpm2-luks"
-mok = "enroll"
-mok_password_file = "/run/firn/mok-pw"
+encryption = "none"
 
 [system]
 hostname = "frost01"
 
-[system.user]
-name = "bjk"
-password_file = "/run/firn/user-pw"
-groups = ["wheel"]
 ```
+
+### Bootc version-1 compatibility
+
+`version = 1` with `image.family = "bootc"` remains accepted under the
+existing bootc validation rules, without rewriting the recipe. The
+non-fatal `recipe.Deprecations` issue has field `version`, code
+`deprecated-version`, and message: `bootc recipe version 1 is deprecated;
+change version to 2 after validating the bootc fields before the published
+compatibility end date`. `firn validate` prints this warning to stderr and
+exits 0; `firn install` and the TUI emit the
+[`recipe_v1_deprecated` warning](progress-protocol.md#stable-codes) before
+the first step event. Migrate only after confirming the family and checking
+all bootc fields and referenced files on the intended installer medium;
+change only `version = 1` to `version = 2`. Old Firn releases cannot consume
+v2 recipes. Never infer a family or convert an A/B recipe to bootc.
+
+The bootc-v1 compatibility window is **90 days from the release that ships
+v2**, not from a calendar cutoff. The actual release and exact end dates
+must be recorded at release; neither is set here. The validator has no
+automatic expiry: rejecting bootc-v1 after that window requires a later
+reviewed code and release change.
+
+`version = 1` with `image.family = "ab"` parses but fails validation before
+pipeline assembly or disk writes with one issue: field `image.family`, code
+`family-scope`, message `A/B version 1 is unsupported by this bootc-only Firn;
+no conversion was performed; use a pre-transition installer only where
+separately authorized`. Version 2 with `family = "ab"` is an enum error;
+`image.product`, `image.origin`, `image.release`, `target.var_filesystem`,
+`target.var_subvolumes`, and `security.recovery_key_out` are unknown fields.
+Missing, zero, and all other unsupported versions (including future versions)
+fail closed with `bad-version`; no downgrade or conversion is attempted.
 
 ## Rules
 
 1. Validation is fail-closed: unknown fields, unknown enum values, and
-   fields belonging to the other family are **errors**, never warnings
-   or ignored noise.
+   A/B-only fields are **errors**, never warnings or ignored noise.
 2. Every `*_file` field MUST reference an existing regular file at
    validation time; the secret-valued ones (`passphrase_file`,
    `mok_password_file`, `password_file`) MUST NOT be world-readable.
    Inline and `_file` variants of the same value are mutually
    exclusive.
-3. `[security]` completeness is family- and machine-aware: `mok` is
-   required exactly when `family` is `"ab"` or `"bootc"` and Secure Boot
+ 3. `[security]` completeness is machine-aware: `mok` is
+    required when Secure Boot
    is active on the install machine; `tpm2-*` modes are an error on
    machines with no TPM (no silent fallback).
 4. Validation MUST succeed or fail entirely before any destructive step;
@@ -162,11 +180,14 @@ groups = ["wheel"]
 6. Secrets (`passphrase`, `password_hash`, file contents) MUST never be
    echoed in logs, progress events, or error messages.
 7. `version` gates the whole schema: any breaking change to this spec
-   increments it, and firn rejects versions it does not implement.
+    increments it; only the explicit bootc-v1 compatibility exception above
+    is accepted in addition to v2.
 
 ## References
 
 - Rationale: [ADR-0005](../adr/0005-toml-recipe-model.md),
   [ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md),
-  [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md)
+   [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
+   [ADR-0015](../adr/0015-bootc-only-installer-scope.md),
+   [ADR-0016](../adr/0016-bootc-only-recipe-contract.md)
 - Context: [design/architecture.md](../design/architecture.md)

@@ -1,17 +1,20 @@
 package tui
 
 // The image catalog offered by the wizard. The built-in list covers the
-// snosi image families (ADR-0010: one installer ISO installs everything);
+// bootc images;
 // an override file replaces it wholesale. The override mechanism follows
 // fisherman's precedent of images.json at /etc/tuna-installer/images.json
 // (frostyard/fisherman, GPL-3.0-only; see NOTICE).
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"strings"
 
 	"github.com/frostyard/firn/internal/recipe"
 )
@@ -25,14 +28,13 @@ const catalogOverridePath = "/etc/firn/catalog.json"
 const builtinCosignPubKey = "/usr/lib/snosi/cosign.pub"
 
 // CatalogEntry is one installable image the wizard offers. Ref is set
-// for bootc entries, Product for ab entries — never both.
+// for bootc entries.
 type CatalogEntry struct {
 	Family       string `json:"family"`
 	Name         string `json:"name"`
 	Description  string `json:"description"`
 	Ref          string `json:"ref,omitempty"`
 	CosignPubKey string `json:"cosign_pub_key,omitempty"`
-	Product      string `json:"product,omitempty"`
 	// DefaultGroups preselects the wizard's group multi-select for this
 	// entry (the user can still change the selection; join-where-exists
 	// semantics at install time are unchanged). Empty means the generic
@@ -61,9 +63,6 @@ func builtinCatalog() []CatalogEntry {
 		{Family: recipe.FamilyBootc, Name: "snow", Description: "GNOME desktop with backports kernel", Ref: "ghcr.io/frostyard/snow:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: desktopDefaultGroups},
 		{Family: recipe.FamilyBootc, Name: "snowfield", Description: "GNOME desktop with linux-surface kernel for Surface devices", Ref: "ghcr.io/frostyard/snowfield:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: desktopDefaultGroups},
 		{Family: recipe.FamilyBootc, Name: "floe", Description: "Headless server with podman and backports kernel", Ref: "ghcr.io/frostyard/floe:latest", CosignPubKey: builtinCosignPubKey, DefaultGroups: serverDefaultGroups},
-		{Family: recipe.FamilyAB, Name: "snow-ab", Description: "Native A/B GNOME desktop with backports kernel", Product: "snow-ab", DefaultGroups: desktopDefaultGroups},
-		{Family: recipe.FamilyAB, Name: "snowfield-ab", Description: "Native A/B GNOME desktop with linux-surface kernel", Product: "snowfield-ab", DefaultGroups: desktopDefaultGroups},
-		{Family: recipe.FamilyAB, Name: "floe-ab", Description: "Native A/B headless server with podman", Product: "floe-ab", DefaultGroups: serverDefaultGroups},
 	}
 }
 
@@ -87,8 +86,13 @@ func loadCatalogFrom(path string) ([]CatalogEntry, error) {
 		return builtinCatalog(), fmt.Errorf("tui: catalog override %s: %w (using built-in catalog)", path, err)
 	}
 	var entries []CatalogEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&entries); err != nil {
 		return builtinCatalog(), fmt.Errorf("tui: catalog override %s: %w (using built-in catalog)", path, err)
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return builtinCatalog(), fmt.Errorf("tui: catalog override %s: trailing JSON (using built-in catalog)", path)
 	}
 	if err := checkCatalog(entries); err != nil {
 		return builtinCatalog(), fmt.Errorf("tui: catalog override %s: %w (using built-in catalog)", path, err)
@@ -106,24 +110,11 @@ func checkCatalog(entries []CatalogEntry) error {
 		if e.Name == "" {
 			return fmt.Errorf("entry %d: name is required", i)
 		}
-		switch e.Family {
-		case recipe.FamilyBootc:
-			if e.Product != "" {
-				return fmt.Errorf("entry %q: product applies only to family %q", e.Name, recipe.FamilyAB)
-			}
-		case recipe.FamilyAB:
-			if e.Ref != "" {
-				return fmt.Errorf("entry %q: ref applies only to family %q", e.Name, recipe.FamilyBootc)
-			}
-			if e.CosignPubKey != "" {
-				return fmt.Errorf("entry %q: cosign_pub_key applies only to family %q", e.Name, recipe.FamilyBootc)
-			}
-		default:
-			return fmt.Errorf("entry %q: family must be %q or %q, got %q", e.Name, recipe.FamilyBootc, recipe.FamilyAB, e.Family)
+		if e.Family != recipe.FamilyBootc {
+			return fmt.Errorf("entry %q: family must be %q, got %q", e.Name, recipe.FamilyBootc, e.Family)
 		}
 		img := recipe.Image{
 			Family: e.Family, Ref: e.Ref, CosignPubKey: e.CosignPubKey,
-			Product: e.Product,
 		}
 		if issues := recipe.ValidateImageSelection(img); len(issues) > 0 {
 			return fmt.Errorf("entry %q: %s", e.Name, issues[0])
@@ -132,43 +123,8 @@ func checkCatalog(entries []CatalogEntry) error {
 	return nil
 }
 
-// catalogFamilies returns only families represented by the loaded catalog,
-// in the same stable order as orderedCatalog.
-func catalogFamilies(entries []CatalogEntry) []string {
-	seen := make(map[string]bool, 2)
-	var families []string
-	for _, e := range entries {
-		if !seen[e.Family] {
-			seen[e.Family] = true
-			families = append(families, e.Family)
-		}
-	}
-	return families
-}
-
-// orderedCatalog returns entries grouped by family (bootc first, then
-// ab), preserving in-family order, so the picker reads as two blocks.
-func orderedCatalog(entries []CatalogEntry) []CatalogEntry {
-	out := make([]CatalogEntry, 0, len(entries))
-	for _, e := range entries {
-		if e.Family == recipe.FamilyBootc {
-			out = append(out, e)
-		}
-	}
-	for _, e := range entries {
-		if e.Family != recipe.FamilyBootc {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
 // formatCatalogOption renders one catalog entry as a picker line,
-// including its family and one-line description.
+// including its one-line description.
 func formatCatalogOption(e CatalogEntry) string {
-	kind := "bootc image"
-	if e.Family == recipe.FamilyAB {
-		kind = "A/B image"
-	}
-	return fmt.Sprintf("%-14s %-12s %s", e.Name, "("+kind+")", e.Description)
+	return strings.TrimSpace(fmt.Sprintf("%-14s (bootc image) %s", e.Name, e.Description))
 }

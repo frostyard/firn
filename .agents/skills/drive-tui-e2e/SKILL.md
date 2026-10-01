@@ -5,10 +5,9 @@ description: Extend or debug the tmux-driven TUI end-to-end test (test/e2e-tui.s
 
 # Drive firn's TUI end-to-end with tmux
 
-Goal: `make e2e-tui` (and `FIRN_E2E_TUI_FAMILY=bootc` for the other
-family) walks the real wizard via `tmux send-keys`/`capture-pane`,
+Goal: `make e2e-tui` walks the bootc wizard via `tmux send-keys`/`capture-pane`,
 installs to a virtio disk inside a nested VM, and verifies the booted
-system. Done = PASS lines for both families.
+system. Done = `e2e-tui: PASS`.
 
 The driver script embedded in `test/e2e-tui.sh` is a **contract with
 `internal/tui/wizard_pages.go`**: any change to page titles, field
@@ -38,10 +37,9 @@ order, or option labels must update the driver in the same change.
    - `accept_field TITLE` — gates on a named field, then accepts its
      default or empty value with Enter. Name every skipped field; do
      not encode page structure as an unexplained count of Enters.
-3. Run one family, read the result, fix, then run the other:
-   `sudo test/e2e-tui.sh` (ab) and
-   `sudo FIRN_E2E_TUI_FAMILY=bootc FIRN_E2E_TIMEOUT=900 test/e2e-tui.sh`.
-4. Verify: both runs end `e2e-tui: PASS`; the generated recipe passed
+3. Run `make e2e-tui` (or `FIRN_E2E_TIMEOUT=900 test/e2e-tui.sh` as root),
+   read the result and fix any page desync.
+4. Verify: the run ends `e2e-tui: PASS`; the generated recipe passed
    `firn validate` in-guest; the booted disk answered over SSH.
 
 ## Debugging a failure
@@ -71,9 +69,8 @@ order, or option labels must update the driver in the same change.
 - **huh note descriptions render as markdown**: paired `_`/`*` vanish
   as emphasis. The review page escapes them (`wizard_pages.go`,
   `reviewForm`); keep that when touching the review text.
-- **Preflight tool demands must exist in the guest**: the bootc family
+- **Preflight tool demands must exist in the guest**: bootc
   needs `podman skopeo btrfs-progs dosfstools parted` apt-installed
   (`partprobe` lives in `parted` on Debian). A preflight failure shows
   up as a clean install-view error, not a driver desync.
-- The wizard must run **nested** (it can install A/B images):
-  [ADR-0009](../../../docs/adr/0009-ab-installs-require-partition-isolation.md).
+- The wizard runs **nested** so its target disk is guest-only.

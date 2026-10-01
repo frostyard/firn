@@ -1,7 +1,8 @@
 # Plan: Firn roadmap
 
-Delivers firn from empty repo to the sole installer for all snosi image
-families ([ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md)),
+Tracks firn from its original dual-family scope
+([ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md))
+through the bootc-only implementation ([ADR-0016](../adr/0016-bootc-only-recipe-contract.md)),
 implementing [design/architecture.md](../design/architecture.md) and the
 [recipe schema](../specs/recipe-schema.md) /
 [progress protocol](../specs/progress-protocol.md) specs. Phases are
@@ -53,7 +54,7 @@ ordered so every phase ends with something demonstrable in a VM.
   ([design](../design/architecture.md#the-bootc-path),
   [schema](../specs/recipe-schema.md#target)).
 
-## Phase 4 — A/B path (large) — ✅ shipped 2026-08-11 (E2E: cayo-ab installed inside a nested VM boots + verifies over SSH. Install runs in a throwaway QEMU guest because the A/B image carries the host's own discoverable-partition layout — see the E2E script header and ADR-0009. Encrypted-var/TPM boot is unit-tested at the argv level; full encrypted boot arrives with the ISO in Phase 7)
+## Phase 4 — A/B path (large) — ✅ shipped 2026-08-11 (E2E: cayo-ab installed inside a nested VM boots + verifies over SSH. Install ran in a throwaway QEMU guest because the A/B image carried the host's own discoverable-partition layout — see ADR-0009. Encrypted-var/TPM boot was unit-tested at the argv level; full encrypted boot arrived with the ISO in Phase 7. This path was removed in Phase 9.)
 
 - `internal/trust`: gpgv-verified index fetch, version resolution
   (incl. `release` pinning); manifest-derived minimum-size computation.
@@ -62,7 +63,7 @@ ordered so every phase ends with something demonstrable in a VM.
   filesystem choice and optional subvolumes
   ([ADR-0008](../adr/0008-ab-var-filesystem-choice.md)), TPM
   enrollment against the UKI `.pcrpkey`, MOK staging
-  ([design](../design/architecture.md#the-ab-path)).
+   ([historical isolation decision](../adr/0009-ab-installs-require-partition-isolation.md)).
 - `internal/sysconfig` overlay writer: hostname, user (Go
   reimplementation of account editing, fixture-tested), locale,
   timezone, keyboard, root SSH key — `snosi-install` parity.
@@ -91,6 +92,7 @@ ordered so every phase ends with something demonstrable in a VM.
   loader. The family engine E2Es separately prove those recipes' pipeline
   semantics; a second destructive install is not part of the TUI harness.
 
+<a id="phase-7-becoming-the-only-installer-medium-cross-repo-in-progress"></a>
 ## Phase 7 — Becoming the only installer (medium, cross-repo) — ⏳ in progress
 
 Proven so far (2026-08-11), **all merged 2026-08-12** (snosi #693,
@@ -140,12 +142,14 @@ Still to do:
   on composefs now reads an installer-embedded core list
   (`/usr/share/firn/core-flatpaks.json`) since `/usr` is unreadable at
   install time.
-- 🚧 **frostyard/lab suites** (final step, in progress): add a firn
-  install-test matrix to lab's Argo-Workflows homelab harness — new
-  `lab/argo/*.yaml` workflows modeled on `snosi-bootc-install-test.yaml`
-  / `snosi-install-test.yaml`, booting the firn ISO on incus VMs and
-  driving a matrix of secure-boot × encryption × image × family from
-  nothing to installed-and-booted.
+- 🚧 **frostyard/lab suites** (in progress): the Phase 7 plan for a
+  secure-boot × encryption × image × family matrix is superseded in
+  implementation scope by [ADR-0016](../adr/0016-bootc-only-recipe-contract.md)
+  and [Phase 9](#phase-9-bootc-only-transition-bounded-cross-repo-implementation-in-progress).
+  Remaining lab work runs the firn ISO on incus VMs across supported
+  bootc images and security modes, checking install-to-boot results.
+  Lab results supplement, but do not satisfy, Phase 7's outstanding
+  published-ISO real-hardware both-family criterion.
 - 🚧 **retirement ADRs for fisherman and snosi-install** (in progress):
   written in frostyard/core (org-wide decision record), recording their
   supersession by firn.
@@ -155,6 +159,9 @@ Still to do:
   man-db var-audit fix all landed on their mains.
 
 ## Phase 7 plan — Becoming the only installer (medium, cross-repo)
+
+Historical dual-family plan; Phase 9 supersedes its proposed implementation
+scope but does not satisfy its outstanding published-ISO hardware criterion.
 
 - **One installer ISO** for all image families, built in the snosi repo
   as the successor to `shared/native-installer`
@@ -216,7 +223,7 @@ boot; the image-owned `snosi-bootc-bootloader-reconcile.service` preserves
 the signed second stage across bootc updates.
 
 The implementation ports fisherman's `internal/secure` behavior into
-`internal/secureboot` and reuses `internal/abimg/mok.go` through the bootc
+`internal/secureboot` and reuses the MOK helper (now `internal/enroll/mok.go`) through the bootc
 `mok-stage`, with provenance and incident guidance preserved
 ([port-from-parents](../../.agents/skills/port-from-parents/SKILL.md)).
 - Kick-off is an ADR: committing firn to schema-1 and retiring dakota's
@@ -243,42 +250,36 @@ The implementation ports fisherman's `internal/secure` behavior into
 - **Done when:** dakota's secure installer + `run-secure-install-tests`
   are retired.
 
-## Phase 9 — Proposed post-cutoff bootc-only transition (bounded, cross-repo) — ⏳ not started
+<a id="phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started"></a>
+<a id="phase-9-bootc-only-transition-bounded-cross-repo-implementation-in-progress"></a>
+## Phase 9 — bootc-only transition (bounded, cross-repo) — ⏳ implementation in progress
 
-This is a **proposal**, not an approved architecture or a cutoff-triggered
-removal. [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md)
-describes the scope and
-[ADR-0016 (Proposed)](../adr/0016-bootc-only-recipe-contract.md) recommends
-the version-2 contract and bounded bootc-v1 migration for review. The
-currently implemented
-[architecture](../design/architecture.md#prospective-post-cutoff-scope),
-[recipe schema v1](../specs/recipe-schema.md#rules) and
-[progress protocol](../specs/progress-protocol.md) remain in force. Phase 7's
+**Implementation in progress.** [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md)
+describes scope; [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md)
+sets the implemented version-2 contract and bootc-v1 migration window. The
+[architecture](../design/architecture.md#current-bootc-only-recipe-boundary),
+[recipe schema v2](../specs/recipe-schema.md#bootc-version-1-compatibility) and
+[progress protocol](../specs/progress-protocol.md#stable-codes) reflect the
+bootc-only code. The 90-day v1 window begins with the v2 release; record
+release and exact expiry dates at release. Expiry needs a later reviewed
+validator change, not a time-triggered switch. Phase 7's
 published-ISO, real-hardware **both-family** Done-when remains incomplete;
 this phase does not rewrite its historical A/B evidence or mark it done.
 
-1. **Approval and inventory gate:** Brian and Ben decide the post-2026-09-30
-   bootc-only scope, new recipe version, bootc-v1 migration mechanism and
-   compatibility window, A/B-v1 rejection diagnostic and retirement criteria.
-   Inventory recipes, automation, `steps.Assemble`, A/B-only tool dependencies,
-   built-in catalog, override catalogs and snosi's shipped catalog/ISO with
-   Odrade coordinating and Murbella confirming publication responsibilities.
-   No A/B capability changes before this gate.
-2. **Separate implementation PRs after approval:** version the recipe and
-   update its spec with code; test bootc-v1 migration, A/B-v1 diagnostic and
-   unknown-version rejection in `recipe.Validate` /
-   `ValidateImageSelection`. Remove the A/B backbone in `steps.Assemble` and
-   only A/B-only dependencies, retaining direct bootc, shared MOK/TPM helpers,
-   disk/LUKS, cosign, kiosk, progress and security interfaces. Align the
-   wizard and `tui.loadCatalogFrom` / `checkCatalog` with bootc-only choices:
-   test valid, invalid, empty and unreadable override catalogs and built-in
-   fallback; no override or fallback may advertise unsupported A/B. Murbella
-   separately updates snosi's shipped catalog and published ISO/tool payload,
-   confirming Sundog's image ref, trust key and catalog entry (Sundog is not
-   in `builtinCatalog()`). Keep Firn's media boundary from
+1. **Firn implementation (in progress):** the recipe validator accepts v2
+   bootc, warns for v1 bootc, rejects A/B-v1 before assembly and fails closed
+   on unknown versions. `steps.Assemble` has only the bootc backbone;
+   A/B-only dependencies are removed while MOK/TPM helpers remain in
+   `internal/enroll`. The wizard emits v2 and the bootc-only built-ins are
+   Snow, Snowfield and Floe. `tui.loadCatalogFrom` / `checkCatalog` reject
+   unsupported overrides wholesale and fall back to bootc-only built-ins.
+   Remaining rollout work includes inventory and migration of stored v1
+   recipes, release-date/expiry recording, and coordination with snosi on
+   its shipped catalog and ISO/tool payload. Sundog's ref/key and Snowfield's
+   scope need confirmation; Sundog is not in `builtinCatalog()`. Keep Firn's media boundary from
    [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) and UEFI floor
    from [ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md).
-3. **Qualification and sole-path decision gate:** after the above changes,
+2. **Qualification and sole-path decision gate:** after the above changes,
    record a bounded published-ISO evidence matrix on actual UEFI x86-64
    hardware, not a claim that every product supports every security mode.
    Confirm supported cells and the Snowfield disposition before testing:
@@ -302,13 +303,13 @@ this phase does not rewrite its historical A/B evidence or mark it done.
    flatpak/media-copy behavior. Nested-VM, fixtures and lab runs support but
    do not substitute for published-ISO real-hardware proof. Do not declare
    the ISO the sole path until this evidence, the outstanding Phase 7
-   criterion, and Brian's separate production authorization are resolved.
+   criterion, and separate production authorization are resolved.
 
 - **Done when:** architectural approval and migration policy are recorded,
   separately reviewed contract/code and snosi media changes have landed,
   the bounded real-hardware evidence is recorded, Phase 7's outstanding
   criterion is addressed explicitly, and a separate sole-path/production
-  decision has been made. **Not complete.**
+   decision has been made. **Not complete; implementation in progress.**
 
 ## Later / ideas
 
@@ -342,9 +343,8 @@ this phase does not rewrite its historical A/B evidence or mark it done.
 - Fisherman extras not yet scoped: Windows data slurp, OEM vendor
   detection + brew first-login installs, audio/Plymouth polish, cache
   pre-warming. (secure-install schema-1 is now scoped as Phase 8.)
-- arm64 targets (fisherman releases arm64; A/B index is x86-64 today).
-- A/B write-path hardening beyond GPT/ESP discard (would supersede the
-  accepted stream-then-verify risk via a new ADR).
+- arm64 bootc targets (fisherman releases arm64; Firn hardware qualification
+  remains x86-64).
 
 ## Open questions
 
@@ -355,8 +355,6 @@ this phase does not rewrite its historical A/B evidence or mark it done.
   on the snow secure path?** RESOLVED yes (2026-08-12): firn is retiring
   the dakota installer, so it must own the secure bootc path. Scoped as
   Phase 8 above; its kick-off ADR records the decision.
-- **Do A/B artifacts need arm64 before Phase 7?** snosi-side; decide by
-  Phase 6.
 
 ## References
 

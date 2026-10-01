@@ -3,8 +3,6 @@ package steps
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -47,19 +45,6 @@ encryption = "%s"
 hostname = "h"
 `
 
-const abBase = `
-version = 1
-[image]
-family = "ab"
-product = "snow-ab"
-[target]
-disk = "/dev/vda"
-[security]
-encryption = "%s"
-[system]
-hostname = "h"
-`
-
 func TestAssemblySplicesByOptions(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -77,16 +62,6 @@ func TestAssemblySplicesByOptions(t *testing.T) {
 			`encryption = "tpm2-luks"`, "encryption = \"tpm2-luks\"\nmok = \"enroll\"\nmok_password_file = \"/x\"", 1),
 			[]string{"bootc-install", "tpm-enroll", "esp-stage", "retag-root", "mok-stage"},
 			[]string{"stream-write"}},
-		{"ab plain", strings.Replace(abBase, "%s", "none", 1),
-			[]string{"preflight-uefi", "fetch-index", "stream-write", "format-var", "seed-var"},
-			[]string{"luks-var", "tpm-enroll", "mok-stage", "partition", "bootc-install"}},
-		{"ab tpm2", strings.Replace(abBase, "%s", "tpm2-luks", 1),
-			[]string{"luks-var", "tpm-enroll"},
-			nil},
-		{"ab mok", strings.Replace(strings.Replace(abBase, "%s", "tpm2-luks", 1),
-			`encryption = "tpm2-luks"`, "encryption = \"tpm2-luks\"\nmok = \"enroll\"\nmok_password_file = \"/x\"", 1),
-			[]string{"mok-stage"},
-			nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -133,100 +108,6 @@ func TestPreflightStepsComeFirstAndDeclareTools(t *testing.T) {
 	if !slices.Contains(Assemble(load(t, withFlatpaks)).Tools(), "flatpak") {
 		t.Error("flatpak tool must be demanded when the recipe requests flatpaks")
 	}
-}
-
-func TestVarFilesystemChoiceChangesTools(t *testing.T) {
-	src := strings.Replace(abBase, "[security]", "var_filesystem = \"btrfs\"\nvar_subvolumes = true\n[security]", 1)
-	p := Assemble(load(t, strings.Replace(src, "%s", "none", 1)))
-	if !slices.Contains(p.Tools(), "mkfs.btrfs") {
-		t.Errorf("btrfs var should require mkfs.btrfs: %v", p.Tools())
-	}
-	if slices.Contains(p.Tools(), "resize2fs") {
-		t.Errorf("btrfs var should not require resize2fs: %v", p.Tools())
-	}
-}
-
-func TestRecoveryKeyPreflightPrecedesDestruction(t *testing.T) {
-	src := strings.Replace(strings.Replace(abBase, "%s", "luks", 1),
-		`encryption = "luks"`, "encryption = \"luks\"\nrecovery_key_out = \"/run/firn/recovery-key\"", 1)
-	p := Assemble(load(t, src))
-	got := names(p)
-	preflight := slices.Index(got, "preflight-recovery-key")
-	stream := slices.Index(got, "stream-write")
-	if preflight < 0 || stream < 0 || preflight >= stream || !p.Steps[preflight].Preflight || !p.Steps[stream].Destructive {
-		t.Fatalf("pipeline order = %v; recovery readiness must be preflight before destructive stream-write", got)
-	}
-}
-
-func TestRecoveryKeyPreflightFailureLeavesDiskUntouched(t *testing.T) {
-	dir := t.TempDir()
-	disk := filepath.Join(dir, "disk")
-	want := []byte("target-sentinel")
-	if err := os.WriteFile(disk, want, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(dir, "missing", "recovery-key")
-	src := strings.Replace(strings.Replace(strings.Replace(abBase, "%s", "luks", 1), "/dev/vda", disk, 1),
-		`encryption = "luks"`, "encryption = \"luks\"\nrecovery_key_out = \""+out+"\"", 1)
-	l := load(t, src)
-	fake := runner.NewFake(
-		func(_ context.Context, name string, _ ...string) ([]byte, error) {
-			return nil, errors.New("host command reached before recovery output readiness: " + name)
-		},
-		func(name string) (string, error) { return "/usr/bin/" + name, nil },
-	)
-	env := &pipeline.Env{
-		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-		Emitter: progress.EmitterFunc(func(progress.Event) error { return nil }),
-	}
-	err := Assemble(l).Run(context.Background(), env, false)
-	if err == nil || !strings.Contains(err.Error(), "reserve recovery key output") {
-		t.Fatalf("pipeline error = %v, want recovery-key readiness failure", err)
-	}
-	got, readErr := os.ReadFile(disk)
-	if readErr != nil || string(got) != string(want) {
-		t.Fatalf("target changed after preflight failure: got %q, want %q (%v)", got, want, readErr)
-	}
-}
-
-func TestRecoveryKeyPreflightDryRunAndExistingPolicy(t *testing.T) {
-	run := func(t *testing.T, path string) error {
-		t.Helper()
-		r := &recipe.Recipe{}
-		r.Security.RecoveryKeyOut = path
-		env := &pipeline.Env{Recipe: r, Version: "test", Emitter: progress.EmitterFunc(func(progress.Event) error { return nil })}
-		p := &pipeline.Pipeline{Steps: []pipeline.Step{{
-			Name: "preflight-recovery-key", Preflight: true, Run: runPrepareRecoveryKeyOut,
-		}}}
-		return p.Run(context.Background(), env, true)
-	}
-
-	t.Run("dry-run checks and removes reservation", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "recovery-key")
-		if err := run(t, path); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("dry-run retained reservation %s: %v", path, err)
-		}
-		if matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".recovery-key.tmp-*")); err != nil || len(matches) != 0 {
-			t.Fatalf("dry-run retained staged keys %v (%v)", matches, err)
-		}
-	})
-
-	t.Run("existing file is refused unchanged", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "recovery-key")
-		if err := os.WriteFile(path, []byte("keep-me"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := run(t, path); err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
-			t.Fatalf("existing destination error = %v", err)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil || string(data) != "keep-me" {
-			t.Fatalf("existing destination changed to %q (%v)", data, err)
-		}
-	})
 }
 
 // End-to-end dry run against fakes: BIOS refused; busy disk refused;

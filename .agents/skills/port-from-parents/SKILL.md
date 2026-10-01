@@ -47,12 +47,10 @@ Sources:
   `/root` is stateroot `var/roothome`, homes live in the stateroot
   var, composefs has no materialized `/usr`. Check where the BOOTED
   system reads before choosing a write location.
-- **A/B baseline /etc** is at the erofs root's `/.etc.lower`, not
-  `/etc` (the runtime /etc is an overlay; on-disk it is empty).
 - Parent behavior can be dead weight: snosi resized a filesystem it
   immediately reformatted; fisherman "downloaded" flatpaks in a doc
   comment only. Port what the code DOES, verify claims against the
   code, and drop dead work with a comment.
-- Recipe-driven divergences (ADR-0008 var filesystems, join-where-
-  exists groups) beat parent-exact ports when the parent's assumption
+- Recipe-driven divergences (such as join-where-exists groups) beat
+  parent-exact ports when the parent's assumption
   conflicts with firn's recipe contract — record those in the spec.

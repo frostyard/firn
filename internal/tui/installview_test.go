@@ -271,6 +271,33 @@ func TestDoneShowsSummary(t *testing.T) {
 	requireQuit(t, cmd)
 }
 
+func TestDeprecatedRecipeWarningVisibleOnFinalScreen(t *testing.T) {
+	m := startedModel(t)
+	m, _ = apply(t, m, progress.Warning{Code: progress.CodeRecipeV1Deprecated, Message: "bootc recipe version 1 is deprecated"})
+	for i := 0; i < tailLen+1; i++ {
+		m, _ = apply(t, m, progress.Info{Message: "later pipeline narration"})
+	}
+	if strings.Contains(m.runningView(), "recipe_v1_deprecated") {
+		t.Fatal("test setup failed: deprecation remains in rolling tail")
+	}
+	m, _ = apply(t, m, progress.Done{OK: true})
+	if !strings.Contains(m.View(), "warning [recipe_v1_deprecated]: bootc recipe version 1 is deprecated") {
+		t.Fatalf("final install view lost deprecation warning: %s", m.View())
+	}
+}
+
+func TestDeprecatedRecipeWarningVisibleAfterFailure(t *testing.T) {
+	m := startedModel(t)
+	m, _ = apply(t, m, progress.Warning{Code: progress.CodeRecipeV1Deprecated, Message: "bootc recipe version 1 is deprecated"})
+	for i := 0; i < tailLen+1; i++ {
+		m, _ = apply(t, m, progress.Info{Message: "later pipeline narration"})
+	}
+	m, _ = apply(t, m, progress.Error{Code: progress.CodeStepFailed, Message: "preflight failed"})
+	if !strings.Contains(m.View(), "warning [recipe_v1_deprecated]: bootc recipe version 1 is deprecated") {
+		t.Fatalf("failed install view lost deprecation warning: %s", m.View())
+	}
+}
+
 func TestFailureShowsSummaryAndRecentWarnings(t *testing.T) {
 	m := startedModel(t)
 	m, _ = apply(t, m, progress.Info{Message: "ordinary narration"})

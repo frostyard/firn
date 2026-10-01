@@ -6,26 +6,28 @@ Living document. Rationale:
 [ADR-0005](../adr/0005-toml-recipe-model.md),
 [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
 [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
+[ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
+[ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
 [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) (media
 boundary: firn ships binary + kiosk unit + contracts; snosi ships the
 single installer ISO).
 Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
 [specs/progress-protocol.md](../specs/progress-protocol.md).
 
-## Prospective post-cutoff scope
+<a id="prospective-post-cutoff-scope"></a>
+## Current bootc-only recipe boundary
 
-[ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
-[ADR-0016 (Proposed contract)](../adr/0016-bootc-only-recipe-contract.md) and
-[roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
-outline a possible bootc-only transition after 2026-09-30. Neither changes
-the currently implemented dual-family architecture below or recipe schema
-v1; approval, migration, separate implementation and published-ISO hardware
-qualification are outstanding.
+[ADR-0016](../adr/0016-bootc-only-recipe-contract.md) provides the accepted
+v2 recipe boundary implemented below. [ADR-0015](../adr/0015-bootc-only-installer-scope.md)
+remains Proposed; code scope is not a sole-path or production authorization.
+[Roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
+tracks the remaining published-ISO hardware qualification and separate
+authorization.
 
 ## Overview
 
-Firn is a single Go binary that installs every snosi image family — bootc
-OCI images and native A/B disk images — from one TOML recipe, either
+Firn is a single Go binary that installs bootc OCI images from a version-2
+TOML recipe (temporarily accepting bootc-v1 with a warning), either
 headless (`firn install recipe.toml`) or through a built-in TUI wizard
 that generates the same recipe and runs the same pipeline in-process.
 
@@ -34,29 +36,29 @@ that generates the same recipe and runs the same pipeline in-process.
                      │  serializes
                      ▼
                 recipe (TOML) ◄──── headless: firn install recipe.toml
-                     │  load + validate (fail-closed, per family)
-                     ▼
-                 preflight ──► pipeline (assembled step list)
-                                    │            │
-                              progress events    ├── bootc path steps
-                              (Go channel)       └── A/B path steps
-                                    │                     │
-                     TUI view ◄─────┴────► --json-progress emitter
-                                                (versioned NDJSON, spec)
+                      │  load + validate (fail-closed)
+                      ▼
+                  preflight ──► bootc pipeline (assembled step list)
+                                      │
+                               progress events (Go channel)
+                                │                   │
+                         TUI view          --json-progress emitter
+                                               (versioned NDJSON)
 ```
 
-Before rendering image choices, the wizard validates the loaded catalog with
-the recipe package's canonical machine-independent image constraints. Family
-choices come only from families represented in that validated catalog; a
-one-family catalog skips the family page. The selected catalog entry is the
-sole family state used by every later page and by recipe assembly, including
-after a start-over.
+Before rendering image choices, the wizard validates the entire catalog with
+the recipe package's canonical machine-independent image constraints. Built-in
+entries are bootc Snow, Snowfield and Floe. An override at
+`/etc/firn/catalog.json` containing an A/B entry or unknown field (such as
+`product`) is rejected wholesale with a warning and bootc-only built-in
+fallback; invalid, empty or unreadable overrides likewise fall back. The
+wizard has no family page. The selected catalog entry remains the image state
+for later pages and recipe assembly, including after a start-over.
 
 After image selection, an opt-in advanced page exposes the engine's update
-and release controls without separating image identity from its catalog trust
-policy: bootc can set `target_ref` and (when Secure Boot is inactive)
-`bootloader`, while A/B can set `origin` and `release`. Custom `ref`/`product`
-and bootc `cosign_pub_key` values travel together through the catalog override.
+and bootloader controls without separating image identity from its catalog trust
+policy: `target_ref` and (when Secure Boot is inactive) `bootloader`.
+Custom `ref` and `cosign_pub_key` values travel together through the catalog override.
 Installer-environment SSH key paths and precomputed user password hashes stay
 headless-only; the wizard instead accepts pasted keys and creates its own
 private password files. The exact parity/delta table lives in the
@@ -70,8 +72,6 @@ the secrets, reloads that file, and gives the loaded recipe to the engine.
 Start-over, quit, abort, and pre-persistence errors remove abandoned plaintext;
 once the recipe is persisted, the directory remains available for the printed
 headless reproduction command until the installer environment reboots.
-Encrypted A/B wizard choices set `recovery_key_out` to `recovery-key` in that
-same session, giving the one-time on-screen disclosure a durable private copy.
 
 ## Design
 
@@ -81,7 +81,7 @@ same session, giving the one-time on-screen disclosure a durable private copy.
 |---|---|---|
 | Frontend | `internal/tui` | Charm stack allowed (ADR-0007) |
 | Pipeline | `internal/pipeline`, `internal/steps/*` | stdlib + host tools only |
-| Domain | `internal/recipe`, `internal/disk`, `internal/luks`, `internal/trust`, `internal/sysconfig`, `internal/flatpak`, `internal/progress`, `internal/runner` | stdlib + host tools only (TOML decoder excepted, ADR-0005) |
+| Domain | `internal/recipe`, `internal/disk`, `internal/luks`, `internal/enroll`, `internal/sysconfig`, `internal/flatpak`, `internal/progress`, `internal/runner` | stdlib + host tools only (TOML decoder excepted, ADR-0005) |
 
 Like fisherman, privileged work shells out to host tools (`sfdisk`,
 `cryptsetup`, `bootc`/`podman`, `flatpak`, `systemd-cryptenroll`,
@@ -94,8 +94,8 @@ The pipeline is an assembled, ordered list of **steps** — not a
 procedural main. Each step declares a name, a progress weight, whether it
 is destructive, and `Run(ctx, *Env) error`; `Env` carries the validated
 recipe, resolved image metadata, mount/mapper state, and the progress
-emitter. Assembly happens once, up front, from the recipe: family selects
-the backbone (bootc vs A/B), options (encryption, TPM, Secure Boot,
+emitter. Assembly happens once, up front, from the validated bootc recipe;
+options (encryption, TPM, Secure Boot,
 flatpaks, slurp-style extras later) splice steps in or out. The assembled
 list is inspectable, which gives dry-run, accurate progress totals, and
 per-step tests for free. Adding a step means writing one and adding it to
@@ -125,19 +125,12 @@ clear diagnostic, ADR-0004), required-tool checks derived from the
 assembled step list (each step declares the binaries it needs, so the
 check list cannot drift from the code), disk refusal rules — the union of
 both installers' rules: mounted anywhere, RAID/LVM member, the installer's
-own boot medium, undersized. For the A/B path, minimum sizes are computed
-from the image's published manifest/repart artifacts, not from a
-hand-copied constant table (fixing a documented `snosi-install` hazard).
+own boot medium, undersized. Unsupported recipes fail validation before
+assembly or disk writes.
 For bootc recipes that set `image.cosign_pub_key`, preflight selects the
 same embedded-or-remote source the install will consume, resolves it to an
 immutable digest, verifies that digest with cosign, and carries the pinned
 reference into both native-bootc and podman installation paths.
-For encrypted A/B recipes with `security.recovery_key_out`, preflight refuses
-an existing destination, exclusively reserves a 0600 placeholder, and fsyncs
-the complete generated key to a private same-directory staging file. Dry-run
-exercises and removes both files. A real install later commits the staged key
-by atomic rename, so path, permission, allocation, and write failures occur
-before `stream-write` can touch the target disk.
 
 ### The bootc path
 
@@ -151,7 +144,7 @@ against the deployed UKI's signed PCR 11 policy, the secure-install
 (schema-1) contract, and filesystem
 finalization. Fisherman's incident comments come along with the code.
 The port includes lower-level ZFS partitioning and formatting helpers, but
-recipe schema v1 rejects ZFS because the end-to-end bootable install path is
+recipe schema v2 rejects ZFS because the end-to-end bootable install path is
 not implemented.
 
 **Installing from the all-in-RAM ISO** ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)):
@@ -170,42 +163,25 @@ Disk-backed hosts (the loop-device E2E) skip all of this unchanged.
 
 ### The A/B path
 
-Ported from `snosi-install` (bash → Go, behavior preserved, structure
-fixed): fetch and gpgv-verify the signed artifact index, resolve the
-channel version, stream the compressed image to the target disk while
-hashing the compressed stream — **stream-then-verify is retained as an
-accepted, documented risk** (no 2× scratch space on live media; decided
-with ADR review, see Operational notes) — then validate the written GPT
-layout, relocate the backup GPT, grow `/var` (filesystem-aware:
-`resize2fs` or btrfs resize), format `/var` (LUKS2 by default, plain
-only on explicit opt-out; ext4 by default or btrfs with optional nested
-`home`/`snapshots` subvolumes per
-[ADR-0008](../adr/0008-ab-var-filesystem-choice.md)), enroll TPM
-against the
-UKI's embedded `.pcrpkey` (signed PCR 11), seed `/var` state and the
-`/etc`-overlay upper, and stage MOK enrollment when Secure Boot is in
-play. The hand-rolled awk account editing is reimplemented in Go with
-unit tests against fixture passwd/group/shadow files.
+Retired in the bootc-only implementation ([ADR-0016](../adr/0016-bootc-only-recipe-contract.md));
+there is no A/B pipeline in Firn. See [ADR-0009](../adr/0009-ab-installs-require-partition-isolation.md)
+for the historical partition-isolation requirement.
 
 ### System configuration (`internal/sysconfig`)
 
 One package owns the semantics of every `[system]` feature — hostname,
 user + groups + password, locale, timezone, keyboard, root/user SSH
-authorized keys, flatpak set. Each feature is written through one of two
-**target writers** behind a common interface:
+authorized keys, flatpak set. Each feature is written through the
+**deployment writer**:
 
 - **deployment writer** (bootc): writes into the deployment's `/etc`
   (composefs- and ostree-aware, carried from fisherman's `post` package),
   users via `useradd --root`/chroot, homes in the stateroot.
-- **overlay writer** (A/B): seeds `var/lib/snosi/etc-overlay/upper/` and
-  `/var/home`, reading the pristine baseline from the read-only erofs
-  root.
 
-A feature is complete only when both writers implement it (ADR-0004).
-Shared recipe validation owns cross-writer input semantics: for example,
+Shared recipe validation owns input semantics: for example,
 user full names accept empty and Unicode GECOS text but reject passwd field
-and record delimiters before either writer runs.
-Flatpaks follow ADR-0006 on both paths: copy from the medium's seeded
+and record delimiters before the writer runs.
+Flatpaks follow ADR-0006: copy from the medium's seeded
 repo, download the remainder into the mounted target, report (never
 silently drop) what was unreachable.
 
@@ -220,11 +196,6 @@ built-in TUI bootc catalog supplies the installer medium's
 Headless recipes that omit the field rely on the host container policy and
 cached-image provenance; Firn does not claim independent cosign verification
 for that case.
-
-`internal/trust` performs OpenPGP verification of the A/B artifact index via
-`gpgv` against the shipped pubring. Verification failures abort before
-destructive steps where possible (see Operational notes for the A/B stream
-exception).
 
 ### Progress and frontends
 
@@ -254,24 +225,13 @@ uses the same engine preflight as headless installation.
   everywhere. The disk picker identifies each path with its available vendor,
   model, serial, WWN, transport, size, and filesystem labels before selection;
   long identity records wrap rather than truncate.
-- **A/B installs need an isolated partition namespace:** the A/B image
-  carries the same discoverable-partition types/labels as any snosi A/B
-  host, so its partition surgery must not run against a device the host
-  kernel scans — installers run from media against a bare disk, and the
-  A/B E2E installs inside a VM
-  ([ADR-0009](../adr/0009-ab-installs-require-partition-isolation.md)).
-- **A/B stream-then-verify residue:** on any write/verify failure the
-  failure path discards the GPT regions and ESP signatures so nothing on
-  the disk is bootable or auto-discoverable, then reports loudly — but
-  unauthenticated bytes may remain on the platter. This is an accepted
-  risk, chosen over 2× scratch space; a future ADR may harden it.
 - Cleanup stack unwinding must be idempotent: a failed install should
   leave no mounts, no open mappers, and a re-runnable installer without a
   reboot.
 - Space-constrained live environments (tmpfs/overlay roots) redirect
   scratch onto the target disk, carried from fisherman's
   `isSpaceConstrained` handling.
-- TPM enrollment for both paths happens at install time against the deployed
+- TPM enrollment happens at install time against the deployed
   UKI's signed PCR 11 policy (firmware-independent). Firn deliberately does
   not use fisherman's PCR 7 first-boot staging: encrypted bootc must unlock
   before a staged first-boot unit could run.
@@ -284,8 +244,8 @@ uses the same engine preflight as headless installation.
   [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
   [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
   [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)
-- Prospective (not implemented): [ADR-0015](../adr/0015-bootc-only-installer-scope.md),
-  [ADR-0016](../adr/0016-bootc-only-recipe-contract.md),
+- Scope and contract: [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
+  [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
   [roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
 - Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
   [specs/progress-protocol.md](../specs/progress-protocol.md)
