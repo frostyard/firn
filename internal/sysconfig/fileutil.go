@@ -47,7 +47,8 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 // copySkel recursively copies the contents of src into dst, preserving each
 // entry's own mode bits and symlink targets (the useful subset of `cp -a`;
 // skel trees hold only files, directories, and symlinks — anything else is
-// skipped). Ownership is fixed afterwards by chownTree.
+// skipped). Ownership is fixed afterwards by the caller: DeploymentWriter
+// runs `chown -R` on the home through its Runner.
 func copySkel(src, dst string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
