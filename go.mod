@@ -13,6 +13,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/frostyard/clix v0.4.0
 	github.com/spf13/cobra v1.10.2
+	go.yaml.in/yaml/v3 v3.0.4
 )
 
 require (
@@ -59,7 +60,6 @@ require (
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/xo/terminfo v1.0.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.39.0 // indirect

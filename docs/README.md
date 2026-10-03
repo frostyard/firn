@@ -29,6 +29,7 @@ Docs are split by the question they answer:
 - [0014 — Port fisherman's secure-install (schema-1) into firn's bootc pipeline](adr/0014-port-secure-install-schema-1-for-bootc.md)
 - [0015 — Propose a post-cutoff bootc-only installer scope (Proposed)](adr/0015-bootc-only-installer-scope.md)
 - [0016 — Version-2 bootc-only recipe contract (Accepted)](adr/0016-bootc-only-recipe-contract.md)
+- [0017 — Publish Debian packages through frostyard/apt-publisher](adr/0017-publish-debian-packages-through-apt-publisher.md)
 
 ### Design
 

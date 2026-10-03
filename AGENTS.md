@@ -60,8 +60,13 @@ removed. -->
   the pipeline stays under `internal/` (firn's public contracts are
   the recipe schema and progress protocol, not Go APIs).
 - Releases: conventional commits; `make bump` tags via svu; GoReleaser
-  Pro publishes `frostyard-firn` packages plus a nightly `dev`
-  snapshot.
+  Pro builds `frostyard-firn` packages plus a nightly `dev`
+  snapshot. The tag workflow attests every release asset, then sends
+  one unguarded `publish-deb` request to frostyard/apt-publisher, which
+  publishes the `.deb` files and dispatches snosi's rebuild (ADR-0017).
+  Never add a repogen publish step or a direct snosi dispatch;
+  `cmd/firn-cli/release_workflow_contract_test.go` pins the workflow
+  (with `go.yaml.in/yaml/v3`, test-only, sanctioned by ADR-0017).
 - Pipeline and domain packages (`internal/*` except the TUI) use only the
   Go stdlib plus shelling out to host tools; the sanctioned exceptions are
   the TOML decoder (ADR-0005) and, in the TUI layer only, the Charm stack

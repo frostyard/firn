@@ -235,6 +235,15 @@ uses the same engine preflight as headless installation.
   UKI's signed PCR 11 policy (firmware-independent). Firn deliberately does
   not use fisherman's PCR 7 first-boot staging: encrypted bootc must unlock
   before a staged first-boot unit could run.
+- Release and distribution
+  ([ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)):
+  a tag runs `.github/workflows/release.yml`, which creates the GitHub
+  release, attests its assets' build provenance, and asks
+  frostyard/apt-publisher to publish the `frostyard-firn` `.deb` files to
+  `https://repository.frostyard.org/debian/` (`trixie` and `forky`).
+  apt-publisher then dispatches snosi's rebuild; the installer ISO installs
+  its pinned firn version from `trixie`
+  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)).
 
 ## References
 
@@ -249,4 +258,5 @@ uses the same engine preflight as headless installation.
   [roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
 - Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
   [specs/progress-protocol.md](../specs/progress-protocol.md)
+- Release and distribution: [ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)
 - Built in: [roadmap — Phases 1–7](../plans/roadmap.md)
