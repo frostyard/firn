@@ -11,7 +11,11 @@ permissions:
   contents: write
   # packages: write
   # issues: write
-  # id-token: write
+  # id-token and attestations let actions/attest-build-provenance sign the
+  # release artifacts with GitHub's Sigstore instance (verify with
+  # `gh attestation verify <artifact> --repo frostyard/firn`).
+  id-token: write
+  attestations: write
 
 jobs:
   goreleaser:
@@ -21,6 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -57,26 +62,31 @@ jobs:
           # Your GoReleaser Pro key, if you are using the 'goreleaser-pro' distribution
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
 
-      - name: Publish to frostyard repo
-        uses: frostyard/repogen/.github/actions/publish-to-r2@6648671cec7015231fac1f278f09ee5799281bc9 # main
+      # Build provenance: binds each release asset and checksums.txt to this
+      # tag's workflow run. frostyard/apt-publisher refuses a firn .deb whose
+      # attestation does not name refs/tags/<this tag> from a GitHub-hosted
+      # runner, so it must run before the publication request below.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
-          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          r2-bucket: frostyardrepo
-          purge-cache: "true"
-          cloudflare-zone: ${{ secrets.CLOUDFLARE_ZONE }}
-          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          gpg-private-key: ${{ secrets.REPOGEN_GPG_KEY }}
-          packages-dir: ./dist
-          package-type: deb # or sysext
-          base-url: https://repository.frostyard.org # required for sysext
+          subject-path: |
+            dist/checksums.txt
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
 
-      - name: Kickoff snosi
-        if: startsWith(github.ref, 'refs/tags/v')
-        continue-on-error: true
+      # The .deb files are published by frostyard/apt-publisher, the single
+      # Debian writer (frostyard/core ADR-0055, firn ADR-0017). It downloads
+      # every .deb asset of this release, verifies its build provenance,
+      # publishes it to https://repository.frostyard.org/debian/, and then
+      # dispatches `build` to frostyard/snosi once the packages are
+      # installable (core ADR-0056). Not continue-on-error: if this request
+      # fails, nothing was published and the release run must fail.
+      - name: Request APT publication
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
         with:
-          token: ${{ secrets.ORG_PAT }}
-          repository: frostyard/snosi
-          event-type: build
+          token: ${{ secrets.APT_PUBLISH_TOKEN }}
+          repository: frostyard/apt-publisher
+          event-type: publish-deb
+          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ github.ref_name }}"}'

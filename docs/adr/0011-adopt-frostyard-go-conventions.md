@@ -1,6 +1,9 @@
 # 0011 — Adopt the frostyard Go repository conventions
 
-- **Status:** Accepted
+- **Status:** Accepted (repogen package publication and the `R2_*` release
+  secrets superseded by
+  [0017](0017-publish-debian-packages-through-apt-publisher.md) —
+  frostyard/apt-publisher publishes the `.deb` files; the conventions stand)
 - **Date:** 2026-08-11
 
 ## Context
