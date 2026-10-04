@@ -112,7 +112,7 @@ func (w *wizard) advancedImageForm() *huh.Form {
 			Description("Leave empty to track the selected install reference.").
 			Placeholder(w.c.entry.Ref).
 			Value(&w.c.targetRef).
-			Validate(validateTargetRefInput),
+			Validate(w.skipWhenBacking(validateTargetRefInput)),
 		huh.NewSelect[string]().
 			Title("Bootloader").
 			Description(bootloaderDescription).
@@ -249,17 +249,17 @@ func (w *wizard) securityForm() *huh.Form {
 				Title("Encryption passphrase").
 				EchoMode(huh.EchoModePassword).
 				Value(&w.c.passphrase).
-				Validate(requireNonEmpty("a passphrase")),
+				Validate(w.skipWhenBacking(requireNonEmpty("a passphrase"))),
 			huh.NewInput().
 				Title("Confirm passphrase").
 				EchoMode(huh.EchoModePassword).
 				Value(&passConfirm).
-				Validate(func(s string) error {
+				Validate(w.skipWhenBacking(func(s string) error {
 					if s != w.c.passphrase {
 						return errors.New("passphrases do not match")
 					}
 					return nil
-				}),
+				})),
 		).WithHideFunc(func() bool { return !needsPassphrase(w.c.encryption) }),
 	)
 	groups = w.appendMOKGroups(groups)
@@ -295,17 +295,17 @@ func (w *wizard) appendMOKGroups(groups []*huh.Group) []*huh.Group {
 				Description("MokManager asks for this once at the next boot.").
 				EchoMode(huh.EchoModePassword).
 				Value(&w.c.mokPassword).
-				Validate(requireNonEmpty("a MOK password")),
+				Validate(w.skipWhenBacking(requireNonEmpty("a MOK password"))),
 			huh.NewInput().
 				Title("Confirm MOK password").
 				EchoMode(huh.EchoModePassword).
 				Value(&mokConfirm).
-				Validate(func(s string) error {
+				Validate(w.skipWhenBacking(func(s string) error {
 					if s != w.c.mokPassword {
 						return errors.New("passwords do not match")
 					}
 					return nil
-				}),
+				})),
 		).WithHideFunc(func() bool { return w.c.mok != "enroll" }),
 	)
 }
@@ -317,27 +317,27 @@ func (w *wizard) systemForm() *huh.Form {
 				Title("Hostname").
 				Placeholder("frost01").
 				Value(&w.c.hostname).
-				Validate(validateHostnameInput),
+				Validate(w.skipWhenBacking(validateHostnameInput)),
 			huh.NewInput().
 				Title("Locale").
 				Description("Tab completes suggestions; empty keeps the image default.").
 				Placeholder("en_US.UTF-8").
 				Suggestions(commonLocales).
 				Value(&w.c.locale).
-				Validate(validateLocaleInput),
+				Validate(w.skipWhenBacking(validateLocaleInput)),
 			huh.NewInput().
 				Title("Timezone").
 				Description("IANA zone name, e.g. America/Chicago; empty keeps the image default.").
 				Suggestions(timezoneSuggestions(w.opts.Machine.ZoneinfoDir)).
 				Value(&w.c.timezone).
-				Validate(validateTimezoneInput(w.opts.Machine.ZoneinfoDir)),
+				Validate(w.skipWhenBacking(validateTimezoneInput(w.opts.Machine.ZoneinfoDir))),
 			huh.NewInput().
 				Title("Keyboard layout").
 				Description("XKB LAYOUT[:VARIANT[:MODEL]], e.g. us or de:nodeadkeys; empty keeps the image default.").
 				Placeholder("us").
 				Suggestions(commonKeyboards).
 				Value(&w.c.keyboard).
-				Validate(validateKeyboardInput),
+				Validate(w.skipWhenBacking(validateKeyboardInput)),
 		),
 		huh.NewGroup(
 			huh.NewText().
@@ -345,7 +345,7 @@ func (w *wizard) systemForm() *huh.Form {
 				Description("Paste one or more OpenSSH public key lines, or leave empty.").
 				Lines(3).
 				Value(&w.c.rootSSHKey).
-				Validate(validateSSHKeyInput),
+				Validate(w.skipWhenBacking(validateSSHKeyInput)),
 		),
 	)
 }
@@ -412,27 +412,27 @@ func (w *wizard) userForm() *huh.Form {
 			huh.NewInput().
 				Title("Username").
 				Value(&w.c.username).
-				Validate(validateUsernameInput),
+				Validate(w.skipWhenBacking(validateUsernameInput)),
 			huh.NewInput().
 				Title("Full name (optional)").
 				Description("Unicode is supported; ':' and line breaks are not.").
 				Value(&w.c.fullname).
-				Validate(validateFullnameInput),
+				Validate(w.skipWhenBacking(validateFullnameInput)),
 			huh.NewInput().
 				Title("Password").
 				EchoMode(huh.EchoModePassword).
 				Value(&w.c.password).
-				Validate(requireNonEmpty("a password")),
+				Validate(w.skipWhenBacking(requireNonEmpty("a password"))),
 			huh.NewInput().
 				Title("Confirm password").
 				EchoMode(huh.EchoModePassword).
 				Value(&passConfirm).
-				Validate(func(s string) error {
+				Validate(w.skipWhenBacking(func(s string) error {
 					if s != w.c.password {
 						return errors.New("passwords do not match")
 					}
 					return nil
-				}),
+				})),
 		).WithHideFunc(hidden),
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
@@ -446,7 +446,7 @@ func (w *wizard) userForm() *huh.Form {
 				Title("Additional groups (optional)").
 				Description("Comma- or space-separated.").
 				Value(&w.c.extraGroups).
-				Validate(validateGroupListInput),
+				Validate(w.skipWhenBacking(validateGroupListInput)),
 		).WithHideFunc(hidden),
 		huh.NewGroup(
 			huh.NewText().
@@ -454,7 +454,7 @@ func (w *wizard) userForm() *huh.Form {
 				Description("Paste one or more OpenSSH public key lines, or leave empty.").
 				Lines(3).
 				Value(&w.c.userSSHKey).
-				Validate(validateSSHKeyInput),
+				Validate(w.skipWhenBacking(validateSSHKeyInput)),
 		).WithHideFunc(hidden),
 	)
 }

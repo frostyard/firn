@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
@@ -1076,4 +1077,223 @@ func TestGroupOptionsCoverAllBuiltinDefaults(t *testing.T) {
 			}
 		}
 	}
+}
+
+// pumpKeys feeds key messages through the page model the way bubbletea would,
+// executing every returned command (including batches/sequences) and feeding
+// the resulting messages back, until no commands remain.
+func pumpKeys(t *testing.T, m *wizardPageModel, keys ...tea.Msg) {
+	t.Helper()
+	var queue []tea.Msg
+	queue = append(queue, runCmd(m.Init()))
+	for _, k := range keys {
+		queue = append(queue, k)
+		for len(queue) > 0 {
+			msg := queue[0]
+			queue = queue[1:]
+			switch v := msg.(type) {
+			case nil, tea.QuitMsg:
+				continue
+			case tea.BatchMsg:
+				for _, c := range v {
+					if c != nil {
+						queue = append(queue, runCmd(c))
+					}
+				}
+				continue
+			}
+			_, cmd := m.Update(msg)
+			if cmd != nil {
+				queue = append(queue, runCmd(cmd))
+			}
+		}
+	}
+}
+
+// runCmd runs a command, dropping timers (cursor blink) that would block.
+func runCmd(c tea.Cmd) tea.Msg {
+	if c == nil {
+		return nil
+	}
+	ch := make(chan tea.Msg, 1)
+	go func() { ch <- c() }()
+	select {
+	case msg := <-ch:
+		return msg
+	case <-time.After(50 * time.Millisecond):
+		return nil
+	}
+}
+
+func typeKeys(s string) []tea.Msg {
+	var out []tea.Msg
+	for _, r := range s {
+		out = append(out, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	return out
+}
+
+func newPageModel(w *wizard, f *huh.Form) *wizardPageModel {
+	return &wizardPageModel{form: f, backward: &w.backward}
+}
+
+var (
+	keyEnter    = tea.KeyMsg{Type: tea.KeyEnter}
+	keyShiftTab = tea.KeyMsg{Type: tea.KeyShiftTab}
+)
+
+func seq(parts ...[]tea.Msg) []tea.Msg {
+	var out []tea.Msg
+	for _, p := range parts {
+		out = append(out, p...)
+	}
+	return out
+}
+
+func one(m tea.Msg) []tea.Msg { return []tea.Msg{m} }
+
+func TestUserFormShiftTabAfterPasswordMismatchWalksBack(t *testing.T) {
+	w := &wizard{c: wizardChoices{entry: bootcEntry()}}
+	m := newPageModel(w, w.userForm())
+	pumpKeys(t, m, seq(
+		one(keyEnter),                                 // Create a user account? Yes
+		typeKeys("e2e"), one(keyEnter), one(keyEnter), // username, skip full name
+		typeKeys("first-pw"), one(keyEnter),
+		typeKeys("other-pw"), one(keyEnter), // mismatch: stays on Confirm
+	)...)
+	if got := focusedValue(m); got != "other-pw" {
+		t.Fatalf("after mismatch focused field holds %q, want the confirmation", got)
+	}
+	// Back through the password, full name and username to the create-user
+	// question: each Shift-Tab must move despite the stale mismatch error.
+	for _, want := range []string{"first-pw", "", "e2e"} {
+		pumpKeys(t, m, keyShiftTab)
+		if got := focusedValue(m); got != want {
+			t.Fatalf("Shift-Tab focus holds %q, want %q", got, want)
+		}
+	}
+	pumpKeys(t, m, keyShiftTab)
+	if m.back {
+		t.Fatal("left the page early; the create-user question should be focused")
+	}
+	if _, ok := m.form.GetFocusedField().(*huh.Confirm); !ok {
+		t.Fatalf("focused %T, want the create-user Confirm", m.form.GetFocusedField())
+	}
+	pumpKeys(t, m, keyShiftTab)
+	if !m.back {
+		t.Fatal("Shift-Tab on the first field did not request the previous page")
+	}
+}
+
+func TestUserFormMismatchStillBlocksForwardAfterGoingBack(t *testing.T) {
+	w := &wizard{c: wizardChoices{entry: bootcEntry()}}
+	m := newPageModel(w, w.userForm())
+	pumpKeys(t, m, seq(
+		one(keyEnter),
+		typeKeys("e2e"), one(keyEnter), one(keyEnter),
+		typeKeys("first-pw"), one(keyEnter),
+		typeKeys("other-pw"), one(keyEnter),
+		one(keyShiftTab), one(keyShiftTab), one(keyShiftTab), one(keyShiftTab), // back to Create
+		one(keyEnter), one(keyEnter), one(keyEnter), one(keyEnter), // forward to Confirm
+	)...)
+	if got := focusedValue(m); got != "other-pw" {
+		t.Fatalf("forward walk focus holds %q, want the stale confirmation", got)
+	}
+	// Enter on the mismatched confirmation must not advance or complete.
+	pumpKeys(t, m, keyEnter)
+	if got := focusedValue(m); got != "other-pw" {
+		t.Fatalf("Enter advanced past a mismatch; focus holds %q", got)
+	}
+	if m.form.State != huh.StateNormal {
+		t.Fatalf("form state = %v after mismatched Enter, want normal", m.form.State)
+	}
+}
+
+func TestUserFormCorrectingMismatchedPasswordCompletes(t *testing.T) {
+	w := &wizard{c: wizardChoices{entry: bootcEntry()}}
+	m := newPageModel(w, w.userForm())
+	pumpKeys(t, m, seq(
+		one(keyEnter),
+		typeKeys("e2e"), one(keyEnter), one(keyEnter),
+		typeKeys("typo-pw"), one(keyEnter),
+		typeKeys("good-pw"), one(keyEnter), // mismatch: refused
+	)...)
+	if m.form.State != huh.StateNormal || focusedValue(m) != "good-pw" {
+		t.Fatalf("mismatch was not refused: state=%v focus=%q", m.form.State, focusedValue(m))
+	}
+	if !strings.Contains(m.View(), "passwords do not match") {
+		t.Fatal("mismatch error not shown")
+	}
+	pumpKeys(t, m, keyShiftTab)
+	if m.back || focusedValue(m) != "typo-pw" {
+		t.Fatalf("Shift-Tab did not return to Password: back=%v focus=%q", m.back, focusedValue(m))
+	}
+	// Replace the typo (ctrl+u clears the line), then re-confirm.
+	pumpKeys(t, m, seq(
+		one(tea.KeyMsg{Type: tea.KeyCtrlU}), typeKeys("good-pw"), one(keyEnter),
+		one(tea.KeyMsg{Type: tea.KeyCtrlU}), typeKeys("good-pw"), one(keyEnter),
+		one(keyEnter), // groups multi-select
+		one(keyEnter), // additional groups
+		one(keyEnter), // SSH key text: last field submits
+	)...)
+	if m.form.State != huh.StateCompleted {
+		t.Fatalf("form state = %v, want completed; view:\n%s", m.form.State, m.View())
+	}
+	if w.c.password != "good-pw" {
+		t.Fatalf("collected password = %q, want the corrected one", w.c.password)
+	}
+}
+
+func TestSecurityFormPassphraseMismatchAllowsBack(t *testing.T) {
+	w := &wizard{c: wizardChoices{entry: bootcEntry(), encryption: "luks-passphrase"}}
+	m := newPageModel(w, w.securityForm())
+	pumpKeys(t, m, seq(
+		one(keyEnter), // accept luks-passphrase
+		typeKeys("first-ph"), one(keyEnter),
+		typeKeys("other-ph"), one(keyEnter), // mismatch
+		one(keyShiftTab), // to passphrase
+	)...)
+	if got := focusedValue(m); got != "first-ph" {
+		t.Fatalf("focus holds %q, want the first passphrase", got)
+	}
+	pumpKeys(t, m, keyShiftTab) // back to the encryption select
+	if _, ok := m.form.GetFocusedField().(*huh.Select[string]); !ok {
+		t.Fatalf("focused %T, want the encryption select", m.form.GetFocusedField())
+	}
+	pumpKeys(t, m, seq(one(keyEnter), one(keyEnter))...)
+	pumpKeys(t, m, keyEnter) // mismatch still blocks
+	if m.form.State != huh.StateNormal {
+		t.Fatal("mismatched passphrase confirmation was accepted")
+	}
+}
+
+func TestMOKFormPasswordMismatchAllowsBack(t *testing.T) {
+	w := &wizard{
+		opts: WizardOpts{Machine: recipe.Env{SecureBoot: true}},
+		c:    wizardChoices{entry: bootcEntry(), encryption: "none"},
+	}
+	m := newPageModel(w, w.securityForm())
+	pumpKeys(t, m, seq(
+		one(keyEnter), // encryption none
+		one(keyEnter), // MOK enroll
+		typeKeys("first-mok"), one(keyEnter),
+		typeKeys("other-mok"), one(keyEnter), // mismatch
+		one(keyShiftTab),
+	)...)
+	if got := focusedValue(m); got != "first-mok" {
+		t.Fatalf("focus holds %q, want the first MOK password", got)
+	}
+	pumpKeys(t, m, keyShiftTab)
+	if _, ok := m.form.GetFocusedField().(*huh.Select[string]); !ok {
+		t.Fatalf("focused %T, want the MOK select", m.form.GetFocusedField())
+	}
+}
+
+func focusedValue(m *wizardPageModel) string {
+	f := m.form.GetFocusedField()
+	if f == nil {
+		return ""
+	}
+	v, _ := f.GetValue().(string)
+	return v
 }
