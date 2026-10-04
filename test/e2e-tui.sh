@@ -257,8 +257,10 @@ type_input '^.*Password' 'firn-e2e-typo'
 type_input 'Confirm password' 'firn-e2e-pw'
 expect_screen 'passwords do not match'
 tmux send-keys -t "$S" BTab
-sleep 0.5
-type_input '^.*Password' 'firn-e2e-pw'
+# Focused huh fields carry the group border; match the exact title so
+# 'Confirm password' cannot satisfy the gate.
+expect_screen '^[┃│|][[:space:]]*Password[[:space:]]*$'
+type_input '^[┃│|][[:space:]]*Password[[:space:]]*$' 'firn-e2e-pw'
 type_input 'Confirm password' 'firn-e2e-pw'
 accept_field '^.*Groups'               # sudo preselected
 accept_field 'Additional groups'

@@ -1209,6 +1209,41 @@ func TestUserFormMismatchStillBlocksForwardAfterGoingBack(t *testing.T) {
 	}
 }
 
+func TestUserFormCorrectingMismatchedPasswordCompletes(t *testing.T) {
+	w := &wizard{c: wizardChoices{entry: bootcEntry()}}
+	m := newPageModel(w, w.userForm())
+	pumpKeys(t, m, seq(
+		one(keyEnter),
+		typeKeys("e2e"), one(keyEnter), one(keyEnter),
+		typeKeys("typo-pw"), one(keyEnter),
+		typeKeys("good-pw"), one(keyEnter), // mismatch: refused
+	)...)
+	if m.form.State != huh.StateNormal || focusedValue(m) != "good-pw" {
+		t.Fatalf("mismatch was not refused: state=%v focus=%q", m.form.State, focusedValue(m))
+	}
+	if !strings.Contains(m.View(), "passwords do not match") {
+		t.Fatal("mismatch error not shown")
+	}
+	pumpKeys(t, m, keyShiftTab)
+	if m.back || focusedValue(m) != "typo-pw" {
+		t.Fatalf("Shift-Tab did not return to Password: back=%v focus=%q", m.back, focusedValue(m))
+	}
+	// Replace the typo (ctrl+u clears the line), then re-confirm.
+	pumpKeys(t, m, seq(
+		one(tea.KeyMsg{Type: tea.KeyCtrlU}), typeKeys("good-pw"), one(keyEnter),
+		one(tea.KeyMsg{Type: tea.KeyCtrlU}), typeKeys("good-pw"), one(keyEnter),
+		one(keyEnter), // groups multi-select
+		one(keyEnter), // additional groups
+		one(keyEnter), // SSH key text: last field submits
+	)...)
+	if m.form.State != huh.StateCompleted {
+		t.Fatalf("form state = %v, want completed; view:\n%s", m.form.State, m.View())
+	}
+	if w.c.password != "good-pw" {
+		t.Fatalf("collected password = %q, want the corrected one", w.c.password)
+	}
+}
+
 func TestSecurityFormPassphraseMismatchAllowsBack(t *testing.T) {
 	w := &wizard{c: wizardChoices{entry: bootcEntry(), encryption: "luks-passphrase"}}
 	m := newPageModel(w, w.securityForm())
