@@ -76,6 +76,24 @@ type wizard struct {
 	theme      *huh.Theme
 	secretsDir string
 	c          wizardChoices
+	// backward is true while the user is navigating backward (Shift-Tab);
+	// validators wrapped by skipWhenBacking then pass. It is set and cleared
+	// by wizardPageModel.
+	backward bool
+}
+
+// skipWhenBacking makes a live validator permissive during backward
+// navigation: huh refuses to leave a group while any of its fields holds a
+// validation error, which stranded users on a bad value (e.g. a password
+// confirmation mismatch) with no way back to fix it. Forward navigation
+// (Enter) still runs the real validator.
+func (w *wizard) skipWhenBacking(fn func(string) error) func(string) error {
+	return func(s string) error {
+		if w.backward {
+			return nil
+		}
+		return fn(s)
+	}
 }
 
 type wizardPage int
@@ -295,7 +313,7 @@ func (w *wizard) page(ctx context.Context, f *huh.Form) (quit bool, err error) {
 	f.WithTheme(w.theme)
 	f.SubmitCmd = tea.Quit
 	f.CancelCmd = tea.Interrupt
-	m := &wizardPageModel{form: f}
+	m := &wizardPageModel{form: f, backward: &w.backward}
 	result, err := tea.NewProgram(m,
 		tea.WithContext(ctx),
 		tea.WithInput(os.Stdin),
@@ -331,6 +349,9 @@ type wizardPageModel struct {
 	form  *huh.Form
 	first huh.Field
 	back  bool
+	// backward is shared with the validators (wizard.skipWhenBacking); nil
+	// when the form has no backward-aware validators.
+	backward *bool
 }
 
 func (m *wizardPageModel) Init() tea.Cmd {
@@ -342,12 +363,15 @@ func (m *wizardPageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.first == nil && focused != nil && !focused.Skip() {
 		m.first = focused
 	}
-	if key, ok := msg.(tea.KeyMsg); ok &&
-		key.Type == tea.KeyShiftTab &&
-		m.first != nil &&
-		focused == m.first {
-		m.back = true
-		return m, tea.Quit
+	if key, ok := msg.(tea.KeyMsg); ok {
+		backward := key.Type == tea.KeyShiftTab
+		if backward && m.first != nil && focused == m.first {
+			m.back = true
+			return m, tea.Quit
+		}
+		if m.backward != nil {
+			*m.backward = backward
+		}
 	}
 	updated, cmd := m.form.Update(msg)
 	m.form = updated.(*huh.Form)

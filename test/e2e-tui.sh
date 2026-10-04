@@ -251,6 +251,13 @@ type_textarea 'Root SSH authorized key' "$root_pubkey"
 accept_field 'Create a user account'  # initially Yes
 type_input 'Username' 'e2e'
 accept_field 'Full name'               # optional
+type_input '^.*Password' 'firn-e2e-typo'
+# Mismatched confirmation is refused, and Shift-Tab (backward navigation)
+# must still reach the first password field to correct it.
+type_input 'Confirm password' 'firn-e2e-pw'
+expect_screen 'passwords do not match'
+tmux send-keys -t "$S" BTab
+sleep 0.5
 type_input '^.*Password' 'firn-e2e-pw'
 type_input 'Confirm password' 'firn-e2e-pw'
 accept_field '^.*Groups'               # sudo preselected
