@@ -183,7 +183,14 @@ user full names accept empty and Unicode GECOS text but reject passwd field
 and record delimiters before the writer runs.
 Flatpaks follow ADR-0006: copy from the medium's seeded
 repo, download the remainder into the mounted target, report (never
-silently drop) what was unreachable.
+silently drop) what was unreachable. With `core_flatpaks`, the core set
+comes from first-setup's `core.json` in the deployment, or, when composefs
+makes that unreadable ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)),
+from the ISO's `/usr/share/firn/core-flatpaks.json`; neither depends on the
+image being installed.
+[ADR-0018 (Proposed)](../adr/0018-image-published-core-flatpaks-label.md)
+replaces both with an `org.frostyard.core-flatpaks` label each image
+publishes ([roadmap Phase 10](../plans/roadmap.md#phase-10)).
 
 ### Trust
 
@@ -255,6 +262,7 @@ uses the same engine preflight as headless installation.
   [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)
 - Scope and contract: [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
   [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
+  [ADR-0018 (Proposed)](../adr/0018-image-published-core-flatpaks-label.md),
   [roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
 - Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
   [specs/progress-protocol.md](../specs/progress-protocol.md)

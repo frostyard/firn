@@ -30,6 +30,7 @@ Docs are split by the question they answer:
 - [0015 — Propose a post-cutoff bootc-only installer scope (Proposed)](adr/0015-bootc-only-installer-scope.md)
 - [0016 — Version-2 bootc-only recipe contract (Accepted)](adr/0016-bootc-only-recipe-contract.md)
 - [0017 — Publish Debian packages through frostyard/apt-publisher](adr/0017-publish-debian-packages-through-apt-publisher.md)
+- [0018 — Read each image's core flatpak set from an OCI label (Proposed)](adr/0018-image-published-core-flatpaks-label.md)
 
 ### Design
 
