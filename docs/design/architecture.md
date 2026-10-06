@@ -65,6 +65,16 @@ headless-only; the wizard instead accepts pasted keys and creates its own
 private password files. The exact parity/delta table lives in the
 [recipe schema](../specs/recipe-schema.md#interactive-wizard-parity).
 
+The flatpaks page inspects the chosen image's
+[core Flatpaks label](../specs/core-flatpaks-label.md) when it opens, with a
+30-second timeout, using preflight's local-first selection without signature
+verification, and again whenever the chosen image changes. It lists a
+published set's app names beside the toggle; explains instead of offering
+the toggle when the image publishes no set or a malformed one (and clears any
+earlier answer); and keeps the toggle with an "available at install time"
+note when inspection fails. The preview never enters the recipe: preflight
+reads the label again at install.
+
 Each interactive run owns a randomly named 0700 directory below `/run/firn`.
 The reviewed recipe references only 0600 secret files in that directory, and
 the wizard's canonical serializer returns the accepted review bytes directly

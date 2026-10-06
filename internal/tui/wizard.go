@@ -76,6 +76,9 @@ type wizard struct {
 	theme      *huh.Theme
 	secretsDir string
 	c          wizardChoices
+	// preview is the chosen image's core Flatpak set as last inspected by
+	// the flatpaks page; it is display-only and never enters the recipe.
+	preview corePreview
 	// backward is true while the user is navigating backward (Shift-Tab);
 	// validators wrapped by skipWhenBacking then pass. It is set and cleared
 	// by wizardPageModel.
@@ -185,6 +188,7 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 		case pageUser:
 			quit, err = w.page(ctx, w.userForm())
 		case pageFlatpaks:
+			w.refreshCorePreview(ctx)
 			quit, err = w.page(ctx, w.flatpaksForm())
 		case pageReview:
 			var startOver bool

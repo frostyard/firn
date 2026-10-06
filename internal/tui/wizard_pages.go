@@ -459,18 +459,53 @@ func (w *wizard) userForm() *huh.Form {
 	)
 }
 
+// flatpaksForm offers the chosen image's core app set according to
+// w.preview (refreshed by the run loop before this page), plus extra apps.
+// An image with no set, or a malformed one, gets an explanation instead of
+// the toggle, and the toggle's value is cleared so the recipe never asks
+// for a set the wizard did not offer.
 func (w *wizard) flatpaksForm() *huh.Form {
-	return huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
+	var core huh.Field
+	switch w.preview.state {
+	case corePreviewNone:
+		w.c.coreFlatpaks = false
+		core = huh.NewNote().
+			Title("No core app set").
+			Description("This image publishes no core Flatpak apps.")
+	case corePreviewInvalid:
+		w.c.coreFlatpaks = false
+		core = huh.NewNote().
+			Title("Core app set unavailable").
+			Description(escapeMarkdown("This image's core app list is malformed, so it cannot be installed.\n" + w.preview.detail))
+	case corePreviewAvailable:
+		core = huh.NewConfirm().
 			Title("Install this image's core app set?").
-			Description("Initially No. The curated Flatpak set published for this image,\ninstalled offline from the installer medium where available.").
-			Value(&w.c.coreFlatpaks),
+			Description("Initially No. This image publishes these Flatpak apps:\n" + wrapNames(w.preview.apps, 64)).
+			Value(&w.c.coreFlatpaks)
+	default:
+		desc := "Initially No. This image's list could not be read now; it is read\nagain at install time."
+		if w.preview.detail != "" {
+			desc += "\n(" + w.preview.detail + ")"
+		}
+		core = huh.NewConfirm().
+			Title("Install this image's core app set?").
+			Description(desc).
+			Value(&w.c.coreFlatpaks)
+	}
+	return huh.NewForm(huh.NewGroup(
+		core,
 		huh.NewText().
 			Title("Extra Flatpak apps (optional)").
 			Description("Application IDs, e.g. org.mozilla.firefox — comma, space, or\nnewline separated.").
 			Lines(3).
 			Value(&w.c.flatpaksRaw),
 	))
+}
+
+// escapeMarkdown keeps note text literal: huh renders note descriptions as
+// markdown, so paired underscores (core_flatpaks) would vanish.
+func escapeMarkdown(s string) string {
+	return strings.NewReplacer("_", "\\_", "*", "\\*").Replace(s)
 }
 
 func (w *wizard) reviewForm(recipeTOML string, issues []recipe.Issue, action *string) *huh.Form {
@@ -483,7 +518,7 @@ func (w *wizard) reviewForm(recipeTOML string, issues []recipe.Issue, action *st
 	// the characters VANISH from the "review this exact recipe" screen
 	// (observed live in the TUI E2E). Escape markdown emphasis so the
 	// TOML shows byte-exact.
-	desc = strings.NewReplacer("_", "\\_", "*", "\\*").Replace(desc)
+	desc = escapeMarkdown(desc)
 	return huh.NewForm(huh.NewGroup(
 		huh.NewNote().
 			Title("Review — this exact recipe will be installed").

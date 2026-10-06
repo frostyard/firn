@@ -346,11 +346,12 @@ snosi.
    which installs explicit apps then the core set, each once.
    `internal/flatpak` no longer reads first-setup's `core.json` or the ISO
    fallback. Tag only after step 2's images are published.
-4. **Firn TUI.** Inspect the chosen image with a timeout and again on image
-   change; distinguish inspect failure, no core set, malformed label and a
-   valid set; hiding the toggle clears it. Unit-test navigation and failure
-   states, and re-sync `test/e2e-tui.sh` per the drive-tui-e2e skill against
-   a fixture rather than live registry labels.
+4. ✅ **Firn TUI.** The flatpaks page inspects the chosen image with a
+   timeout and again on image change, and distinguishes inspect failure, no
+   core set, a malformed label and a valid set; hiding the toggle clears it.
+   Unit tests cover image switching and every state. `test/e2e-tui.sh`
+   asserts Floe's real outcome (no toggle, an explanation); the guest
+   already pulls Floe from GHCR, so this adds no new registry dependency.
 5. **Snosi: retire the fallback.** Once the ISO carries a step-3 firn
    release, remove the `/usr/share/firn/core-flatpaks.json` embedding from
    `shared/firn-installer/mkosi.conf` and the Justfile's `_firn-binary`,

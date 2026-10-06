@@ -68,7 +68,10 @@ advance past each prompt; the recipe always serializes the accepted values.
 | `root_ssh_authorized_key` / `_file` | string / path | no | At most one. The inline value or referenced file contains one or more newline-separated OpenSSH public-key records; every line MUST be non-empty and match a supported key type, base64 key body, and optional comment. |
 
 The TUI initially offers user creation with the `sudo` group, but initially
-leaves `core_flatpaks` disabled. Rebuilding either form preserves the user's
+leaves `core_flatpaks` disabled. It offers `core_flatpaks` only when the
+chosen image publishes a core set or could not be inspected, and never
+serializes `core_flatpaks = true` for an image whose toggle it hid
+([core Flatpaks label](core-flatpaks-label.md), rule 7). Rebuilding either form preserves the user's
 accepted values rather than reapplying these initial selections.
 
 ### `[system.user]` (optional table; omit to create no user)

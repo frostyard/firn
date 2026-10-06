@@ -64,6 +64,17 @@ An image with no core set publishes no label key.
    version treat its label as malformed.
 6. Producers must not publish an empty `flatpaks` array or an empty-string
    value; an image without a core set carries no label key.
+7. The TUI wizard previews the label on its flatpaks page, inspecting the
+   chosen image with rule 2's local-first selection (no signature
+   verification) under a 30-second timeout, and again when the chosen image
+   changes. It:
+   - lists a valid set's names beside the `core_flatpaks` toggle;
+   - shows no toggle, and an explanation, for no core set or a malformed
+     label, and sets `core_flatpaks` to false;
+   - keeps the toggle, noting the list is read at install time, when
+     inspection fails.
+
+   The preview is display-only and never written into the recipe.
 
 ## Derived artifacts
 

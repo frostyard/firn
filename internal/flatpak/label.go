@@ -38,6 +38,12 @@ type coreLabelItem struct {
 	Name *string `json:"name"`
 }
 
+// CoreApp is one entry of an image's core Flatpak set.
+type CoreApp struct {
+	ID   string
+	Name string
+}
+
 // ParseCoreLabel returns the app IDs of an image's core Flatpak set from the
 // value of its CoreLabel. present reports whether the label key exists.
 //
@@ -46,6 +52,20 @@ type coreLabelItem struct {
 // error wrapping ErrMalformedCoreLabel. Duplicate IDs are dropped, keeping
 // the first occurrence.
 func ParseCoreLabel(value string, present bool) ([]string, error) {
+	apps, err := ParseCoreLabelApps(value, present)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, app := range apps {
+		ids = append(ids, app.ID)
+	}
+	return ids, nil
+}
+
+// ParseCoreLabelApps is ParseCoreLabel keeping each app's display name, for
+// the wizard's preview.
+func ParseCoreLabelApps(value string, present bool) ([]CoreApp, error) {
 	if !present {
 		return nil, nil
 	}
@@ -77,7 +97,7 @@ func ParseCoreLabel(value string, present bool) ([]string, error) {
 	if label.Flatpaks == nil {
 		return nil, malformed("flatpaks is missing or null")
 	}
-	var ids []string
+	var apps []CoreApp
 	seen := make(map[string]bool, len(*label.Flatpaks))
 	for i, item := range *label.Flatpaks {
 		if item.ID == nil || *item.ID == "" || len(*item.ID) > 255 || !appIDRE.MatchString(*item.ID) {
@@ -88,8 +108,8 @@ func ParseCoreLabel(value string, present bool) ([]string, error) {
 		}
 		if !seen[*item.ID] {
 			seen[*item.ID] = true
-			ids = append(ids, *item.ID)
+			apps = append(apps, CoreApp{ID: *item.ID, Name: *item.Name})
 		}
 	}
-	return ids, nil
+	return apps, nil
 }
