@@ -321,34 +321,45 @@ label each image publishes. Today every image, including Sundog and Floe,
 gets first-setup's GNOME list when the user opts in. Order matters: snosi
 labels ship before firn stops reading the old paths.
 
-1. **Snosi: publish the label.** Add `flatpaks/{snow,snowfield,sundog}.json`
-   (app ID and display name; Floe has none, and Snowfield shares Snow's
-   source if the lists match). Each image build stamps the file's compact
-   JSON into `org.frostyard.core-flatpaks`; images without a file clear the
-   label. CI checks each built label against its file. Optionally generate
-   first-setup's `core.json` on Snow from the same file.
-2. **Firn: consume the label.** Write the label spec (new
-   `docs/specs/` entry) and change it only alongside this code.
-   `internal/bootcimg` returns the label from the verified digest's
-   config; `internal/flatpak` replaces `CoreSet` / `InstallerCoreSet` with
-   a fail-closed label parser; `runFlatpaks` in `internal/steps/bootc.go`
-   installs from it. Update the `core_flatpaks` row in the
-   [recipe schema](../specs/recipe-schema.md), the `no_core_set` row in
-   the [progress protocol](../specs/progress-protocol.md), and
-   [architecture](../design/architecture.md) in the same change.
-3. **Firn TUI.** Inspect the chosen image; hide the core-flatpaks toggle
-   when it has no label, list app names when it does, and keep the toggle
-   with an "unavailable until install" note when inspect fails. Re-sync
-   `test/e2e-tui.sh` per the drive-tui-e2e skill.
-4. **Snosi ISO.** Seed each carried image's set into the medium's
-   `/var/lib/flatpak` from its label (ADR-0006's offline obligation), then
-   drop `/usr/share/firn/core-flatpaks.json` once a firn release with
-   step 2 is on the ISO.
+Out of scope: offline flatpak seeding. Published ISOs carry no seed, and a
+locally seeded ISO keeps today's whole-tree copy (ADR-0018 Consequences).
+Migrating existing installs and removing Sundog's native apps belong to
+snosi.
 
-- **Done when:** a Snow and a Sundog install with `core_flatpaks = true`
-  each land their own image's set, a Floe install wizard offers no core
-  set, the TUI shows the set before install, and neither firn nor the ISO
-  references first-setup's `core.json` or `core-flatpaks.json`.
+1. **Settle the label contract (firn docs).** ADR-0018, still Proposed,
+   defines the parser cases, preflight-time validation, and which image the
+   set describes.
+2. **Snosi: publish the label.** Add `flatpaks/snow.json` and
+   `flatpaks/sundog.json` (Snowfield uses `snow.json`; Floe has none) and
+   validate them in CI. Pass the label at every `buildah-package.sh` call
+   site. Generate first-setup's `core.json` on Snow from `snow.json` with a
+   drift check. CI checks the label on the final pushed images and its
+   absence on Floe.
+3. **Firn: consume the label.** Accept ADR-0018 and write the label spec
+   (new `docs/specs/` entry) with this code. `preflight-image` returns the
+   selected source's labels, parses them when `core_flatpaks = true`, and
+   keeps the set for `runFlatpaks` in `internal/steps/bootc.go`;
+   `internal/flatpak` replaces `CoreSet` / `InstallerCoreSet` with the
+   parser. Update the `core_flatpaks` row in the
+   [recipe schema](../specs/recipe-schema.md), the
+   [progress protocol](../specs/progress-protocol.md), and
+   [architecture](../design/architecture.md) in the same change, and correct
+   the Phase 9 Sundog note (Sundog is offered through snosi's
+   `/etc/firn/catalog.json`). Tag only after step 2's images are published.
+4. **Firn TUI.** Inspect the chosen image with a timeout and again on image
+   change; distinguish inspect failure, no core set, malformed label and a
+   valid set; hiding the toggle clears it. Unit-test navigation and failure
+   states, and re-sync `test/e2e-tui.sh` per the drive-tui-e2e skill against
+   a fixture rather than live registry labels.
+5. **Snosi: retire the fallback.** Once the ISO carries a step-3 firn
+   release, remove `/usr/share/firn/core-flatpaks.json` from
+   `shared/firn-installer/mkosi.conf` and the Justfile's `_firn-binary`.
+
+- **Done when:** Snow and Sundog installs with `core_flatpaks = true` each
+  land their own image's set, a malformed label fails preflight before any
+  disk write, a Floe install wizard offers no core set, the TUI shows the
+  set before install, and neither firn nor the ISO references first-setup's
+  `core.json` or `core-flatpaks.json`.
 
 ## Later / ideas
 
