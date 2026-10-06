@@ -1,6 +1,6 @@
 # 0018 — Read each image's core flatpak set from an OCI label
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-06
 
 ## Context
@@ -180,8 +180,9 @@ mechanism. When accepted, ADR-0006 gains a status note pointing here.
 - Shapes: [design/architecture.md](../design/architecture.md) (system
   configuration, flatpaks), [specs/recipe-schema.md](../specs/recipe-schema.md)
   (`core_flatpaks`), [specs/progress-protocol.md](../specs/progress-protocol.md)
-  (`no_core_set`), a new core-flatpaks label spec created with the
-  implementation, [roadmap Phase 10](../plans/roadmap.md#phase-10)
+  (`no_core_set`, `core_flatpaks_label_invalid`),
+  [specs/core-flatpaks-label.md](../specs/core-flatpaks-label.md) (the label
+  contract), [roadmap Phase 10](../plans/roadmap.md#phase-10)
 - Builds on: [ADR-0006](0006-install-time-offline-first-flatpaks.md)
   (offline-first provisioning, whose core-set source this replaces),
   [ADR-0010](0010-single-installer-iso-in-snosi.md) (snosi owns the ISO and

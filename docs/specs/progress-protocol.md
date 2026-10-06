@@ -66,11 +66,12 @@ version-1 wire contract.
 | Code | Event surfaces | Meaning |
 | --- | --- | --- |
 | `cleanup_failed` | `warning` | A registered pipeline cleanup failed; the terminal event still follows and the run is unsuccessful. |
+| `core_flatpaks_label_invalid` | `error` | Core Flatpaks were requested and the selected image's `org.frostyard.core-flatpaks` label is malformed ([core Flatpaks label](core-flatpaks-label.md)); raised in `preflight-image`, so no destructive step has run. |
 | `flatpak_unreachable` | `warning`, `summary` | A requested Flatpak could not be reached and was not installed. |
 | `group_missing` | `warning`, `summary` | A requested supplementary user group was absent from the installed image. |
 | `image_verification_failed` | `error` | Bootc image digest resolution or cosign verification failed in `preflight-image`; no destructive step has run. |
 | `image_verification_retried` | `warning` | A cosign verification attempt in `preflight-image` failed (transient registry responses can do this) and a bounded retry follows; verification is not weakened, and the run still fails closed with `image_verification_failed` if the final attempt fails. |
-| `no_core_set` | `warning`, `summary` | Core Flatpaks were requested but the selected image publishes no core set. |
+| `no_core_set` | `warning`, `summary` | Core Flatpaks were requested but the selected image publishes no core set (no label, or an empty one); emitted in `preflight-image` and the install continues. |
 | `no_tpm` | `warning` | No TPM was detected; only choices that do not require it remain valid. |
 | `recipe_v1_deprecated` | `warning` | Accepted bootc version-1 recipe; message is the `deprecated-version` text in the [recipe schema](recipe-schema.md#bootc-version-1-compatibility). Emitted by install and the TUI before the first `step_start`. `firn validate` writes the deprecation to stderr instead of emitting progress and exits 0. |
 | `step_failed` | `error` | A pipeline step failed without a more specific stable code. |
@@ -110,5 +111,8 @@ contain the key.
 ## References
 
 - Rationale: [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
-  [ADR-0016](../adr/0016-bootc-only-recipe-contract.md)
+  [ADR-0016](../adr/0016-bootc-only-recipe-contract.md),
+  [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md)
+  (`no_core_set`, `core_flatpaks_label_invalid`; see
+  [core Flatpaks label](core-flatpaks-label.md))
 - Context: [design/architecture.md](../design/architecture.md)

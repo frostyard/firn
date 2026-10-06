@@ -121,6 +121,7 @@ const (
 	CodeFlatpakUnreachable = "flatpak_unreachable"
 	CodeGroupMissing       = "group_missing"
 	CodeNoCoreSet          = "no_core_set"
+	CodeCoreLabelInvalid   = "core_flatpaks_label_invalid"
 	CodeStoreUnmountFailed = "store_umount_failed"
 	CodeStoreCleanupFailed = "store_cleanup_failed"
 	CodeStreamTruncated    = "stream_truncated"

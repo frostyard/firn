@@ -64,7 +64,7 @@ advance past each prompt; the recipe always serializes the accepted values.
 | `timezone` | string | no | IANA zone name, e.g. `America/Chicago`; MUST exist in the target's zoneinfo. Empty or omitted preserves the image default. |
 | `keyboard` | string | no | `LAYOUT[:VARIANT[:MODEL]]` XKB triplet. Empty or omitted preserves the image default. |
 | `flatpaks` | array of string | no | Flatpak application IDs. |
-| `core_flatpaks` | bool | no | Install the image-defined core set where published. Default `false`. |
+| `core_flatpaks` | bool | no | Install the core set the selected image publishes in its `org.frostyard.core-flatpaks` label ([core Flatpaks label](core-flatpaks-label.md)), after `flatpaks`. A malformed label fails preflight; an image with no set installs none and reports `no_core_set`. Default `false`. |
 | `root_ssh_authorized_key` / `_file` | string / path | no | At most one. The inline value or referenced file contains one or more newline-separated OpenSSH public-key records; every line MUST be non-empty and match a supported key type, base64 key body, and optional comment. |
 
 The TUI initially offers user creation with the `sudo` group, but initially
@@ -189,5 +189,7 @@ fail closed with `bad-version`; no downgrade or conversion is attempted.
   [ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md),
    [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
    [ADR-0015](../adr/0015-bootc-only-installer-scope.md),
-   [ADR-0016](../adr/0016-bootc-only-recipe-contract.md)
+   [ADR-0016](../adr/0016-bootc-only-recipe-contract.md),
+   [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md)
+   (`core_flatpaks`; see [core Flatpaks label](core-flatpaks-label.md))
 - Context: [design/architecture.md](../design/architecture.md)

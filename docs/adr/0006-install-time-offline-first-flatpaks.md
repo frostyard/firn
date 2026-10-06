@@ -1,6 +1,6 @@
 # 0006 — Install-time, offline-first flatpak provisioning on both paths
 
-- **Status:** Accepted
+- **Status:** Accepted; core-set source superseded by [0018](0018-image-published-core-flatpaks-label.md)
 - **Date:** 2026-08-11
 
 ## Context

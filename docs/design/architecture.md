@@ -12,7 +12,8 @@ Living document. Rationale:
 boundary: firn ships binary + kiosk unit + contracts; snosi ships the
 single installer ISO).
 Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
-[specs/progress-protocol.md](../specs/progress-protocol.md).
+[specs/progress-protocol.md](../specs/progress-protocol.md),
+[specs/core-flatpaks-label.md](../specs/core-flatpaks-label.md).
 
 <a id="prospective-post-cutoff-scope"></a>
 ## Current bootc-only recipe boundary
@@ -184,13 +185,14 @@ and record delimiters before the writer runs.
 Flatpaks follow ADR-0006: copy from the medium's seeded
 repo, download the remainder into the mounted target, report (never
 silently drop) what was unreachable. With `core_flatpaks`, the core set
-comes from first-setup's `core.json` in the deployment, or, when composefs
-makes that unreadable ([ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)),
-from the ISO's `/usr/share/firn/core-flatpaks.json`; neither depends on the
-image being installed.
-[ADR-0018 (Proposed)](../adr/0018-image-published-core-flatpaks-label.md)
-replaces both with an `org.frostyard.core-flatpaks` label each image
-publishes ([roadmap Phase 10](../plans/roadmap.md#phase-10)).
+comes from the selected image's `org.frostyard.core-flatpaks` label
+([ADR-0018](../adr/0018-image-published-core-flatpaks-label.md),
+[spec](../specs/core-flatpaks-label.md)). `preflight-image` reads it from
+the same inspection that selects the source, before any disk write: a
+malformed label fails the install there, and an image with no set is
+reported as `no_core_set`. The flatpak step installs the recipe's explicit
+apps, then the core set, each once. Firn no longer reads first-setup's
+`core.json` or the ISO's `/usr/share/firn/core-flatpaks.json`.
 
 ### Trust
 
@@ -262,9 +264,10 @@ uses the same engine preflight as headless installation.
   [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)
 - Scope and contract: [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
   [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
-  [ADR-0018 (Proposed)](../adr/0018-image-published-core-flatpaks-label.md),
+  [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md),
   [roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
 - Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
-  [specs/progress-protocol.md](../specs/progress-protocol.md)
+  [specs/progress-protocol.md](../specs/progress-protocol.md),
+  [specs/core-flatpaks-label.md](../specs/core-flatpaks-label.md)
 - Release and distribution: [ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)
 - Built in: [roadmap — Phases 1–7](../plans/roadmap.md)

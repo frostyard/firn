@@ -59,6 +59,10 @@ type Env struct {
 	// cosign verification is requested, it is the verified immutable digest;
 	// the original recipe ref remains the day-two tracking reference.
 	BootcSourceRef string
+	// CoreFlatpaks is the core Flatpak set preflight-image read from the
+	// selected image's label when the recipe sets core_flatpaks (ADR-0018);
+	// empty when the image publishes none.
+	CoreFlatpaks []string
 	// SecureImageRoot is an extracted tree of the secure image's
 	// usr/lib/{snosi,shim} subtrees (secureboot.ExtractSecureImageRoot),
 	// populated by bootc-install for a secure bootc install and consumed by
