@@ -311,6 +311,45 @@ this phase does not rewrite its historical A/B evidence or mark it done.
   criterion is addressed explicitly, and a separate sole-path/production
    decision has been made. **Not complete; implementation in progress.**
 
+<a id="phase-10"></a>
+## Phase 10 — Image-published core flatpaks (small, cross-repo) — 📝 proposed
+
+**Proposed.** [ADR-0018 (Proposed)](../adr/0018-image-published-core-flatpaks-label.md)
+moves the `core_flatpaks` set from first-setup's `core.json` and the ISO's
+`/usr/share/firn/core-flatpaks.json` to an `org.frostyard.core-flatpaks`
+label each image publishes. Today every image, including Sundog and Floe,
+gets first-setup's GNOME list when the user opts in. Order matters: snosi
+labels ship before firn stops reading the old paths.
+
+1. **Snosi: publish the label.** Add `flatpaks/{snow,snowfield,sundog}.json`
+   (app ID and display name; Floe has none, and Snowfield shares Snow's
+   source if the lists match). Each image build stamps the file's compact
+   JSON into `org.frostyard.core-flatpaks`; images without a file clear the
+   label. CI checks each built label against its file. Optionally generate
+   first-setup's `core.json` on Snow from the same file.
+2. **Firn: consume the label.** Write the label spec (new
+   `docs/specs/` entry) and change it only alongside this code.
+   `internal/bootcimg` returns the label from the verified digest's
+   config; `internal/flatpak` replaces `CoreSet` / `InstallerCoreSet` with
+   a fail-closed label parser; `runFlatpaks` in `internal/steps/bootc.go`
+   installs from it. Update the `core_flatpaks` row in the
+   [recipe schema](../specs/recipe-schema.md), the `no_core_set` row in
+   the [progress protocol](../specs/progress-protocol.md), and
+   [architecture](../design/architecture.md) in the same change.
+3. **Firn TUI.** Inspect the chosen image; hide the core-flatpaks toggle
+   when it has no label, list app names when it does, and keep the toggle
+   with an "unavailable until install" note when inspect fails. Re-sync
+   `test/e2e-tui.sh` per the drive-tui-e2e skill.
+4. **Snosi ISO.** Seed each carried image's set into the medium's
+   `/var/lib/flatpak` from its label (ADR-0006's offline obligation), then
+   drop `/usr/share/firn/core-flatpaks.json` once a firn release with
+   step 2 is on the ISO.
+
+- **Done when:** a Snow and a Sundog install with `core_flatpaks = true`
+  each land their own image's set, a Floe install wizard offers no core
+  set, the TUI shows the set before install, and neither firn nor the ISO
+  references first-setup's `core.json` or `core-flatpaks.json`.
+
 ## Later / ideas
 
 - ✅ **Encrypted bootc installs of UKI-entry images — boot-time unlock
