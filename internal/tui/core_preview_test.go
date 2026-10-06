@@ -179,6 +179,29 @@ func TestFlatpaksFormWithoutCoreSetCompletes(t *testing.T) {
 	}
 }
 
+// An inspection that succeeds without readable metadata is unknown, not
+// "no core set": the toggle stays and the next visit retries.
+func TestCorePreviewUnreadableInspectionKeepsToggle(t *testing.T) {
+	r := runner.NewFake(
+		func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if strings.HasPrefix(args[1], "docker://") {
+				return []byte("not json"), nil
+			}
+			return nil, errors.New("not cached")
+		},
+		func(name string) (string, error) { return "/usr/bin/" + name, nil },
+	)
+	w := &wizard{opts: WizardOpts{Runner: r}}
+	w.c.entry = CatalogEntry{Name: "snow", Ref: snowRef}
+	w.c.coreFlatpaks = true
+	w.refreshCorePreview(context.Background())
+	w.flatpaksForm()
+	if w.preview.state != corePreviewUnavailable || w.preview.ref != "" || !w.c.coreFlatpaks {
+		t.Fatalf("state = %v, ref = %q, coreFlatpaks = %v; want unavailable, retry, answer kept",
+			w.preview.state, w.preview.ref, w.c.coreFlatpaks)
+	}
+}
+
 func TestWrapNames(t *testing.T) {
 	apps := []flatpak.CoreApp{{Name: "Alpha"}, {Name: "Beta"}, {Name: "Gamma"}}
 	if got, want := wrapNames(apps, 12), "Alpha, Beta,\nGamma"; got != want {

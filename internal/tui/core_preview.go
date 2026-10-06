@@ -56,6 +56,9 @@ func inspectCorePreview(ctx context.Context, w *wizard, ref string) corePreview 
 	ictx, cancel := context.WithTimeout(ctx, corePreviewTimeout)
 	defer cancel()
 	source, err := bootcimg.CheckAndPinImage(ictx, w.opts.Runner, ref, "", nil)
+	if err == nil && !source.Inspected {
+		err = errors.New("image inspection returned no readable metadata")
+	}
 	if err != nil {
 		// Keep the next visit retrying rather than caching a transient
 		// failure such as a slow or offline registry.

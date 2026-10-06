@@ -114,6 +114,12 @@ func diskPaths(devices []disk.Device) string {
 // disk write (ADR-0018): a malformed label fails the install here, and an
 // image that publishes no set is reported, not fatal.
 func readCoreFlatpaks(env *pipeline.Env, source bootcimg.Source) error {
+	if !source.Inspected {
+		// Unknown labels are not an absent label: installing without the
+		// requested set, or skipping its validation, would be silent.
+		return fmt.Errorf("core_flatpaks: could not inspect image %s to read its %s label; check registry access and retry",
+			env.Recipe.Image.Ref, flatpak.CoreLabel)
+	}
 	value, present := source.Labels[flatpak.CoreLabel]
 	ids, err := flatpak.ParseCoreLabel(value, present)
 	if err != nil {

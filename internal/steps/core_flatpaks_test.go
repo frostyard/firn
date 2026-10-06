@@ -19,6 +19,12 @@ import (
 // coreLabelFake answers preflight for a clean UEFI machine whose image
 // carries labels; every command is recorded in commands.
 func coreLabelFake(t *testing.T, labels map[string]string, commands *[]string) *runner.Runner {
+	return coreLabelFakeWith(t, labels, commands, nil)
+}
+
+// coreLabelFakeWith is coreLabelFake with an optional override for skopeo.
+func coreLabelFakeWith(t *testing.T, labels map[string]string, commands *[]string,
+	skopeo func(args []string) ([]byte, error)) *runner.Runner {
 	t.Helper()
 	const lsblkJSON = `{"blockdevices": [
 	  {"path": "/dev/vda", "type": "disk", "size": 64000000000, "fstype": null, "label": null, "mountpoints": [null]}]}`
@@ -36,6 +42,9 @@ func coreLabelFake(t *testing.T, labels map[string]string, commands *[]string) *
 			case "findmnt":
 				return []byte("overlay\n"), nil
 			case "skopeo":
+				if skopeo != nil {
+					return skopeo(args)
+				}
 				return []byte(inspect), nil
 			}
 			return []byte(""), nil
@@ -193,5 +202,44 @@ func TestRunFlatpaksMergesExplicitThenCore(t *testing.T) {
 	}
 	if want := []string{"org.mozilla.firefox", "org.kde.okular", "org.kde.kcalc"}; !slices.Equal(installed, want) {
 		t.Fatalf("installed = %v, want %v", installed, want)
+	}
+}
+
+// A signed digest can verify while its registry inspection failed. Its
+// labels are then unknown, which must not pass as "no core set".
+func TestCoreFlatpaksUninspectableImageFailsPreflight(t *testing.T) {
+	cosignKey := filepath.Join(t.TempDir(), "cosign.pub")
+	if err := os.WriteFile(cosignKey, []byte("public key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := strings.Replace(strings.Replace(bootcBase, "%s", "none", 1),
+		`ref = "ghcr.io/frostyard/snow:latest"`,
+		`ref = "ghcr.io/frostyard/snow@`+verifiedBootcDigest+`"`+"\ncosign_pub_key = \""+cosignKey+`"`, 1)
+	offline := func([]string) ([]byte, error) { return nil, errors.New("registry 503") }
+	for _, core := range []bool{true, false} {
+		var commands []string
+		body := src
+		if core {
+			body += "core_flatpaks = true\n"
+		}
+		_, events, err := runCore(t, load(t, body), coreLabelFakeWith(t, nil, &commands, offline), true)
+		if !core {
+			if err != nil {
+				t.Fatalf("core_flatpaks off: dry run = %v, want success (labels not needed)", err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), "could not inspect image") {
+			t.Fatalf("core_flatpaks on: error = %v, want an inspection failure", err)
+		}
+		terminal, ok := events[len(events)-1].(progress.Error)
+		if !ok || terminal.Step != "preflight-image" {
+			t.Fatalf("terminal event = %#v, want a preflight-image error", events[len(events)-1])
+		}
+		for _, e := range events {
+			if w, ok := e.(progress.Warning); ok && w.Code == progress.CodeNoCoreSet {
+				t.Fatal("unknown labels were reported as no_core_set")
+			}
+		}
 	}
 }

@@ -64,7 +64,7 @@ func TestCheckAndPinImageVerifiesResolvedDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := "ghcr.io/frostyard/snow@" + remoteDigest; got.Ref != want {
-		t.Fatalf("pinned source = %q, want %q", got, want)
+		t.Fatalf("pinned source = %q, want %q", got.Ref, want)
 	}
 }
 
@@ -80,7 +80,7 @@ func TestCheckAndPinImageOfflineCachedImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := "ghcr.io/frostyard/snow@" + localDigest; got.Ref != want {
-		t.Fatalf("offline pinned source = %q, want cached %q", got, want)
+		t.Fatalf("offline pinned source = %q, want cached %q", got.Ref, want)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestCheckAndPinImageBindsVerificationToSelectedLocalDigest(t *testing.T) {
 	}
 	want := "registry.example.com:5000/snow@" + localDigest
 	if got.Ref != want || verified != want {
-		t.Fatalf("source = %q, verified = %q, want selected digest %q", got, verified, want)
+		t.Fatalf("source = %q, verified = %q, want selected digest %q", got.Ref, verified, want)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestCheckAndPinImageVerificationFailures(t *testing.T) {
 					t.Fatalf("verification after transient failures = %v, want success", err)
 				}
 				if want := "ghcr.io/frostyard/snow@" + remoteDigest; got.Ref != want {
-					t.Fatalf("pinned source = %q, want %q", got, want)
+					t.Fatalf("pinned source = %q, want %q", got.Ref, want)
 				}
 			} else {
 				if err == nil || !strings.Contains(err.Error(), tc.err.Error()) {
@@ -234,6 +234,7 @@ func TestCheckAndPinImageLabelsFollowSelectedImage(t *testing.T) {
 		localErr  error
 		wantRef   string
 		wantSet   string // "" means no labels
+		unknown   bool   // labels could not be read (Inspected false)
 	}{
 		{name: "unsigned, local copy wins over a newer registry image",
 			image:     "ghcr.io/frostyard/snow:latest",
@@ -259,10 +260,14 @@ func TestCheckAndPinImageLabelsFollowSelectedImage(t *testing.T) {
 			image: "ghcr.io/frostyard/snow@" + remoteDigest, key: "/keys/cosign.pub",
 			remoteOut: inspect(remoteDigest, "remote"), localOut: inspect(localDigest, "local"),
 			wantRef: "ghcr.io/frostyard/snow@" + remoteDigest, wantSet: "remote"},
-		{name: "signed digest, offline with no matching local copy has no labels",
+		{name: "signed digest, offline with no matching local copy: labels unknown",
 			image: "ghcr.io/frostyard/snow@" + remoteDigest, key: "/keys/cosign.pub",
 			remoteErr: offline, localErr: notCached,
-			wantRef: "ghcr.io/frostyard/snow@" + remoteDigest},
+			wantRef: "ghcr.io/frostyard/snow@" + remoteDigest, unknown: true},
+		{name: "unsigned, unreadable registry inspection: labels unknown",
+			image:     "ghcr.io/frostyard/snow:latest",
+			remoteOut: []byte("not json"), localErr: notCached,
+			wantRef: "ghcr.io/frostyard/snow:latest", unknown: true},
 		{name: "inspection without labels",
 			image: "ghcr.io/frostyard/snow:latest", key: "/keys/cosign.pub",
 			remoteOut: []byte(`{"Digest":"` + remoteDigest + `"}`), localErr: notCached,
@@ -280,6 +285,9 @@ func TestCheckAndPinImageLabelsFollowSelectedImage(t *testing.T) {
 			}
 			if gotSet := got.Labels["set"]; gotSet != tc.wantSet {
 				t.Fatalf("labels came from %q, want %q (labels %v)", gotSet, tc.wantSet, got.Labels)
+			}
+			if got.Inspected == tc.unknown {
+				t.Fatalf("Inspected = %v, want %v", got.Inspected, !tc.unknown)
 			}
 		})
 	}

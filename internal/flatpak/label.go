@@ -88,6 +88,12 @@ func ParseCoreLabelApps(value string, present bool) ([]CoreApp, error) {
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, malformed("trailing data after the JSON object")
 	}
+	// encoding/json matches field names case-insensitively, so
+	// DisallowUnknownFields alone accepts "VERSION" or "Id". The spec's
+	// names are exact; check them at both object levels.
+	if err := exactFieldNames(value); err != nil {
+		return nil, malformed("%v", err)
+	}
 	if label.Version == nil {
 		return nil, malformed("version is missing or null")
 	}
@@ -112,4 +118,31 @@ func ParseCoreLabelApps(value string, present bool) ([]CoreApp, error) {
 		}
 	}
 	return apps, nil
+}
+
+// exactFieldNames rejects any key in the label object, or in a flatpaks
+// entry, that is not spelled exactly as the spec spells it. It runs after
+// the typed decode, so the shapes it walks are already known to be valid.
+func exactFieldNames(value string) error {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(value), &top); err != nil {
+		return err
+	}
+	for key := range top {
+		if key != "version" && key != "flatpaks" {
+			return fmt.Errorf("unknown field %q", key)
+		}
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(top["flatpaks"], &items); err != nil {
+		return err
+	}
+	for i, item := range items {
+		for key := range item {
+			if key != "id" && key != "name" {
+				return fmt.Errorf("flatpaks[%d]: unknown field %q", i, key)
+			}
+		}
+	}
+	return nil
 }

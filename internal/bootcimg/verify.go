@@ -37,11 +37,14 @@ type inspectManifest struct {
 
 // Source is the image preflight selected: the reference bootc installs and
 // the config labels of that same image (firn ADR-0018 reads the core
-// Flatpak set from them). Labels is nil when the selected inspection carried
-// none.
+// Flatpak set from them).
 type Source struct {
 	Ref    string
 	Labels map[string]string
+	// Inspected reports that Labels came from a successful inspection of
+	// the selected image. When false the labels are unknown, not absent:
+	// a signed digest can verify while its registry inspection failed.
+	Inspected bool
 }
 
 // CheckAndPinImage checks that image is reachable or cached. When keyPath is
@@ -68,15 +71,16 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 		// pulls; a tag that moves meanwhile can deploy a newer build than
 		// these labels describe (ADR-0018, firn#109).
 		if localOK {
-			return Source{Ref: image, Labels: local.Labels}, nil
+			return Source{Ref: image, Labels: local.Labels, Inspected: true}, nil
 		}
 		if remoteErr == nil {
-			return Source{Ref: image, Labels: remote.Labels}, nil
+			return Source{Ref: image, Labels: remote.Labels, Inspected: remoteOK}, nil
 		}
 		return Source{}, fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr)
 	}
 
 	var labels map[string]string
+	inspected := false
 	digest, pinned := digestReference(bare)
 	if !pinned {
 		// Match CheckImage's embedded-image rule: a valid local manifest wins
@@ -87,10 +91,10 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 			if !sha256DigestRE.MatchString(digest) {
 				return Source{}, fmt.Errorf("bootcimg: selected local image %q has no valid sha256 digest", image)
 			}
-			labels = local.Labels
+			labels, inspected = local.Labels, true
 		} else {
 			digest = manifestDigest(remoteOut, remoteErr)
-			labels = remote.Labels
+			labels, inspected = remote.Labels, remoteOK
 		}
 		if digest == "" {
 			if remoteErr != nil {
@@ -102,15 +106,15 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 	} else if !sha256DigestRE.MatchString(digest) {
 		return Source{}, fmt.Errorf("bootcimg: invalid immutable digest in image reference %q", image)
 	} else if localOK && local.Digest == digest {
-		labels = local.Labels
+		labels, inspected = local.Labels, true
 	} else if remoteOK {
-		labels = remote.Labels
+		labels, inspected = remote.Labels, true
 	}
 
 	if err := verifyImageSignature(ctx, r, keyPath, bare, warn); err != nil {
 		return Source{}, err
 	}
-	return Source{Ref: bare, Labels: labels}, nil
+	return Source{Ref: bare, Labels: labels, Inspected: inspected}, nil
 }
 
 // verifyImageSignature runs cosign verify against the pinned reference,
