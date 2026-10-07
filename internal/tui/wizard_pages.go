@@ -79,6 +79,10 @@ func (w *wizard) setEntry(entry CatalogEntry) {
 	if entry.Name != w.c.entry.Name || entry.Family != w.c.entry.Family {
 		w.c.userInitialized = false
 	}
+	// The core preview is keyed on the ref, so its toggle default is too.
+	if entry.Ref != w.c.entry.Ref {
+		w.c.coreFlatpaksInitialized = false
+	}
 	w.c.entry = entry
 }
 
@@ -467,11 +471,11 @@ func (w *wizard) userForm() *huh.Form {
 //
 // An offered toggle starts on (ADR-0019), including when the label could
 // not be read: preflight reads it again and fails before any disk write if
-// it still cannot. That initial selection applies once per chosen image, so
-// a rebuilt form or a return visit keeps the user's answer.
+// it still cannot. That initial selection applies once per chosen image
+// (see setEntry), so a rebuilt form or a return visit keeps the user's answer.
 func (w *wizard) flatpaksForm() *huh.Form {
-	if ref := w.c.entry.Ref; w.c.coreFlatpaksRef != ref {
-		w.c.coreFlatpaksRef = ref
+	if !w.c.coreFlatpaksInitialized {
+		w.c.coreFlatpaksInitialized = true
 		w.c.coreFlatpaks = true // the hidden-toggle cases below clear it
 	}
 	var core huh.Field
@@ -492,7 +496,7 @@ func (w *wizard) flatpaksForm() *huh.Form {
 			Description("Initially Yes. This image publishes these Flatpak apps:\n" + wrapNames(w.preview.apps, 64)).
 			Value(&w.c.coreFlatpaks)
 	default:
-		desc := "Initially Yes. This image's list could not be read now; it is read\nagain at install time."
+		desc := "Initially Yes. This image's list could not be read now; if you keep\nYes, it is read again at install time."
 		if w.preview.detail != "" {
 			desc += "\n(" + w.preview.detail + ")"
 		}

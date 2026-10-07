@@ -755,13 +755,13 @@ func TestConfirmFormsPreserveAnswersWhenRebuilt(t *testing.T) {
 	}
 
 	w.flatpaksForm()
-	if w.c.coreFlatpaks {
-		t.Fatal("core Flatpaks initial selection = true, want schema default false")
-	}
-	w.c.coreFlatpaks = true
-	w.flatpaksForm()
 	if !w.c.coreFlatpaks {
-		t.Fatal("rebuilt Flatpak form changed an affirmative answer")
+		t.Fatal("core Flatpaks initial selection = false, want true (ADR-0019)")
+	}
+	w.c.coreFlatpaks = false
+	w.flatpaksForm()
+	if w.c.coreFlatpaks {
+		t.Fatal("rebuilt Flatpak form changed a declined answer")
 	}
 }
 
