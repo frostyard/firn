@@ -69,8 +69,9 @@ advance past each prompt; the recipe always serializes the accepted values.
 
 The TUI initially offers user creation with the `sudo` group. It offers
 `core_flatpaks` only when the chosen image publishes a core set or could not
-be inspected, initially enabled when it read a set and disabled when it
-could not, and never serializes `core_flatpaks = true` for an image whose
+be inspected, initially enabled in both cases
+([ADR-0019](../adr/0019-wizard-offers-core-flatpaks-by-default.md)), and
+never serializes `core_flatpaks = true` for an image whose
 toggle it hid ([core Flatpaks label](core-flatpaks-label.md), rule 7).
 Rebuilding either form, or revisiting the flatpaks page for the same image,
 preserves the user's accepted values rather than reapplying these initial

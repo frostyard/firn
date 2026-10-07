@@ -352,9 +352,10 @@ snosi.
    Unit tests cover image switching and every state. `test/e2e-tui.sh`
    asserts Floe's real outcome (no toggle, an explanation); the guest
    already pulls Floe from GHCR, so this adds no new registry dependency.
-   ✅ The toggle starts on for each newly chosen image whose set the
-   preview read, and off when the label could not be read; Sundog drops
-   its native apps for its core set, so the default must offer them.
+   ✅ The toggle starts on for each newly chosen image whenever it is
+   offered ([ADR-0019](../adr/0019-wizard-offers-core-flatpaks-by-default.md));
+   Sundog drops its native apps for its core set, so the default must
+   offer them.
 5. **Snosi: retire the fallback.** Once the ISO carries a step-3 firn
    release, remove the `/usr/share/firn/core-flatpaks.json` embedding from
    `shared/firn-installer/mkosi.conf` and the Justfile's `_firn-binary`,

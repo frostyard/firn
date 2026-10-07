@@ -78,10 +78,11 @@ publishes no label key.
    The local copy is inspected before the registry, so a hanging registry
    cannot hide a local image. It:
    - lists a valid set's names beside the `core_flatpaks` toggle, initially
-     enabled for each newly chosen image;
+     enabled for each newly chosen image
+     ([ADR-0019](../adr/0019-wizard-offers-core-flatpaks-by-default.md));
    - shows no toggle, and an explanation, for no core set or a malformed
      label, and sets `core_flatpaks` to false;
-   - keeps the toggle, initially disabled and noting the list is read at
+   - keeps the toggle, initially enabled and noting the list is read at
      install time, when inspection fails or returns no readable metadata,
      and inspects again on the next visit.
 

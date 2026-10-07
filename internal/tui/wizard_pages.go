@@ -465,14 +465,14 @@ func (w *wizard) userForm() *huh.Form {
 // the toggle, and the toggle's value is cleared so the recipe never asks
 // for a set the wizard did not offer.
 //
-// The toggle starts on for a set the preview read, and off when the label
-// could not be read: preflight fails with core_flatpaks_label_unreadable
-// if it still cannot read it. That initial selection applies once per
-// chosen image, so a rebuilt form or a return visit keeps the user's answer.
+// An offered toggle starts on (ADR-0019), including when the label could
+// not be read: preflight reads it again and fails before any disk write if
+// it still cannot. That initial selection applies once per chosen image, so
+// a rebuilt form or a return visit keeps the user's answer.
 func (w *wizard) flatpaksForm() *huh.Form {
 	if ref := w.c.entry.Ref; w.c.coreFlatpaksRef != ref {
 		w.c.coreFlatpaksRef = ref
-		w.c.coreFlatpaks = w.preview.state == corePreviewAvailable
+		w.c.coreFlatpaks = true // the hidden-toggle cases below clear it
 	}
 	var core huh.Field
 	switch w.preview.state {
@@ -492,7 +492,7 @@ func (w *wizard) flatpaksForm() *huh.Form {
 			Description("Initially Yes. This image publishes these Flatpak apps:\n" + wrapNames(w.preview.apps, 64)).
 			Value(&w.c.coreFlatpaks)
 	default:
-		desc := "Initially No. This image's list could not be read now; it is read\nagain at install time."
+		desc := "Initially Yes. This image's list could not be read now; it is read\nagain at install time."
 		if w.preview.detail != "" {
 			desc += "\n(" + w.preview.detail + ")"
 		}

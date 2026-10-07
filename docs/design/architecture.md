@@ -72,8 +72,9 @@ verification, and again whenever the chosen image changes. It lists a
 published set's app names beside the toggle, initially on for each newly
 chosen image; explains instead of offering
 the toggle when the image publishes no set or a malformed one (and clears any
-earlier answer); and keeps the toggle, initially off, with an "available at
-install time" note when inspection fails. The preview never enters the recipe: preflight
+earlier answer); and keeps the toggle, also initially on, with an "available
+at install time" note when inspection fails
+([ADR-0019](../adr/0019-wizard-offers-core-flatpaks-by-default.md)). The preview never enters the recipe: preflight
 reads the label again at install.
 
 Each interactive run owns a randomly named 0700 directory below `/run/firn`.

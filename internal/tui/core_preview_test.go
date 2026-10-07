@@ -181,7 +181,7 @@ func TestFlatpaksFormWithoutCoreSetCompletes(t *testing.T) {
 }
 
 // An inspection that succeeds without readable metadata is unknown, not
-// "no core set": the toggle stays, initially off, and the next visit
+// "no core set": the toggle stays, initially on, and the next visit
 // retries without overriding the user's answer.
 func TestCorePreviewUnreadableInspectionKeepsToggle(t *testing.T) {
 	r := runner.NewFake(
@@ -197,13 +197,13 @@ func TestCorePreviewUnreadableInspectionKeepsToggle(t *testing.T) {
 	w.c.entry = CatalogEntry{Name: "snow", Ref: snowRef}
 	mustRefresh(t, w)
 	w.flatpaksForm()
-	if w.c.coreFlatpaks {
-		t.Fatal("unreadable label: toggle initially on, want off")
+	if !w.c.coreFlatpaks {
+		t.Fatal("unreadable label: toggle initially off, want on")
 	}
-	w.c.coreFlatpaks = true // the user opts in anyway
+	w.c.coreFlatpaks = false // the user declines
 	mustRefresh(t, w)
 	w.flatpaksForm()
-	if w.preview.state != corePreviewUnavailable || w.preview.ref != "" || !w.c.coreFlatpaks {
+	if w.preview.state != corePreviewUnavailable || w.preview.ref != "" || w.c.coreFlatpaks {
 		t.Fatalf("state = %v, ref = %q, coreFlatpaks = %v; want unavailable, retry, answer kept",
 			w.preview.state, w.preview.ref, w.c.coreFlatpaks)
 	}
