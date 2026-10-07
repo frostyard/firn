@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
@@ -64,9 +65,10 @@ func newInstallCmd() *cobra.Command {
 			}
 
 			env := &pipeline.Env{
-				Machine: recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
-				Runner:  runner.New(),
-				Version: Version,
+				Machine:       recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
+				Runner:        runner.New(),
+				Version:       Version,
+				RegistryProbe: bootcimg.HTTPRegistryProbe,
 			}
 			var err error
 			if env.Machine.SecureBoot, env.Machine.TPM, env.UEFI, err = probes.resolve(); err != nil {

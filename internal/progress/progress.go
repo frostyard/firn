@@ -117,6 +117,7 @@ const (
 	CodeCleanupFailed       = "cleanup_failed"
 	CodeImageVerifyFailed   = "image_verification_failed"
 	CodeImageVerifyRetried  = "image_verification_retried"
+	CodeNetworkUnreachable  = "network_unreachable"
 	CodeNoTPM               = "no_tpm"
 	CodeFlatpakUnreachable  = "flatpak_unreachable"
 	CodeGroupMissing        = "group_missing"

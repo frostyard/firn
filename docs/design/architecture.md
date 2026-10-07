@@ -144,6 +144,18 @@ For bootc recipes that set `image.cosign_pub_key`, preflight selects the
 same embedded-or-remote source the install will consume, resolves it to an
 immutable digest, verifies that digest with cosign, and carries the pinned
 reference into both native-bootc and podman installation paths.
+When the image cannot be resolved (or, for a signed recipe, its signature cannot
+be verified), preflight also probes the registry with an HTTPS request to its
+`/v2/` endpoint through the environment's proxy settings. A probe that finds no
+route to a server turns the error into `network_unreachable` (naming the
+registry and the cause, keeping the original failure, and never claiming the
+machine is offline). A registry that answers, including with a TLS trust or
+protocol failure that only skopeo's own configuration may satisfy, leaves the
+original error and code. The probe is
+supplemental evidence, never a gate or a pre-check: skopeo's outcome stays
+authoritative, a cached image still installs offline, and caller cancellation is
+never reported as a network failure. The probe is injected through
+`pipeline.Env.RegistryProbe`; nil disables it.
 
 ### The bootc path
 

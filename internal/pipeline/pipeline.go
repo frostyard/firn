@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
@@ -46,6 +47,9 @@ type Env struct {
 	Version string
 	Runner  *runner.Runner
 	Emitter progress.Emitter
+	// RegistryProbe, when set, lets preflight-image diagnose an
+	// unreachable registry behind an image failure; nil disables probing.
+	RegistryProbe bootcimg.Prober
 
 	emitErr error
 

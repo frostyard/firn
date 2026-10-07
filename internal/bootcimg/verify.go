@@ -56,6 +56,14 @@ type Source struct {
 // failed non-final cosign attempt (the attempt's stderr is embedded by the
 // runner error).
 func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string)) (Source, error) {
+	return CheckAndPinImageProbed(ctx, r, image, keyPath, warn, nil)
+}
+
+// CheckAndPinImageProbed is CheckAndPinImage with a registry probe: when the
+// image cannot be resolved or its signature verified and probe shows the
+// registry unreachable, the failure is a *RegistryUnreachableError wrapping
+// the original. A nil probe behaves exactly like CheckAndPinImage.
+func CheckAndPinImageProbed(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string), probe Prober) (Source, error) {
 	if keyPath != "" && !IsRegistryRef(image) {
 		return Source{}, fmt.Errorf("bootcimg: cosign verification requires a registry image reference, got %q", image)
 	}
@@ -79,7 +87,8 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 		if remoteErr == nil {
 			return Source{Ref: image, Labels: remote.Labels, Inspected: remoteOK}, nil
 		}
-		return Source{}, fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr)
+		return Source{}, diagnose(ctx, probe, image,
+			fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr))
 	}
 
 	var labels map[string]string
@@ -101,7 +110,8 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 		}
 		if digest == "" {
 			if remoteErr != nil {
-				return Source{}, fmt.Errorf("bootcimg: resolving verified digest for %q: %w", image, remoteErr)
+				return Source{}, diagnose(ctx, probe, image,
+					fmt.Errorf("bootcimg: resolving verified digest for %q: %w", image, remoteErr))
 			}
 			return Source{}, fmt.Errorf("bootcimg: resolving verified digest for %q: skopeo returned no valid sha256 digest", image)
 		}
@@ -115,7 +125,7 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 	}
 
 	if err := verifyImageSignature(ctx, r, keyPath, bare, warn); err != nil {
-		return Source{}, err
+		return Source{}, diagnose(ctx, probe, image, err)
 	}
 	return Source{Ref: bare, Labels: labels, Inspected: inspected}, nil
 }

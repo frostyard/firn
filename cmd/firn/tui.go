@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/progress"
@@ -92,9 +93,10 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) (ret
 	defer stop()
 
 	env := &pipeline.Env{
-		Machine: recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
-		Runner:  runner.New(),
-		Version: Version,
+		Machine:       recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
+		Runner:        runner.New(),
+		Version:       Version,
+		RegistryProbe: bootcimg.HTTPRegistryProbe,
 	}
 	var err error
 	if env.Machine.SecureBoot, err = tristate(o.secureBoot, platform.SecureBoot); err != nil {
