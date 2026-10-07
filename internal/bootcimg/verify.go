@@ -54,16 +54,10 @@ type Source struct {
 // from the inspection of the image selected: the local copy when it wins,
 // otherwise the registry image. warn, when non-nil, receives one message per
 // failed non-final cosign attempt (the attempt's stderr is embedded by the
-// runner error).
-func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string)) (Source, error) {
-	return CheckAndPinImageProbed(ctx, r, image, keyPath, warn, nil)
-}
-
-// CheckAndPinImageProbed is CheckAndPinImage with a registry probe: when the
-// image cannot be resolved or its signature verified and probe shows the
-// registry unreachable, the failure is a *RegistryUnreachableError wrapping
-// the original. A nil probe behaves exactly like CheckAndPinImage.
-func CheckAndPinImageProbed(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string), probe Prober) (Source, error) {
+// runner error). When probe is non-nil, a failure that looks like a transport
+// failure is checked against the registry and may be returned as a
+// *RegistryUnreachableError wrapping the original (see diagnoseTransport).
+func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string), probe Prober) (Source, error) {
 	if keyPath != "" && !IsRegistryRef(image) {
 		return Source{}, fmt.Errorf("bootcimg: cosign verification requires a registry image reference, got %q", image)
 	}
@@ -87,7 +81,7 @@ func CheckAndPinImageProbed(ctx context.Context, r *runner.Runner, image, keyPat
 		if remoteErr == nil {
 			return Source{Ref: image, Labels: remote.Labels, Inspected: remoteOK}, nil
 		}
-		return Source{}, diagnose(ctx, probe, image,
+		return Source{}, diagnoseTransport(ctx, probe, image, remoteErr,
 			fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr))
 	}
 
@@ -110,7 +104,7 @@ func CheckAndPinImageProbed(ctx context.Context, r *runner.Runner, image, keyPat
 		}
 		if digest == "" {
 			if remoteErr != nil {
-				return Source{}, diagnose(ctx, probe, image,
+				return Source{}, diagnoseTransport(ctx, probe, image, remoteErr,
 					fmt.Errorf("bootcimg: resolving verified digest for %q: %w", image, remoteErr))
 			}
 			return Source{}, fmt.Errorf("bootcimg: resolving verified digest for %q: skopeo returned no valid sha256 digest", image)
@@ -125,9 +119,25 @@ func CheckAndPinImageProbed(ctx context.Context, r *runner.Runner, image, keyPat
 	}
 
 	if err := verifyImageSignature(ctx, r, keyPath, bare, warn); err != nil {
-		return Source{}, diagnose(ctx, probe, image, err)
+		// A cosign verdict, or a registry skopeo reached moments earlier,
+		// is not a transport failure: keep the verification code.
+		if remoteErr != nil && hasMarker(err, transportMarkers) &&
+			!hasMarker(err, cosignVerdictMarkers) && !hasMarker(err, registryResponseMarkers) {
+			err = diagnose(ctx, probe, image, err)
+		}
+		return Source{}, err
 	}
 	return Source{Ref: bare, Labels: labels, Inspected: inspected}, nil
+}
+
+// diagnoseTransport diagnoses the skopeo failure cause only when its text
+// positively shows a connectivity failure and no registry answered (manifest
+// unknown, unauthorized, ...); anything ambiguous keeps its own code.
+func diagnoseTransport(ctx context.Context, probe Prober, image string, cause, wrapped error) error {
+	if hasMarker(cause, registryResponseMarkers) || !hasMarker(cause, transportMarkers) {
+		return wrapped
+	}
+	return diagnose(ctx, probe, image, wrapped)
 }
 
 // verifyImageSignature runs cosign verify against the pinned reference,

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
@@ -296,7 +297,8 @@ hostname = "frost01"
 	}
 }
 
-// An unreachable registry is reported as network_unreachable in preflight,
+// An unreachable registry is reported as registry_unreachable (network_unreachable
+// when no network is configured) in preflight,
 // ahead of the blanket image_verification_failed code, in normal and dry-run
 // execution alike, and before any destructive command.
 func TestBootcUnreachableRegistryStopsPreflight(t *testing.T) {
@@ -307,11 +309,16 @@ func TestBootcUnreachableRegistryStopsPreflight(t *testing.T) {
 	for _, tc := range []struct {
 		name, cosign string
 		dryRun       bool
+		probeErr     error
+		wantCode     string
+		wantText     string
 	}{
-		{"unsigned", "", false},
-		{"unsigned dry-run", "", true},
-		{"signed", key, false},
-		{"signed dry-run", key, true},
+		{"unsigned", "", false, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"unsigned dry-run", "", true, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"signed", key, false, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"signed dry-run", key, true, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"no network configured", "", false, bootcimg.ErrNoNetwork, progress.CodeNetworkUnreachable, "no routable network address is configured"},
+		{"no network configured, signed", key, true, bootcimg.ErrNoNetwork, progress.CodeNetworkUnreachable, "no routable network address is configured"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			keyLine := ""
@@ -346,18 +353,18 @@ hostname = "frost01"
 			var events []progress.Event
 			env := &pipeline.Env{
 				Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-				RegistryProbe: func(context.Context, string) error { return errors.New("no route") },
+				RegistryProbe: func(context.Context, string) error { return tc.probeErr },
 				Emitter: progress.EmitterFunc(func(e progress.Event) error {
 					events = append(events, e)
 					return nil
 				}),
 			}
 			err := Assemble(l).Run(context.Background(), env, tc.dryRun)
-			if err == nil || !strings.Contains(err.Error(), "cannot reach registry ghcr.io") {
+			if err == nil || !strings.Contains(err.Error(), tc.wantText) {
 				t.Fatalf("error = %v", err)
 			}
 			terminal, ok := events[len(events)-1].(progress.Error)
-			if !ok || terminal.Step != "preflight-image" || terminal.Code != progress.CodeNetworkUnreachable {
+			if !ok || terminal.Step != "preflight-image" || terminal.Code != tc.wantCode {
 				t.Fatalf("terminal event = %#v", events[len(events)-1])
 			}
 		})

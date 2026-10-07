@@ -145,17 +145,20 @@ same embedded-or-remote source the install will consume, resolves it to an
 immutable digest, verifies that digest with cosign, and carries the pinned
 reference into both native-bootc and podman installation paths.
 When the image cannot be resolved (or, for a signed recipe, its signature cannot
-be verified), preflight also probes the registry with an HTTPS request to its
-`/v2/` endpoint through the environment's proxy settings. A probe that finds no
-route to a server turns the error into `network_unreachable` (naming the
-registry and the cause, keeping the original failure, and never claiming the
-machine is offline). A registry that answers, including with a TLS trust or
+be verified) with a failure that looks like transport, preflight diagnoses it.
+If the machine has no network configured (no non-loopback interface up with a
+global address) the failure is `network_unreachable`. Otherwise preflight
+probes the registry with an HTTPS request to its `/v2/` endpoint through the
+environment's proxy settings, and a probe that finds no route to a server turns
+the error into `registry_unreachable` (naming the registry and the cause, and
+saying the network or the registry may be responsible). Both keep the original
+failure attached. A registry that answers, including with a TLS trust, alert or
 protocol failure that only skopeo's own configuration may satisfy, leaves the
-original error and code. The probe is
-supplemental evidence, never a gate or a pre-check: skopeo's outcome stays
-authoritative, a cached image still installs offline, and caller cancellation is
-never reported as a network failure. The probe is injected through
-`pipeline.Env.RegistryProbe`; nil disables it.
+original error and code, as do registry-level skopeo responses and cosign
+verdicts. The probe is supplemental evidence, never a gate or a pre-check:
+skopeo's outcome stays authoritative, a cached image still installs offline, and
+caller cancellation is never reported as a network failure. It is injected
+through `pipeline.Env.RegistryProbe`; nil disables it.
 
 ### The bootc path
 

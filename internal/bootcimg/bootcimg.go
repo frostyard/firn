@@ -96,7 +96,7 @@ func bareImageRef(image string) string {
 		return image[idx+3:]
 	}
 	if idx := strings.Index(image, ":"); idx > 0 {
-		if transport := image[:idx]; !strings.ContainsAny(transport, "/.") {
+		if transport := image[:idx]; !strings.ContainsAny(transport, "/.") && !isPortThenPath(image[idx+1:]) {
 			return image[idx+1:]
 		}
 	}
@@ -273,6 +273,21 @@ func Install(ctx context.Context, r *runner.Runner, o Options) error {
 // implicitly, so that result is reduced to reachable-or-not.
 // TODO: port NeedsPull/LayerCount if firn grows explicit pull progress.
 func CheckImage(ctx context.Context, r *runner.Runner, image string) error {
-	_, err := CheckAndPinImage(ctx, r, image, "", nil)
+	_, err := CheckAndPinImage(ctx, r, image, "", nil, nil)
 	return err
+}
+
+// isPortThenPath reports a "5000/repo" remainder: the prefix before it was a
+// host (localhost:5000/repo), not an OCI transport.
+func isPortThenPath(rest string) bool {
+	port, _, ok := strings.Cut(rest, "/")
+	if !ok || port == "" {
+		return false
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

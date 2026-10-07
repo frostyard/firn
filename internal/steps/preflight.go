@@ -56,7 +56,7 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 		steps = append(steps, pipeline.Step{
 			Name: "preflight-image", Weight: 1, Preflight: true,
 			Run: func(ctx context.Context, env *pipeline.Env) error {
-				source, err := bootcimg.CheckAndPinImageProbed(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey,
+				source, err := bootcimg.CheckAndPinImage(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey,
 					func(msg string) {
 						_ = env.Emit(progress.Warning{Code: progress.CodeImageVerifyRetried, Message: msg})
 					}, env.RegistryProbe)
@@ -65,7 +65,11 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 					// unreachable registry is not a signature problem.
 					var unreachable *bootcimg.RegistryUnreachableError
 					if errors.As(err, &unreachable) {
-						return pipeline.WithErrorCode(progress.CodeNetworkUnreachable, err)
+						code := progress.CodeRegistryUnreachable
+						if unreachable.NoNetwork {
+							code = progress.CodeNetworkUnreachable
+						}
+						return pipeline.WithErrorCode(code, err)
 					}
 					if env.Recipe.Image.CosignPubKey != "" {
 						return pipeline.WithErrorCode(progress.CodeImageVerifyFailed, err)

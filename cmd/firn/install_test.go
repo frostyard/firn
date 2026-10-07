@@ -72,6 +72,26 @@ func TestInstallV1WarnsBeforeFirstStep(t *testing.T) {
 	}
 }
 
+func TestInstallWiresRegistryProbe(t *testing.T) {
+	old := assembleInstall
+	t.Cleanup(func() { assembleInstall = old })
+	var wired bool
+	assembleInstall = func(*recipe.Loaded) *pipeline.Pipeline {
+		return &pipeline.Pipeline{Steps: []pipeline.Step{{Name: "fake", Preflight: true, Run: func(_ context.Context, env *pipeline.Env) error {
+			wired = env.RegistryProbe != nil
+			return nil
+		}}}}
+	}
+	cmd := newInstallCmd()
+	cmd.SetArgs([]string{"--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "bootc")})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !wired {
+		t.Fatal("install env has no registry probe wired")
+	}
+}
+
 func mustLoadRecipe(t *testing.T, path string) *recipe.Loaded {
 	t.Helper()
 	l, err := recipe.Load(path)
