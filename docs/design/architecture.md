@@ -145,20 +145,22 @@ same embedded-or-remote source the install will consume, resolves it to an
 immutable digest, verifies that digest with cosign, and carries the pinned
 reference into both native-bootc and podman installation paths.
 When the image cannot be resolved (or, for a signed recipe, its signature cannot
-be verified) with a failure that looks like transport, preflight diagnoses it.
-If the machine has no network configured (no non-loopback interface up with a
-global address) the failure is `network_unreachable`. Otherwise preflight
-probes the registry with an HTTPS request to its `/v2/` endpoint through the
-environment's proxy settings, and a probe that finds no route to a server turns
-the error into `registry_unreachable` (naming the registry and the cause, and
-saying the network or the registry may be responsible). Both keep the original
-failure attached. A registry that answers, including with a TLS trust, alert or
-protocol failure that only skopeo's own configuration may satisfy, leaves the
-original error and code, as do registry-level skopeo responses and cosign
-verdicts. The probe is supplemental evidence, never a gate or a pre-check:
-skopeo's outcome stays authoritative, a cached image still installs offline, and
-caller cancellation is never reported as a network failure. It is injected
-through `pipeline.Env.RegistryProbe`; nil disables it.
+be verified) with a failure whose text positively shows connectivity (DNS, dial,
+timeout), preflight probes the registry with an HTTPS request to its `/v2/`
+endpoint through the environment's proxy settings. A probe that finds no route
+to a server (DNS or dial failure, timeout, or a proxy answering 502/503/504)
+turns the error into `registry_unreachable`, naming the registry and the cause
+and saying the network or the registry may be responsible. If that attempt
+failed on a machine with no routable address (no non-loopback interface up with
+a global unicast address) it is `network_unreachable` instead; the interface
+check only words a failure, it never runs ahead of the attempt. Both keep the
+original failure attached. Ambiguous outcomes keep the original error and code:
+a TLS trust, alert or protocol failure, a proxy demanding credentials, a
+registry-level skopeo response, a cosign verdict, or an error with no
+connectivity marker. The probe is supplemental evidence, never a gate or a
+pre-check: skopeo's outcome stays authoritative, a cached image still installs
+offline, and caller cancellation is never reported as a network failure. It is
+injected through `pipeline.Env.RegistryProbe`; nil disables it.
 
 ### The bootc path
 
