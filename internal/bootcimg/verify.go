@@ -31,64 +31,93 @@ const verifyAttempts = 3
 var verifyBackoff = []time.Duration{5 * time.Second, 15 * time.Second}
 
 type inspectManifest struct {
-	Digest string `json:"Digest"`
+	Digest string            `json:"Digest"`
+	Labels map[string]string `json:"Labels"`
+}
+
+// Source is the image preflight selected: the reference bootc installs and
+// the config labels of that same image (firn ADR-0018 reads the core
+// Flatpak set from them).
+type Source struct {
+	Ref    string
+	Labels map[string]string
+	// Inspected reports that Labels came from a successful inspection of
+	// the selected image. When false the labels are unknown, not absent:
+	// a signed digest can verify while its registry inspection failed.
+	Inspected bool
 }
 
 // CheckAndPinImage checks that image is reachable or cached. When keyPath is
 // set, it also resolves the source Firn will actually install to an immutable
 // digest, verifies that digest with cosign, and returns the pinned reference.
-// Resolving before verification closes the tag-movement race. warn, when
-// non-nil, receives one message per failed non-final cosign attempt (the
-// attempt's stderr is embedded by the runner error).
-func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string)) (string, error) {
+// Resolving before verification closes the tag-movement race. Labels come
+// from the inspection of the image selected: the local copy when it wins,
+// otherwise the registry image. warn, when non-nil, receives one message per
+// failed non-final cosign attempt (the attempt's stderr is embedded by the
+// runner error).
+func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string)) (Source, error) {
 	if keyPath != "" && !IsRegistryRef(image) {
-		return "", fmt.Errorf("bootcimg: cosign verification requires a registry image reference, got %q", image)
+		return Source{}, fmt.Errorf("bootcimg: cosign verification requires a registry image reference, got %q", image)
 	}
 	bare := bareImageRef(image)
-	remoteOut, remoteErr := r.Run(ctx, "skopeo", "inspect", "docker://"+bare)
+	// Local first: it needs no network, so a registry that hangs until the
+	// caller's deadline cannot starve the inspection of an image that is
+	// already here (and would be selected).
 	localOut, localErr := r.Run(ctx, "skopeo", "inspect", "containers-storage:"+bare)
+	remoteOut, remoteErr := r.Run(ctx, "skopeo", "inspect", "docker://"+bare)
+	var local, remote inspectManifest
+	localOK := localErr == nil && json.Unmarshal(localOut, &local) == nil
+	remoteOK := remoteErr == nil && json.Unmarshal(remoteOut, &remote) == nil
 
 	if keyPath == "" {
-		var local inspectManifest
-		if localErr == nil && json.Unmarshal(localOut, &local) == nil {
-			return image, nil
+		// Unsigned sources keep the tag, so bootc resolves it again when it
+		// pulls; a tag that moves meanwhile can deploy a newer build than
+		// these labels describe (ADR-0018, firn#109).
+		if localOK {
+			return Source{Ref: image, Labels: local.Labels, Inspected: true}, nil
 		}
 		if remoteErr == nil {
-			return image, nil
+			return Source{Ref: image, Labels: remote.Labels, Inspected: remoteOK}, nil
 		}
-		return "", fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr)
+		return Source{}, fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr)
 	}
 
+	var labels map[string]string
+	inspected := false
 	digest, pinned := digestReference(bare)
 	if !pinned {
 		// Match CheckImage's embedded-image rule: a valid local manifest wins
 		// even if the registry advertises a newer tag. The selected digest is
 		// still verified against the registry signature before installation.
-		var local inspectManifest
-		localSelected := localErr == nil && json.Unmarshal(localOut, &local) == nil
-		if localSelected {
+		if localOK {
 			digest = local.Digest
 			if !sha256DigestRE.MatchString(digest) {
-				return "", fmt.Errorf("bootcimg: selected local image %q has no valid sha256 digest", image)
+				return Source{}, fmt.Errorf("bootcimg: selected local image %q has no valid sha256 digest", image)
 			}
+			labels, inspected = local.Labels, true
 		} else {
 			digest = manifestDigest(remoteOut, remoteErr)
+			labels, inspected = remote.Labels, remoteOK
 		}
 		if digest == "" {
 			if remoteErr != nil {
-				return "", fmt.Errorf("bootcimg: resolving verified digest for %q: %w", image, remoteErr)
+				return Source{}, fmt.Errorf("bootcimg: resolving verified digest for %q: %w", image, remoteErr)
 			}
-			return "", fmt.Errorf("bootcimg: resolving verified digest for %q: skopeo returned no valid sha256 digest", image)
+			return Source{}, fmt.Errorf("bootcimg: resolving verified digest for %q: skopeo returned no valid sha256 digest", image)
 		}
 		bare = repositoryName(bare) + "@" + digest
 	} else if !sha256DigestRE.MatchString(digest) {
-		return "", fmt.Errorf("bootcimg: invalid immutable digest in image reference %q", image)
+		return Source{}, fmt.Errorf("bootcimg: invalid immutable digest in image reference %q", image)
+	} else if localOK && local.Digest == digest {
+		labels, inspected = local.Labels, true
+	} else if remoteOK {
+		labels, inspected = remote.Labels, true
 	}
 
 	if err := verifyImageSignature(ctx, r, keyPath, bare, warn); err != nil {
-		return "", err
+		return Source{}, err
 	}
-	return bare, nil
+	return Source{Ref: bare, Labels: labels, Inspected: inspected}, nil
 }
 
 // verifyImageSignature runs cosign verify against the pinned reference,

@@ -63,8 +63,8 @@ func TestCheckAndPinImageVerifiesResolvedDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "ghcr.io/frostyard/snow@" + remoteDigest; got != want {
-		t.Fatalf("pinned source = %q, want %q", got, want)
+	if want := "ghcr.io/frostyard/snow@" + remoteDigest; got.Ref != want {
+		t.Fatalf("pinned source = %q, want %q", got.Ref, want)
 	}
 }
 
@@ -79,8 +79,8 @@ func TestCheckAndPinImageOfflineCachedImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "ghcr.io/frostyard/snow@" + localDigest; got != want {
-		t.Fatalf("offline pinned source = %q, want cached %q", got, want)
+	if want := "ghcr.io/frostyard/snow@" + localDigest; got.Ref != want {
+		t.Fatalf("offline pinned source = %q, want cached %q", got.Ref, want)
 	}
 }
 
@@ -97,8 +97,8 @@ func TestCheckAndPinImageBindsVerificationToSelectedLocalDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "registry.example.com:5000/snow@" + localDigest
-	if got != want || verified != want {
-		t.Fatalf("source = %q, verified = %q, want selected digest %q", got, verified, want)
+	if got.Ref != want || verified != want {
+		t.Fatalf("source = %q, verified = %q, want selected digest %q", got.Ref, verified, want)
 	}
 }
 
@@ -146,8 +146,8 @@ func TestCheckAndPinImageVerificationFailures(t *testing.T) {
 				if err != nil {
 					t.Fatalf("verification after transient failures = %v, want success", err)
 				}
-				if want := "ghcr.io/frostyard/snow@" + remoteDigest; got != want {
-					t.Fatalf("pinned source = %q, want %q", got, want)
+				if want := "ghcr.io/frostyard/snow@" + remoteDigest; got.Ref != want {
+					t.Fatalf("pinned source = %q, want %q", got.Ref, want)
 				}
 			} else {
 				if err == nil || !strings.Contains(err.Error(), tc.err.Error()) {
@@ -212,5 +212,110 @@ func TestCheckAndPinImageRejectsLocalTransportWithVerification(t *testing.T) {
 	_, err := CheckAndPinImage(context.Background(), r, "containers-storage:ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
 	if err == nil || !strings.Contains(err.Error(), "requires a registry image reference") {
 		t.Fatalf("local transport error = %v", err)
+	}
+}
+
+// TestCheckAndPinImageLabelsFollowSelectedImage pins ADR-0018's rule that
+// the core Flatpak label is read from the image preflight selects, never
+// from the other inspection.
+func TestCheckAndPinImageLabelsFollowSelectedImage(t *testing.T) {
+	inspect := func(digest, set string) []byte {
+		return []byte(`{"Digest":"` + digest + `","Labels":{"containers.bootc":"1","set":"` + set + `"}}`)
+	}
+	notCached := errors.New("not cached")
+	offline := errors.New("network unreachable")
+	for _, tc := range []struct {
+		name      string
+		image     string
+		key       string
+		remoteOut []byte
+		remoteErr error
+		localOut  []byte
+		localErr  error
+		wantRef   string
+		wantSet   string // "" means no labels
+		unknown   bool   // labels could not be read (Inspected false)
+	}{
+		{name: "unsigned, local copy wins over a newer registry image",
+			image:     "ghcr.io/frostyard/snow:latest",
+			remoteOut: inspect(remoteDigest, "remote"), localOut: inspect(localDigest, "local"),
+			wantRef: "ghcr.io/frostyard/snow:latest", wantSet: "local"},
+		{name: "unsigned, registry when nothing is cached",
+			image:     "ghcr.io/frostyard/snow:latest",
+			remoteOut: inspect(remoteDigest, "remote"), localErr: notCached,
+			wantRef: "ghcr.io/frostyard/snow:latest", wantSet: "remote"},
+		{name: "signed tag, local copy wins",
+			image: "ghcr.io/frostyard/snow:latest", key: "/keys/cosign.pub",
+			remoteOut: inspect(remoteDigest, "remote"), localOut: inspect(localDigest, "local"),
+			wantRef: "ghcr.io/frostyard/snow@" + localDigest, wantSet: "local"},
+		{name: "signed tag, registry when nothing is cached",
+			image: "ghcr.io/frostyard/snow:latest", key: "/keys/cosign.pub",
+			remoteOut: inspect(remoteDigest, "remote"), localErr: notCached,
+			wantRef: "ghcr.io/frostyard/snow@" + remoteDigest, wantSet: "remote"},
+		{name: "signed digest, local copy of that digest",
+			image: "ghcr.io/frostyard/snow@" + localDigest, key: "/keys/cosign.pub",
+			remoteOut: inspect(localDigest, "remote"), localOut: inspect(localDigest, "local"),
+			wantRef: "ghcr.io/frostyard/snow@" + localDigest, wantSet: "local"},
+		{name: "signed digest, local copy of another digest is ignored",
+			image: "ghcr.io/frostyard/snow@" + remoteDigest, key: "/keys/cosign.pub",
+			remoteOut: inspect(remoteDigest, "remote"), localOut: inspect(localDigest, "local"),
+			wantRef: "ghcr.io/frostyard/snow@" + remoteDigest, wantSet: "remote"},
+		{name: "signed digest, offline with no matching local copy: labels unknown",
+			image: "ghcr.io/frostyard/snow@" + remoteDigest, key: "/keys/cosign.pub",
+			remoteErr: offline, localErr: notCached,
+			wantRef: "ghcr.io/frostyard/snow@" + remoteDigest, unknown: true},
+		{name: "unsigned, unreadable registry inspection: labels unknown",
+			image:     "ghcr.io/frostyard/snow:latest",
+			remoteOut: []byte("not json"), localErr: notCached,
+			wantRef: "ghcr.io/frostyard/snow:latest", unknown: true},
+		{name: "inspection without labels",
+			image: "ghcr.io/frostyard/snow:latest", key: "/keys/cosign.pub",
+			remoteOut: []byte(`{"Digest":"` + remoteDigest + `"}`), localErr: notCached,
+			wantRef: "ghcr.io/frostyard/snow@" + remoteDigest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls [][]string
+			r := verifyRunner(t, tc.remoteOut, tc.remoteErr, tc.localOut, tc.localErr, nil, &calls)
+			got, err := CheckAndPinImage(context.Background(), r, tc.image, tc.key, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Ref != tc.wantRef {
+				t.Fatalf("source ref = %q, want %q", got.Ref, tc.wantRef)
+			}
+			if gotSet := got.Labels["set"]; gotSet != tc.wantSet {
+				t.Fatalf("labels came from %q, want %q (labels %v)", gotSet, tc.wantSet, got.Labels)
+			}
+			if got.Inspected == tc.unknown {
+				t.Fatalf("Inspected = %v, want %v", got.Inspected, !tc.unknown)
+			}
+		})
+	}
+}
+
+// A registry that hangs until the caller's deadline must not starve the
+// inspection of a local copy, which is the one selected.
+func TestCheckAndPinImageLocalInspectSurvivesHangingRegistry(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	r := runner.NewFake(
+		func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if strings.HasPrefix(args[1], "docker://") {
+				<-ctx.Done() // the registry hangs until the deadline
+				return nil, ctx.Err()
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err() // exec.CommandContext would refuse to start
+			}
+			return []byte(`{"Digest":"` + localDigest + `","Labels":{"set":"local"}}`), nil
+		},
+		func(name string) (string, error) { return "/usr/bin/" + name, nil },
+	)
+	got, err := CheckAndPinImage(ctx, r, "ghcr.io/frostyard/snow:latest", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Inspected || got.Labels["set"] != "local" {
+		t.Fatalf("source = %+v, want the local copy's labels", got)
 	}
 }

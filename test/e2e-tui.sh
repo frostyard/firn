@@ -265,9 +265,13 @@ type_input 'Confirm password' 'firn-e2e-pw'
 accept_field '^.*Groups'               # sudo preselected
 accept_field 'Additional groups'
 accept_field 'User SSH authorized key' # empty huh.NewText
-# Flatpaks: core-set confirm + IDs. The schema and TUI both default this
-# optional feature to false, so Enter preserves the focused No answer.
-accept_field 'core app set'            # No (floe has no runtime)
+# Flatpaks: the page inspects the chosen image's org.frostyard.core-flatpaks
+# label (ADR-0018) before rendering, bounded by a 30s timeout. floe publishes
+# no core set, so the wizard explains that instead of offering the toggle,
+# and the explicit-apps field is the only input.
+expect_screen 'publishes no core Flatpak apps' 90
+cap | grep -Eq "Install this image's core app set" &&
+  fail "core app toggle offered for floe, which publishes no core set"
 accept_field 'Extra Flatpak apps'      # empty huh.NewText
 # Review: with a long recipe the page TITLE scrolls off the 24-row pane;
 # gate on the action list, which is always visible at the bottom.

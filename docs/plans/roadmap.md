@@ -275,8 +275,10 @@ this phase does not rewrite its historical A/B evidence or mark it done.
    unsupported overrides wholesale and fall back to bootc-only built-ins.
    Remaining rollout work includes inventory and migration of stored v1
    recipes, release-date/expiry recording, and coordination with snosi on
-   its shipped catalog and ISO/tool payload. Sundog's ref/key and Snowfield's
-   scope need confirmation; Sundog is not in `builtinCatalog()`. Keep Firn's media boundary from
+   its shipped catalog and ISO/tool payload. Snowfield's scope needs
+   confirmation. Sundog is offered on the ISO through snosi's shipped
+   `/etc/firn/catalog.json`, which carries its ref and cosign key; it is not
+   in `builtinCatalog()`, which applies only without that file. Keep Firn's media boundary from
    [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) and UEFI floor
    from [ADR-0004](../adr/0004-single-installer-scope-and-support-matrix.md).
 2. **Qualification and sole-path decision gate:** after the above changes,
@@ -288,7 +290,7 @@ this phase does not rewrite its historical A/B evidence or mark it done.
    | --- | --- | --- |
    | Snow | Secure Boot on + TPM present + `tpm2-luks-passphrase`; Secure Boot off + TPM absent + `none` | Published image ref and cosign key; published snosi ISO build; device identity; install-to-login and hostname/user/config checks. |
    | Floe | Secure Boot off + TPM absent + `luks-passphrase` | Same provenance, device, login and configuration checks; verify boot-time passphrase unlock. |
-   | Sundog | Confirm image/key/catalog first; if secure-capable, Secure Boot on + TPM present + `tpm2-luks` | Same provenance, device, login and configuration checks; if not secure-capable, explicitly reallocate the Secure Boot cell to a supported image. |
+   | Sundog | Image, key and catalog entry ship in snosi's catalog; if secure-capable, Secure Boot on + TPM present + `tpm2-luks` | Same provenance, device, login and configuration checks; if not secure-capable, explicitly reallocate the Secure Boot cell to a supported image. |
    | Snowfield | Decide whether in the post-cutoff catalog/support scope before qualification | If included, assign a supported distinct hardware cell and record the same provenance, ISO, login and configuration evidence; otherwise record exclusion and rationale. |
 
    For each qualified cell, capture the exact published image digest/ref,
@@ -312,48 +314,49 @@ this phase does not rewrite its historical A/B evidence or mark it done.
    decision has been made. **Not complete; implementation in progress.**
 
 <a id="phase-10"></a>
-## Phase 10 — Image-published core flatpaks (small, cross-repo) — 📝 proposed
+## Phase 10 — Image-published core flatpaks (small, cross-repo) — ⏳ in progress
 
-**Proposed.** [ADR-0018 (Proposed)](../adr/0018-image-published-core-flatpaks-label.md)
+**In progress.** [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md)
 moves the `core_flatpaks` set from first-setup's `core.json` and the ISO's
 `/usr/share/firn/core-flatpaks.json` to an `org.frostyard.core-flatpaks`
-label each image publishes. Today every image, including Sundog and Floe,
-gets first-setup's GNOME list when the user opts in. Order matters: snosi
-labels ship before firn stops reading the old paths.
+label each image publishes ([spec](../specs/core-flatpaks-label.md)).
+Before it, every image, including Sundog and Floe, got first-setup's GNOME
+list when the user opted in. Order matters: snosi labels ship before a firn
+release stops reading the old paths.
 
 Out of scope: offline flatpak seeding. Published ISOs carry no seed, and a
 locally seeded ISO keeps today's whole-tree copy (ADR-0018 Consequences).
 Migrating existing installs and removing Sundog's native apps belong to
 snosi.
 
-1. **Settle the label contract (firn docs).** ADR-0018, still Proposed,
-   defines the parser cases, preflight-time validation, and which image the
-   set describes.
-2. **Snosi: publish the label.** Add `flatpaks/snow.json` and
-   `flatpaks/sundog.json` (Snowfield uses `snow.json`; Floe has none) and
-   validate them in CI. Pass the label at every `buildah-package.sh` call
-   site. Generate first-setup's `core.json` on Snow from `snow.json` with a
-   drift check. CI checks the label on the final pushed images and its
-   absence on Floe.
-3. **Firn: consume the label.** Accept ADR-0018 and write the label spec
-   (new `docs/specs/` entry) with this code. `preflight-image` returns the
-   selected source's labels, parses them when `core_flatpaks = true`, and
-   keeps the set for `runFlatpaks` in `internal/steps/bootc.go`;
-   `internal/flatpak` replaces `CoreSet` / `InstallerCoreSet` with the
-   parser. Update the `core_flatpaks` row in the
-   [recipe schema](../specs/recipe-schema.md), the
-   [progress protocol](../specs/progress-protocol.md), and
-   [architecture](../design/architecture.md) in the same change, and correct
-   the Phase 9 Sundog note (Sundog is offered through snosi's
-   `/etc/firn/catalog.json`). Tag only after step 2's images are published.
-4. **Firn TUI.** Inspect the chosen image with a timeout and again on image
-   change; distinguish inspect failure, no core set, malformed label and a
-   valid set; hiding the toggle clears it. Unit-test navigation and failure
-   states, and re-sync `test/e2e-tui.sh` per the drive-tui-e2e skill against
-   a fixture rather than live registry labels.
+1. ✅ **Settle the label contract (firn docs).** ADR-0018 defines the parser
+   cases, preflight-time validation, and which image the set describes
+   (#110).
+2. ✅ **Snosi: publish the label** (frostyard/snosi#1054).
+   `flatpaks/snow.json` (Snow and Snowfield) and `flatpaks/sundog.json`;
+   Floe has none. CI validates the files, every packaging lane passes the
+   label and checks it, and the secure lane checks the pushed digest. The
+   ISO fallback and seed read `flatpaks/legacy/firn-core-flatpaks.json`,
+   generated from `snow.json`; first-setup never read its own `core.json`.
+3. ✅ **Firn: consume the label.** ADR-0018 accepted; the
+   [label spec](../specs/core-flatpaks-label.md) lands with the code.
+   `preflight-image` returns the selected source's labels, parses them when
+   `core_flatpaks = true` (malformed fails with
+   `core_flatpaks_label_invalid`), and keeps the set for `runFlatpaks`,
+   which installs explicit apps then the core set, each once.
+   `internal/flatpak` no longer reads first-setup's `core.json` or the ISO
+   fallback. Tag only after step 2's images are published.
+4. ✅ **Firn TUI.** The flatpaks page inspects the chosen image with a
+   timeout and again on image change, and distinguishes inspect failure, no
+   core set, a malformed label and a valid set; hiding the toggle clears it.
+   Unit tests cover image switching and every state. `test/e2e-tui.sh`
+   asserts Floe's real outcome (no toggle, an explanation); the guest
+   already pulls Floe from GHCR, so this adds no new registry dependency.
 5. **Snosi: retire the fallback.** Once the ISO carries a step-3 firn
-   release, remove `/usr/share/firn/core-flatpaks.json` from
-   `shared/firn-installer/mkosi.conf` and the Justfile's `_firn-binary`.
+   release, remove the `/usr/share/firn/core-flatpaks.json` embedding from
+   `shared/firn-installer/mkosi.conf` and the Justfile's `_firn-binary`,
+   and point the seed at `flatpaks/snow.json` so
+   `flatpaks/legacy/firn-core-flatpaks.json` can go.
 
 - **Done when:** Snow and Sundog installs with `core_flatpaks = true` each
   land their own image's set, a malformed label fails preflight before any

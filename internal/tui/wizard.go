@@ -65,6 +65,8 @@ func RunWizard(ctx context.Context, o WizardOpts) ([]byte, error) {
 		catalog:    catalog,
 		theme:      huh.ThemeBase16(), // ANSI 16-color: safe on consoles and serial terminals
 		secretsDir: o.SessionDir,
+
+		showProgress: showInspecting,
 	}
 	return w.run(ctx)
 }
@@ -76,6 +78,12 @@ type wizard struct {
 	theme      *huh.Theme
 	secretsDir string
 	c          wizardChoices
+	// preview is the chosen image's core Flatpak set as last inspected by
+	// the flatpaks page; it is display-only and never enters the recipe.
+	preview corePreview
+	// showProgress draws progress while the preview inspection runs; nil
+	// (as in unit tests) runs the inspection inline.
+	showProgress progressFunc
 	// backward is true while the user is navigating backward (Shift-Tab);
 	// validators wrapped by skipWhenBacking then pass. It is set and cleared
 	// by wizardPageModel.
@@ -185,7 +193,9 @@ func (w *wizard) run(ctx context.Context) ([]byte, error) {
 		case pageUser:
 			quit, err = w.page(ctx, w.userForm())
 		case pageFlatpaks:
-			quit, err = w.page(ctx, w.flatpaksForm())
+			if quit, err = w.refreshCorePreview(ctx); !quit && err == nil {
+				quit, err = w.page(ctx, w.flatpaksForm())
+			}
 		case pageReview:
 			var startOver bool
 			var reviewed []byte

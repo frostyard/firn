@@ -1,6 +1,6 @@
 # 0018 — Read each image's core flatpak set from an OCI label
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-06
 
 ## Context
@@ -147,9 +147,12 @@ mechanism. When accepted, ADR-0006 gains a status note pointing here.
   ISO still puts its GNOME seed on any image it installs. That is existing
   behavior, unchanged here. Installing only the requested apps from a
   medium is a separate problem with its own decision.
-- **Fail before writing.** A malformed label with `core_flatpaks = true`
-  stops the install before any disk write. The TUI never offers the toggle
-  for such an image, so only headless recipes can reach that error.
+- **Fail before writing.** A malformed or unreadable label with
+  `core_flatpaks = true` stops the install before any disk write. The TUI
+  does not offer the toggle for an image whose preview shows a malformed
+  label, but a wizard recipe can still reach the error: when the preview's
+  inspection failed and the toggle stayed, or when the tag moved between the
+  preview and the install. Headless recipes can reach it directly.
 - **Saved recipes change meaning.** A saved Sundog or Floe recipe with
   `core_flatpaks = true` installs that image's set, or none, instead of the
   GNOME list. The release notes say so.
@@ -180,8 +183,10 @@ mechanism. When accepted, ADR-0006 gains a status note pointing here.
 - Shapes: [design/architecture.md](../design/architecture.md) (system
   configuration, flatpaks), [specs/recipe-schema.md](../specs/recipe-schema.md)
   (`core_flatpaks`), [specs/progress-protocol.md](../specs/progress-protocol.md)
-  (`no_core_set`), a new core-flatpaks label spec created with the
-  implementation, [roadmap Phase 10](../plans/roadmap.md#phase-10)
+  (`no_core_set`, `core_flatpaks_label_invalid`,
+  `core_flatpaks_label_unreadable`),
+  [specs/core-flatpaks-label.md](../specs/core-flatpaks-label.md) (the label
+  contract), [roadmap Phase 10](../plans/roadmap.md#phase-10)
 - Builds on: [ADR-0006](0006-install-time-offline-first-flatpaks.md)
   (offline-first provisioning, whose core-set source this replaces),
   [ADR-0010](0010-single-installer-iso-in-snosi.md) (snosi owns the ISO and

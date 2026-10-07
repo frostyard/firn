@@ -561,39 +561,15 @@ func findBootcUKI(root string) (uki string, allEFI []string) {
 }
 
 func runFlatpaks(ctx context.Context, env *pipeline.Env) error {
-	apps := env.Recipe.System.Flatpaks
-	if env.Recipe.System.CoreFlatpaks {
-		// The core set ships in the image's /usr. On an ostree
-		// deployment that tree is materialized on disk; on
-		// composefs-native targets /usr lives in composefs objects and
-		// is not readable as plain files at install time — report,
-		// don't guess.
-		etcDir, err := sysconfig.EtcDir(ctx, env.Runner, targetDir(env))
-		if err != nil {
-			return err
+	// Explicit apps first, then the core set preflight-image read from the
+	// image's label (ADR-0018); each ID once, at its first occurrence.
+	var apps []string
+	seen := make(map[string]bool)
+	for _, app := range append(append([]string{}, env.Recipe.System.Flatpaks...), env.CoreFlatpaks...) {
+		if !seen[app] {
+			seen[app] = true
+			apps = append(apps, app)
 		}
-		core, ok, err := flatpak.CoreSet(filepath.Dir(etcDir))
-		if err != nil {
-			return err
-		}
-		if !ok {
-			// Composefs-native deployments (every snosi desktop image)
-			// keep /usr in composefs objects unreadable at install time,
-			// so the deployment publishes no readable core set. Fall back
-			// to the copy the installer medium embeds.
-			core, ok, err = flatpak.InstallerCoreSet()
-			if err != nil {
-				return err
-			}
-		}
-		if !ok {
-			msg := "core_flatpaks: no readable core set in the deployment or on the installer medium"
-			if err := env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg}); err != nil {
-				return err
-			}
-			env.AddSummary(progress.CodeNoCoreSet, msg)
-		}
-		apps = append(apps, core...)
 	}
 	if len(apps) == 0 {
 		return nil

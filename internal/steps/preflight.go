@@ -7,6 +7,7 @@ import (
 
 	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
+	"github.com/frostyard/firn/internal/flatpak"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/platform"
 	"github.com/frostyard/firn/internal/progress"
@@ -54,7 +55,7 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 		steps = append(steps, pipeline.Step{
 			Name: "preflight-image", Weight: 1, Preflight: true,
 			Run: func(ctx context.Context, env *pipeline.Env) error {
-				pinned, err := bootcimg.CheckAndPinImage(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey,
+				source, err := bootcimg.CheckAndPinImage(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey,
 					func(msg string) {
 						_ = env.Emit(progress.Warning{Code: progress.CodeImageVerifyRetried, Message: msg})
 					})
@@ -64,11 +65,14 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 					}
 					return err
 				}
-				env.BootcSourceRef = pinned
+				env.BootcSourceRef = source.Ref
 				if env.Recipe.Image.CosignPubKey != "" {
 					if err := env.Emit(progress.Info{Message: "bootc image signature verified at immutable digest"}); err != nil {
 						return err
 					}
+				}
+				if env.Recipe.System.CoreFlatpaks {
+					return readCoreFlatpaks(env, source)
 				}
 				return nil
 			},
@@ -104,4 +108,33 @@ func diskPaths(devices []disk.Device) string {
 		paths[i] = d.Path
 	}
 	return strings.Join(paths, ", ")
+}
+
+// readCoreFlatpaks parses the selected image's core Flatpak label before any
+// disk write (ADR-0018): a malformed label fails the install here, and an
+// image that publishes no set is reported, not fatal.
+func readCoreFlatpaks(env *pipeline.Env, source bootcimg.Source) error {
+	if !source.Inspected {
+		// Unknown labels are not an absent label: installing without the
+		// requested set, or skipping its validation, would be silent.
+		return pipeline.WithErrorCode(progress.CodeCoreLabelUnreadable,
+			fmt.Errorf("core_flatpaks: could not inspect image %s to read its %s label; check registry access and retry",
+				env.Recipe.Image.Ref, flatpak.CoreLabel))
+	}
+	value, present := source.Labels[flatpak.CoreLabel]
+	ids, err := flatpak.ParseCoreLabel(value, present)
+	if err != nil {
+		return pipeline.WithErrorCode(progress.CodeCoreLabelInvalid,
+			fmt.Errorf("core_flatpaks: image %s: %w", env.Recipe.Image.Ref, err))
+	}
+	if len(ids) == 0 {
+		msg := fmt.Sprintf("core_flatpaks: image %s publishes no core Flatpak set", env.Recipe.Image.Ref)
+		if err := env.Emit(progress.Warning{Code: progress.CodeNoCoreSet, Message: msg}); err != nil {
+			return err
+		}
+		env.AddSummary(progress.CodeNoCoreSet, msg)
+		return nil
+	}
+	env.CoreFlatpaks = ids
+	return env.Emit(progress.Info{Message: fmt.Sprintf("core_flatpaks: image publishes %d core Flatpaks", len(ids))})
 }
