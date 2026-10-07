@@ -66,8 +66,8 @@ private password files. The exact parity/delta table lives in the
 [recipe schema](../specs/recipe-schema.md#interactive-wizard-parity).
 
 The flatpaks page inspects the chosen image's
-[core Flatpaks label](../specs/core-flatpaks-label.md) when it opens, with a
-30-second timeout, using preflight's local-first selection without signature
+[core Flatpaks label](../specs/core-flatpaks-label.md) when it opens, behind a
+progress spinner with a 30-second timeout, using preflight's local-first selection without signature
 verification, and again whenever the chosen image changes. It lists a
 published set's app names beside the toggle; explains instead of offering
 the toggle when the image publishes no set or a malformed one (and clears any

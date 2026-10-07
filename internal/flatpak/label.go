@@ -8,6 +8,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // CoreLabel is the OCI image label carrying the image's core Flatpak set
@@ -88,12 +89,6 @@ func ParseCoreLabelApps(value string, present bool) ([]CoreApp, error) {
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, malformed("trailing data after the JSON object")
 	}
-	// encoding/json matches field names case-insensitively, so
-	// DisallowUnknownFields alone accepts "VERSION" or "Id". The spec's
-	// names are exact; check them at both object levels.
-	if err := exactFieldNames(value); err != nil {
-		return nil, malformed("%v", err)
-	}
 	if label.Version == nil {
 		return nil, malformed("version is missing or null")
 	}
@@ -103,6 +98,12 @@ func ParseCoreLabelApps(value string, present bool) ([]CoreApp, error) {
 	if label.Flatpaks == nil {
 		return nil, malformed("flatpaks is missing or null")
 	}
+	// encoding/json matches field names case-insensitively, so
+	// DisallowUnknownFields alone accepts "VERSION" or "Id". The spec's
+	// names are exact; check them at both object levels.
+	if err := exactFieldNames(value); err != nil {
+		return nil, malformed("%v", err)
+	}
 	var apps []CoreApp
 	seen := make(map[string]bool, len(*label.Flatpaks))
 	for i, item := range *label.Flatpaks {
@@ -111,6 +112,11 @@ func ParseCoreLabelApps(value string, present bool) ([]CoreApp, error) {
 		}
 		if item.Name == nil || strings.TrimSpace(*item.Name) == "" {
 			return nil, malformed("flatpaks[%d]: name is missing or empty", i)
+		}
+		// Names reach the installer console before the image is verified;
+		// control characters and escape sequences must not.
+		if strings.IndexFunc(*item.Name, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+			return nil, malformed("flatpaks[%d]: name contains a non-printable character", i)
 		}
 		if !seen[*item.ID] {
 			seen[*item.ID] = true

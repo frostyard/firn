@@ -499,9 +499,11 @@ func TestCheckImage(t *testing.T) {
 			if !tt.wantErr && err != nil {
 				t.Fatalf("CheckImage() error = %v", err)
 			}
+			// Local first: a hanging registry must not consume the
+			// deadline before the local copy is inspected.
 			want := []call{
-				{name: "skopeo", args: []string{"inspect", "docker://ghcr.io/tuna-os/yellowfin:gnome-hwe"}},
 				{name: "skopeo", args: []string{"inspect", "containers-storage:ghcr.io/tuna-os/yellowfin:gnome-hwe"}},
+				{name: "skopeo", args: []string{"inspect", "docker://ghcr.io/tuna-os/yellowfin:gnome-hwe"}},
 			}
 			if len(calls) != len(want) {
 				t.Fatalf("CheckImage() made calls %v, want %v", calls, want)
@@ -527,10 +529,10 @@ func TestCheckImage_StripsTransportPrefix(t *testing.T) {
 	if len(calls) != 2 {
 		t.Fatalf("calls = %v", calls)
 	}
-	if got, want := calls[0].args[1], "docker://ghcr.io/ublue-os/bluefin:stable"; got != want {
-		t.Errorf("remote ref = %q, want %q", got, want)
-	}
-	if got, want := calls[1].args[1], "containers-storage:ghcr.io/ublue-os/bluefin:stable"; got != want {
+	if got, want := calls[0].args[1], "containers-storage:ghcr.io/ublue-os/bluefin:stable"; got != want {
 		t.Errorf("local ref = %q, want %q", got, want)
+	}
+	if got, want := calls[1].args[1], "docker://ghcr.io/ublue-os/bluefin:stable"; got != want {
+		t.Errorf("remote ref = %q, want %q", got, want)
 	}
 }

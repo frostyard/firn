@@ -31,6 +31,9 @@ func TestParseCoreLabel(t *testing.T) {
 		{name: "duplicates keep the first occurrence", present: true,
 			value: `{"version":1,"flatpaks":[{"id":"org.b.B","name":"B"},` + app + `,{"id":"org.b.B","name":"B again"}]}`,
 			want:  []string{"org.b.B", "org.example.App"}},
+		{name: "name with spaces and non-ASCII letters", present: true,
+			value: `{"version":1,"flatpaks":[{"id":"org.example.App","name":"Visionneuse d’images"}]}`,
+			want:  []string{"org.example.App"}},
 		{name: "dash in the last element", present: true,
 			value: `{"version":1,"flatpaks":[{"id":"org.example.my-app","name":"App"}]}`,
 			want:  []string{"org.example.my-app"}},
@@ -64,6 +67,10 @@ func TestParseCoreLabel(t *testing.T) {
 		{name: "id with a leading option dash", present: true, value: `{"version":1,"flatpaks":[{"id":"--system","name":"App"}]}`, wantErr: true},
 		{name: "id over 255 characters", present: true,
 			value: `{"version":1,"flatpaks":[{"id":"org.example.` + strings.Repeat("a", 250) + `","name":"App"}]}`, wantErr: true},
+		{name: "name with an escape sequence", present: true, value: `{"version":1,"flatpaks":[{"id":"org.example.App","name":"B\u001b[2J\u001b[31mEVIL"}]}`, wantErr: true},
+		{name: "name with a newline", present: true, value: `{"version":1,"flatpaks":[{"id":"org.example.App","name":"B\nC"}]}`, wantErr: true},
+		{name: "name with a tab", present: true, value: `{"version":1,"flatpaks":[{"id":"org.example.App","name":"B\tC"}]}`, wantErr: true},
+		{name: "name with a zero-width joiner", present: true, value: `{"version":1,"flatpaks":[{"id":"org.example.App","name":"B\u200dC"}]}`, wantErr: true},
 		{name: "name missing", present: true, value: `{"version":1,"flatpaks":[{"id":"org.example.App"}]}`, wantErr: true},
 		{name: "name empty", present: true, value: `{"version":1,"flatpaks":[{"id":"org.example.App","name":" "}]}`, wantErr: true},
 	} {
@@ -85,5 +92,21 @@ func TestParseCoreLabel(t *testing.T) {
 				t.Fatalf("ParseCoreLabel(%q) = %v, want %v", tc.value, got, tc.want)
 			}
 		})
+	}
+}
+
+// The error names the actual problem, so the wizard note and the preflight
+// error tell the user what is wrong with the label.
+func TestParseCoreLabelMessages(t *testing.T) {
+	for value, want := range map[string]string{
+		`{"version":1}`:                           "flatpaks is missing or null",
+		`{"flatpaks":[]}`:                         "version is missing or null",
+		`{"version":1,"FLATPAKS":[]}`:             `unknown field "FLATPAKS"`,
+		`{"version":1,"flatpaks":[],"Version":1}`: `unknown field "Version"`,
+	} {
+		_, err := ParseCoreLabel(value, true)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ParseCoreLabel(%s) error = %v, want it to mention %q", value, err, want)
+		}
 	}
 }

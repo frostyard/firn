@@ -67,6 +67,7 @@ version-1 wire contract.
 | --- | --- | --- |
 | `cleanup_failed` | `warning` | A registered pipeline cleanup failed; the terminal event still follows and the run is unsuccessful. |
 | `core_flatpaks_label_invalid` | `error` | Core Flatpaks were requested and the selected image's `org.frostyard.core-flatpaks` label is malformed ([core Flatpaks label](core-flatpaks-label.md)); raised in `preflight-image`, so no destructive step has run. |
+| `core_flatpaks_label_unreadable` | `error` | Core Flatpaks were requested but the selected image's labels could not be read (its inspection failed although the image was otherwise resolved); raised in `preflight-image`, so no destructive step has run. Check registry access and retry. |
 | `flatpak_unreachable` | `warning`, `summary` | A requested Flatpak could not be reached and was not installed. |
 | `group_missing` | `warning`, `summary` | A requested supplementary user group was absent from the installed image. |
 | `image_verification_failed` | `error` | Bootc image digest resolution or cosign verification failed in `preflight-image`; no destructive step has run. |
@@ -113,6 +114,7 @@ contain the key.
 - Rationale: [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
   [ADR-0016](../adr/0016-bootc-only-recipe-contract.md),
   [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md)
-  (`no_core_set`, `core_flatpaks_label_invalid`; see
+  (`no_core_set`, `core_flatpaks_label_invalid`,
+  `core_flatpaks_label_unreadable`; see
   [core Flatpaks label](core-flatpaks-label.md))
 - Context: [design/architecture.md](../design/architecture.md)

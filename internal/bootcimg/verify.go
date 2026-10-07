@@ -60,8 +60,11 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 		return Source{}, fmt.Errorf("bootcimg: cosign verification requires a registry image reference, got %q", image)
 	}
 	bare := bareImageRef(image)
-	remoteOut, remoteErr := r.Run(ctx, "skopeo", "inspect", "docker://"+bare)
+	// Local first: it needs no network, so a registry that hangs until the
+	// caller's deadline cannot starve the inspection of an image that is
+	// already here (and would be selected).
 	localOut, localErr := r.Run(ctx, "skopeo", "inspect", "containers-storage:"+bare)
+	remoteOut, remoteErr := r.Run(ctx, "skopeo", "inspect", "docker://"+bare)
 	var local, remote inspectManifest
 	localOK := localErr == nil && json.Unmarshal(localOut, &local) == nil
 	remoteOK := remoteErr == nil && json.Unmarshal(remoteOut, &remote) == nil

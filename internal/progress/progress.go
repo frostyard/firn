@@ -113,19 +113,20 @@ func (f EmitterFunc) Emit(event Event) error { return f(event) }
 // Warning and error codes stable enough to be part of the contract are
 // collected here as they are introduced (spec rule 3).
 const (
-	CodeStepFailed         = "step_failed"
-	CodeCleanupFailed      = "cleanup_failed"
-	CodeImageVerifyFailed  = "image_verification_failed"
-	CodeImageVerifyRetried = "image_verification_retried"
-	CodeNoTPM              = "no_tpm"
-	CodeFlatpakUnreachable = "flatpak_unreachable"
-	CodeGroupMissing       = "group_missing"
-	CodeNoCoreSet          = "no_core_set"
-	CodeCoreLabelInvalid   = "core_flatpaks_label_invalid"
-	CodeStoreUnmountFailed = "store_umount_failed"
-	CodeStoreCleanupFailed = "store_cleanup_failed"
-	CodeStreamTruncated    = "stream_truncated"
-	CodeRecipeV1Deprecated = "recipe_v1_deprecated"
+	CodeStepFailed          = "step_failed"
+	CodeCleanupFailed       = "cleanup_failed"
+	CodeImageVerifyFailed   = "image_verification_failed"
+	CodeImageVerifyRetried  = "image_verification_retried"
+	CodeNoTPM               = "no_tpm"
+	CodeFlatpakUnreachable  = "flatpak_unreachable"
+	CodeGroupMissing        = "group_missing"
+	CodeNoCoreSet           = "no_core_set"
+	CodeCoreLabelInvalid    = "core_flatpaks_label_invalid"
+	CodeCoreLabelUnreadable = "core_flatpaks_label_unreadable"
+	CodeStoreUnmountFailed  = "store_umount_failed"
+	CodeStoreCleanupFailed  = "store_cleanup_failed"
+	CodeStreamTruncated     = "stream_truncated"
+	CodeRecipeV1Deprecated  = "recipe_v1_deprecated"
 )
 
 func isTerminal(e Event) bool {

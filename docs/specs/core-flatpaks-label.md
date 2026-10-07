@@ -21,7 +21,7 @@ The label value is a single JSON object:
 | `version` | integer | yes | Exactly `1`. |
 | `flatpaks` | array of objects | yes | May be empty (no core set). |
 | `flatpaks[].id` | string | yes | Flatpak application ID: at least three dot-separated elements of `[A-Za-z0-9_-]`, none starting with a digit, `-` only in the last element, at most 255 characters. |
-| `flatpaks[].name` | string | yes | Display name; not empty or whitespace only. |
+| `flatpaks[].name` | string | yes | Display name; not empty or whitespace only, and printable: no control or format characters (newlines, tabs, escape sequences, zero-width joiners). Plain spaces and non-ASCII letters are allowed. |
 
 Field names are exact and case-sensitive. An image with no core set
 publishes no label key.
@@ -41,6 +41,7 @@ publishes no label key.
    | Any field other than `version`, `flatpaks`, and per entry `id`, `name`, including case variants such as `VERSION` or `Id` | Malformed |
    | An entry that is null, or whose `id` is missing, empty, or not a valid application ID | Malformed |
    | `name` missing, empty, or whitespace only | Malformed |
+   | `name` containing a non-printable character (control or format character) | Malformed |
    | `flatpaks` is an empty array | No core set |
    | Duplicate `id` | Accepted; later duplicates dropped, first occurrence kept |
 
@@ -54,10 +55,11 @@ publishes no label key.
 3. With `core_flatpaks = true`:
    - a malformed label fails `preflight-image` with error code
      `core_flatpaks_label_invalid`, in dry-run and real runs alike;
-   - labels that could not be read fail `preflight-image` too. A signed
-     `@sha256:` reference can verify while its registry inspection failed
-     and no matching local copy exists; its labels are then unknown, not
-     absent, and the install stops rather than report `no_core_set`;
+   - labels that could not be read fail `preflight-image` with error code
+     `core_flatpaks_label_unreadable`. A signed `@sha256:` reference can
+     verify while its registry inspection failed and no matching local copy
+     exists; its labels are then unknown, not absent, and the install stops
+     rather than report `no_core_set`;
    - no core set emits the `no_core_set` warning and summary item, and the
      install continues;
    - otherwise the set's IDs are installed after the recipe's explicit
@@ -71,8 +73,10 @@ publishes no label key.
    value; an image without a core set carries no label key.
 7. The TUI wizard previews the label on its flatpaks page, inspecting the
    chosen image with rule 2's local-first selection (no signature
-   verification) under a 30-second timeout, and again when the chosen image
-   changes. It:
+   verification) under a 30-second timeout, behind a progress spinner that
+   swallows keys typed meanwhile, and again when the chosen image changes.
+   The local copy is inspected before the registry, so a hanging registry
+   cannot hide a local image. It:
    - lists a valid set's names beside the `core_flatpaks` toggle;
    - shows no toggle, and an explanation, for no core set or a malformed
      label, and sets `core_flatpaks` to false;
@@ -87,7 +91,7 @@ publishes no label key.
 | Artifact | Derivation |
 | --- | --- |
 | Snosi `flatpaks/*.json` and `flatpaks/core-flatpaks.py` | Produce the label per product and check it on every packaged and pushed image; snosi's `test/core-flatpaks-test.sh` mirrors rule 1's rejections. |
-| Progress codes `no_core_set`, `core_flatpaks_label_invalid` | [Progress protocol](progress-protocol.md#stable-codes). |
+| Progress codes `no_core_set`, `core_flatpaks_label_invalid`, `core_flatpaks_label_unreadable` | [Progress protocol](progress-protocol.md#stable-codes). |
 | `core_flatpaks` recipe field | [Recipe schema](recipe-schema.md). |
 
 ## References

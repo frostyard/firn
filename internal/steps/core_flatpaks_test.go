@@ -233,8 +233,9 @@ func TestCoreFlatpaksUninspectableImageFailsPreflight(t *testing.T) {
 			t.Fatalf("core_flatpaks on: error = %v, want an inspection failure", err)
 		}
 		terminal, ok := events[len(events)-1].(progress.Error)
-		if !ok || terminal.Step != "preflight-image" {
-			t.Fatalf("terminal event = %#v, want a preflight-image error", events[len(events)-1])
+		if !ok || terminal.Step != "preflight-image" || terminal.Code != progress.CodeCoreLabelUnreadable {
+			t.Fatalf("terminal event = %#v, want a preflight-image %s error",
+				events[len(events)-1], progress.CodeCoreLabelUnreadable)
 		}
 		for _, e := range events {
 			if w, ok := e.(progress.Warning); ok && w.Code == progress.CodeNoCoreSet {

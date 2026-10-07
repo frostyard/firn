@@ -292,3 +292,30 @@ func TestCheckAndPinImageLabelsFollowSelectedImage(t *testing.T) {
 		})
 	}
 }
+
+// A registry that hangs until the caller's deadline must not starve the
+// inspection of a local copy, which is the one selected.
+func TestCheckAndPinImageLocalInspectSurvivesHangingRegistry(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	r := runner.NewFake(
+		func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if strings.HasPrefix(args[1], "docker://") {
+				<-ctx.Done() // the registry hangs until the deadline
+				return nil, ctx.Err()
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err() // exec.CommandContext would refuse to start
+			}
+			return []byte(`{"Digest":"` + localDigest + `","Labels":{"set":"local"}}`), nil
+		},
+		func(name string) (string, error) { return "/usr/bin/" + name, nil },
+	)
+	got, err := CheckAndPinImage(ctx, r, "ghcr.io/frostyard/snow:latest", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Inspected || got.Labels["set"] != "local" {
+		t.Fatalf("source = %+v, want the local copy's labels", got)
+	}
+}

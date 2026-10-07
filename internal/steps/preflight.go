@@ -117,8 +117,9 @@ func readCoreFlatpaks(env *pipeline.Env, source bootcimg.Source) error {
 	if !source.Inspected {
 		// Unknown labels are not an absent label: installing without the
 		// requested set, or skipping its validation, would be silent.
-		return fmt.Errorf("core_flatpaks: could not inspect image %s to read its %s label; check registry access and retry",
-			env.Recipe.Image.Ref, flatpak.CoreLabel)
+		return pipeline.WithErrorCode(progress.CodeCoreLabelUnreadable,
+			fmt.Errorf("core_flatpaks: could not inspect image %s to read its %s label; check registry access and retry",
+				env.Recipe.Image.Ref, flatpak.CoreLabel))
 	}
 	value, present := source.Labels[flatpak.CoreLabel]
 	ids, err := flatpak.ParseCoreLabel(value, present)
