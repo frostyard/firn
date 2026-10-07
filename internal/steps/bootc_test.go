@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
@@ -292,6 +294,80 @@ hostname = "frost01"
 				t.Fatalf("target-modifying command ran after failed verification: %s", command)
 			}
 		}
+	}
+}
+
+// An unreachable registry is reported as registry_unreachable (network_unreachable
+// when no network is configured) in preflight,
+// ahead of the blanket image_verification_failed code, in normal and dry-run
+// execution alike, and before any destructive command.
+func TestBootcUnreachableRegistryStopsPreflight(t *testing.T) {
+	key := filepath.Join(t.TempDir(), "cosign.pub")
+	if err := os.WriteFile(key, []byte("key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, cosign string
+		dryRun       bool
+		probeErr     error
+		wantCode     string
+		wantText     string
+	}{
+		{"unsigned", "", false, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"unsigned dry-run", "", true, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"signed", key, false, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"signed dry-run", key, true, errors.New("no route"), progress.CodeRegistryUnreachable, "cannot reach registry ghcr.io"},
+		{"no network configured", "", false, bootcimg.ErrNoNetwork, progress.CodeNetworkUnreachable, "no routable network address is configured"},
+		{"no network configured, signed", key, true, bootcimg.ErrNoNetwork, progress.CodeNetworkUnreachable, "no routable network address is configured"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keyLine := ""
+			if tc.cosign != "" {
+				keyLine = fmt.Sprintf("cosign_pub_key = %q\n", tc.cosign)
+			}
+			l := load(t, fmt.Sprintf(`
+version = 1
+[image]
+family = "bootc"
+ref = "ghcr.io/frostyard/snow:latest"
+%s[target]
+disk = "/dev/vda"
+filesystem = "btrfs"
+[security]
+encryption = "none"
+[system]
+hostname = "frost01"
+`, keyLine))
+			var commands []string
+			fake := runner.NewFake(
+				func(_ context.Context, name string, args ...string) ([]byte, error) {
+					commands = append(commands, name)
+					if name == "skopeo" || name == "cosign" {
+						return nil, errors.New("dial tcp: i/o timeout")
+					}
+					t.Fatalf("command %s ran after an unreachable registry", name)
+					return nil, nil
+				},
+				func(name string) (string, error) { return "/usr/bin/" + name, nil },
+			).WithSleep(func(time.Duration) {})
+			var events []progress.Event
+			env := &pipeline.Env{
+				Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
+				RegistryProbe: func(context.Context, string) error { return tc.probeErr },
+				Emitter: progress.EmitterFunc(func(e progress.Event) error {
+					events = append(events, e)
+					return nil
+				}),
+			}
+			err := Assemble(l).Run(context.Background(), env, tc.dryRun)
+			if err == nil || !strings.Contains(err.Error(), tc.wantText) {
+				t.Fatalf("error = %v", err)
+			}
+			terminal, ok := events[len(events)-1].(progress.Error)
+			if !ok || terminal.Step != "preflight-image" || terminal.Code != tc.wantCode {
+				t.Fatalf("terminal event = %#v", events[len(events)-1])
+			}
+		})
 	}
 }
 

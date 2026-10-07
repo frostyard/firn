@@ -295,6 +295,9 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 					return filepath.Join(dir, "recipe.toml"), loaded, nil
 				},
 				runInstall: func(_ context.Context, env *pipeline.Env, got *recipe.Loaded) (tui.InstallResult, error) {
+					if env.RegistryProbe == nil {
+						t.Fatal("TUI install env has no registry probe wired")
+					}
 					if got != loaded || env.Recipe != &loaded.Recipe {
 						t.Fatalf("engine bridge received env=%+v recipe=%p", env, got)
 					}

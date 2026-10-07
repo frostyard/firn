@@ -27,7 +27,7 @@ Top level:
 | `family` | string | yes | MUST be `"bootc"`. Never inferred. |
 | `ref` | string | yes | OCI image reference. |
 | `target_ref` | string | no | Post-install upgrade ref; defaults to `ref`. |
-| `cosign_pub_key` | string (path) | no | Enables independent cosign verification of a registry `ref`. Before any destructive step, Firn selects the source it would install (preferring a valid embedded containers-storage image), resolves it to an immutable `sha256` digest, runs `cosign verify --key` against that digest, and installs that same digest. Verification failure emits `image_verification_failed`. |
+| `cosign_pub_key` | string (path) | no | Enables independent cosign verification of a registry `ref`. Before any destructive step, Firn selects the source it would install (preferring a valid embedded containers-storage image), resolves it to an immutable `sha256` digest, runs `cosign verify --key` against that digest, and installs that same digest. Verification failure emits `image_verification_failed`; when the registry itself cannot be reached it emits `registry_unreachable` (or `network_unreachable` with no network configured) instead, see the [progress protocol](progress-protocol.md#stable-codes). |
 
 ### `[target]`
 

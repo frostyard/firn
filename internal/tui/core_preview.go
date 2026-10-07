@@ -143,7 +143,7 @@ func inspectCorePreview(ctx context.Context, w *wizard, ref string) corePreview 
 	}
 	ictx, cancel := context.WithTimeout(ctx, corePreviewTimeout)
 	defer cancel()
-	source, err := bootcimg.CheckAndPinImage(ictx, w.opts.Runner, ref, "", nil)
+	source, err := bootcimg.CheckAndPinImage(ictx, w.opts.Runner, ref, "", nil, nil)
 	if err == nil && !source.Inspected {
 		err = errors.New("image inspection returned no readable metadata")
 	}

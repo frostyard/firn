@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -58,8 +59,18 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 				source, err := bootcimg.CheckAndPinImage(ctx, env.Runner, env.Recipe.Image.Ref, env.Recipe.Image.CosignPubKey,
 					func(msg string) {
 						_ = env.Emit(progress.Warning{Code: progress.CodeImageVerifyRetried, Message: msg})
-					})
+					}, env.RegistryProbe)
 				if err != nil {
+					// Reachability outranks the blanket verification code: an
+					// unreachable registry is not a signature problem.
+					var unreachable *bootcimg.RegistryUnreachableError
+					if errors.As(err, &unreachable) {
+						code := progress.CodeRegistryUnreachable
+						if unreachable.NoNetwork {
+							code = progress.CodeNetworkUnreachable
+						}
+						return pipeline.WithErrorCode(code, err)
+					}
 					if env.Recipe.Image.CosignPubKey != "" {
 						return pipeline.WithErrorCode(progress.CodeImageVerifyFailed, err)
 					}

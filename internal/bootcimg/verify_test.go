@@ -59,7 +59,7 @@ func TestCheckAndPinImageVerifiesResolvedDigest(t *testing.T) {
 			return nil
 		}, &calls)
 
-	got, err := CheckAndPinImage(context.Background(), r, "docker://ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
+	got, err := CheckAndPinImage(context.Background(), r, "docker://ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestCheckAndPinImageOfflineCachedImage(t *testing.T) {
 		[]byte(`{"Digest":"`+localDigest+`"}`), nil,
 		nil, &calls)
 
-	got, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
+	got, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestCheckAndPinImageBindsVerificationToSelectedLocalDigest(t *testing.T) {
 		[]byte(`{"Digest":"`+localDigest+`"}`), nil,
 		func(args []string) error { verified = args[len(args)-1]; return nil }, &calls)
 
-	got, err := CheckAndPinImage(context.Background(), r, "registry.example.com:5000/snow:latest", "/keys/cosign.pub", nil)
+	got, err := CheckAndPinImage(context.Background(), r, "registry.example.com:5000/snow:latest", "/keys/cosign.pub", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestCheckAndPinImageVerificationFailures(t *testing.T) {
 			var warnings []string
 			warn := func(msg string) { warnings = append(warnings, msg) }
 
-			got, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", tc.key, warn)
+			got, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", tc.key, warn, nil)
 			if attempt != len(tc.errs) {
 				t.Fatalf("cosign attempts = %d, want %d", attempt, len(tc.errs))
 			}
@@ -178,7 +178,7 @@ func TestCheckAndPinImageVerificationFailures(t *testing.T) {
 func TestCheckAndPinImageRejectsMalformedDigest(t *testing.T) {
 	var calls [][]string
 	r := verifyRunner(t, []byte(`{"Digest":"sha256:not-a-digest"}`), nil, nil, errors.New("not cached"), nil, &calls)
-	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
+	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "no valid sha256 digest") {
 		t.Fatalf("malformed digest error = %v", err)
 	}
@@ -195,7 +195,7 @@ func TestCheckAndPinImageDoesNotReplaceSelectedLocalImage(t *testing.T) {
 		[]byte(`{"Digest":"`+remoteDigest+`"}`), nil,
 		[]byte(`{"Digest":"not-a-digest"}`), nil,
 		nil, &calls)
-	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
+	_, err := CheckAndPinImage(context.Background(), r, "ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "selected local image") {
 		t.Fatalf("selected local digest error = %v", err)
 	}
@@ -209,7 +209,7 @@ func TestCheckAndPinImageDoesNotReplaceSelectedLocalImage(t *testing.T) {
 func TestCheckAndPinImageRejectsLocalTransportWithVerification(t *testing.T) {
 	var calls [][]string
 	r := verifyRunner(t, nil, fmt.Errorf("offline"), []byte(`{"Digest":"`+localDigest+`"}`), nil, nil, &calls)
-	_, err := CheckAndPinImage(context.Background(), r, "containers-storage:ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil)
+	_, err := CheckAndPinImage(context.Background(), r, "containers-storage:ghcr.io/frostyard/snow:latest", "/keys/cosign.pub", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "requires a registry image reference") {
 		t.Fatalf("local transport error = %v", err)
 	}
@@ -276,7 +276,7 @@ func TestCheckAndPinImageLabelsFollowSelectedImage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls [][]string
 			r := verifyRunner(t, tc.remoteOut, tc.remoteErr, tc.localOut, tc.localErr, nil, &calls)
-			got, err := CheckAndPinImage(context.Background(), r, tc.image, tc.key, nil)
+			got, err := CheckAndPinImage(context.Background(), r, tc.image, tc.key, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -311,7 +311,7 @@ func TestCheckAndPinImageLocalInspectSurvivesHangingRegistry(t *testing.T) {
 		},
 		func(name string) (string, error) { return "/usr/bin/" + name, nil },
 	)
-	got, err := CheckAndPinImage(ctx, r, "ghcr.io/frostyard/snow:latest", "", nil)
+	got, err := CheckAndPinImage(ctx, r, "ghcr.io/frostyard/snow:latest", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
