@@ -103,12 +103,12 @@ func TestCorePreviewFollowsImageChangesAndClearsHiddenToggle(t *testing.T) {
 	var inspected int
 	w := previewWizard(&inspected)
 
-	w.c.entry = CatalogEntry{Name: "snow", Ref: snowRef}
+	w.setEntry(CatalogEntry{Name: "snow", Ref: snowRef})
 	mustRefresh(t, w)
 	w.flatpaksForm()
 	w.c.coreFlatpaks = true // the user accepts Snow's set
 
-	w.c.entry = CatalogEntry{Name: "floe", Ref: floeRef}
+	w.setEntry(CatalogEntry{Name: "floe", Ref: floeRef})
 	mustRefresh(t, w)
 	w.flatpaksForm()
 	if w.preview.state != corePreviewNone || w.c.coreFlatpaks {
@@ -116,7 +116,7 @@ func TestCorePreviewFollowsImageChangesAndClearsHiddenToggle(t *testing.T) {
 			w.preview.state, w.c.coreFlatpaks)
 	}
 
-	w.c.entry = CatalogEntry{Name: "broken", Ref: brokenRef}
+	w.setEntry(CatalogEntry{Name: "broken", Ref: brokenRef})
 	w.c.coreFlatpaks = true
 	mustRefresh(t, w)
 	w.flatpaksForm()
@@ -125,11 +125,12 @@ func TestCorePreviewFollowsImageChangesAndClearsHiddenToggle(t *testing.T) {
 			w.preview.state, w.c.coreFlatpaks)
 	}
 
-	w.c.entry = CatalogEntry{Name: "sundog", Ref: sundogRef}
+	w.setEntry(CatalogEntry{Name: "sundog", Ref: sundogRef})
 	mustRefresh(t, w)
-	w.c.coreFlatpaks = true
 	w.flatpaksForm()
-	if w.preview.state != corePreviewAvailable || !w.c.coreFlatpaks {
+	w.c.coreFlatpaks = false // the user declines Sundog's set
+	w.flatpaksForm()
+	if w.preview.state != corePreviewAvailable || w.c.coreFlatpaks {
 		t.Fatalf("an offered toggle must keep its answer: state = %v, coreFlatpaks = %v",
 			w.preview.state, w.c.coreFlatpaks)
 	}
@@ -181,7 +182,8 @@ func TestFlatpaksFormWithoutCoreSetCompletes(t *testing.T) {
 }
 
 // An inspection that succeeds without readable metadata is unknown, not
-// "no core set": the toggle stays and the next visit retries.
+// "no core set": the toggle stays, initially on, and the next visit
+// retries without overriding the user's answer.
 func TestCorePreviewUnreadableInspectionKeepsToggle(t *testing.T) {
 	r := runner.NewFake(
 		func(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -194,12 +196,76 @@ func TestCorePreviewUnreadableInspectionKeepsToggle(t *testing.T) {
 	)
 	w := &wizard{opts: WizardOpts{Runner: r}}
 	w.c.entry = CatalogEntry{Name: "snow", Ref: snowRef}
-	w.c.coreFlatpaks = true
 	mustRefresh(t, w)
 	w.flatpaksForm()
-	if w.preview.state != corePreviewUnavailable || w.preview.ref != "" || !w.c.coreFlatpaks {
+	if !w.c.coreFlatpaks {
+		t.Fatal("unreadable label: toggle initially off, want on")
+	}
+	w.c.coreFlatpaks = false // the user declines
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if w.preview.state != corePreviewUnavailable || w.preview.ref != "" || w.c.coreFlatpaks {
 		t.Fatalf("state = %v, ref = %q, coreFlatpaks = %v; want unavailable, retry, answer kept",
 			w.preview.state, w.preview.ref, w.c.coreFlatpaks)
+	}
+}
+
+// A published set starts on, once per chosen image: rebuilding the form
+// or revisiting the page keeps the user's answer, and choosing another
+// image (or Start over) applies that image's default again.
+func TestCoreFlatpaksDefaultOnPerImage(t *testing.T) {
+	var inspected int
+	w := previewWizard(&inspected)
+
+	w.setEntry(CatalogEntry{Name: "snow", Ref: snowRef})
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if !w.c.coreFlatpaks {
+		t.Fatal("published set: toggle initially off, want on")
+	}
+
+	w.c.coreFlatpaks = false // the user declines
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if w.c.coreFlatpaks {
+		t.Fatal("revisiting the same image overrode the user's No")
+	}
+
+	w.setEntry(CatalogEntry{Name: "sundog", Ref: sundogRef})
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if !w.c.coreFlatpaks {
+		t.Fatal("a newly chosen image with a set: toggle off, want on")
+	}
+
+	w.c = wizardChoices{entry: CatalogEntry{Name: "snow", Ref: snowRef}} // Start over
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if !w.c.coreFlatpaks {
+		t.Fatal("after Start over: toggle off, want on")
+	}
+}
+
+// When the first visit cannot read the label and a later visit can, the
+// toggle keeps its initial Yes rather than resetting or flipping off.
+func TestCoreFlatpaksRetrySameImageKeepsDefault(t *testing.T) {
+	var inspected int
+	labels := map[string]string{} // Sundog's label unreadable at first
+	w := &wizard{opts: WizardOpts{Runner: previewRunner(labels, &inspected)}}
+	w.setEntry(CatalogEntry{Name: "sundog", Ref: sundogRef})
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if w.preview.state != corePreviewUnavailable || !w.c.coreFlatpaks {
+		t.Fatalf("first visit: state = %v, coreFlatpaks = %v, want unavailable and on",
+			w.preview.state, w.c.coreFlatpaks)
+	}
+
+	labels[sundogRef] = previewLabels[sundogRef] // the registry recovers
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if w.preview.state != corePreviewAvailable || !w.c.coreFlatpaks {
+		t.Fatalf("retry: state = %v, coreFlatpaks = %v, want available and on",
+			w.preview.state, w.c.coreFlatpaks)
 	}
 }
 

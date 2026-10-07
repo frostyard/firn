@@ -79,6 +79,10 @@ func (w *wizard) setEntry(entry CatalogEntry) {
 	if entry.Name != w.c.entry.Name || entry.Family != w.c.entry.Family {
 		w.c.userInitialized = false
 	}
+	// The core preview is keyed on the ref, so its toggle default is too.
+	if entry.Ref != w.c.entry.Ref {
+		w.c.coreFlatpaksInitialized = false
+	}
 	w.c.entry = entry
 }
 
@@ -464,7 +468,16 @@ func (w *wizard) userForm() *huh.Form {
 // An image with no set, or a malformed one, gets an explanation instead of
 // the toggle, and the toggle's value is cleared so the recipe never asks
 // for a set the wizard did not offer.
+//
+// An offered toggle starts on (ADR-0019), including when the label could
+// not be read: preflight reads it again and fails before any disk write if
+// it still cannot. That initial selection applies once per chosen image
+// (see setEntry), so a rebuilt form or a return visit keeps the user's answer.
 func (w *wizard) flatpaksForm() *huh.Form {
+	if !w.c.coreFlatpaksInitialized {
+		w.c.coreFlatpaksInitialized = true
+		w.c.coreFlatpaks = true // the hidden-toggle cases below clear it
+	}
 	var core huh.Field
 	switch w.preview.state {
 	case corePreviewNone:
@@ -480,10 +493,10 @@ func (w *wizard) flatpaksForm() *huh.Form {
 	case corePreviewAvailable:
 		core = huh.NewConfirm().
 			Title("Install this image's core app set?").
-			Description("Initially No. This image publishes these Flatpak apps:\n" + wrapNames(w.preview.apps, 64)).
+			Description("Initially Yes. This image publishes these Flatpak apps:\n" + wrapNames(w.preview.apps, 64)).
 			Value(&w.c.coreFlatpaks)
 	default:
-		desc := "Initially No. This image's list could not be read now; it is read\nagain at install time."
+		desc := "Initially Yes. This image's list could not be read now; if you keep\nYes, it is read again at install time."
 		if w.preview.detail != "" {
 			desc += "\n(" + w.preview.detail + ")"
 		}
