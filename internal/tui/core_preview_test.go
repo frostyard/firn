@@ -181,7 +181,8 @@ func TestFlatpaksFormWithoutCoreSetCompletes(t *testing.T) {
 }
 
 // An inspection that succeeds without readable metadata is unknown, not
-// "no core set": the toggle stays and the next visit retries.
+// "no core set": the toggle stays, initially off, and the next visit
+// retries without overriding the user's answer.
 func TestCorePreviewUnreadableInspectionKeepsToggle(t *testing.T) {
 	r := runner.NewFake(
 		func(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -194,12 +195,53 @@ func TestCorePreviewUnreadableInspectionKeepsToggle(t *testing.T) {
 	)
 	w := &wizard{opts: WizardOpts{Runner: r}}
 	w.c.entry = CatalogEntry{Name: "snow", Ref: snowRef}
-	w.c.coreFlatpaks = true
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if w.c.coreFlatpaks {
+		t.Fatal("unreadable label: toggle initially on, want off")
+	}
+	w.c.coreFlatpaks = true // the user opts in anyway
 	mustRefresh(t, w)
 	w.flatpaksForm()
 	if w.preview.state != corePreviewUnavailable || w.preview.ref != "" || !w.c.coreFlatpaks {
 		t.Fatalf("state = %v, ref = %q, coreFlatpaks = %v; want unavailable, retry, answer kept",
 			w.preview.state, w.preview.ref, w.c.coreFlatpaks)
+	}
+}
+
+// A published set starts on, once per chosen image: rebuilding the form
+// or revisiting the page keeps the user's answer, and choosing another
+// image (or Start over) applies that image's default again.
+func TestCoreFlatpaksDefaultOnPerImage(t *testing.T) {
+	var inspected int
+	w := previewWizard(&inspected)
+
+	w.c.entry = CatalogEntry{Name: "snow", Ref: snowRef}
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if !w.c.coreFlatpaks {
+		t.Fatal("published set: toggle initially off, want on")
+	}
+
+	w.c.coreFlatpaks = false // the user declines
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if w.c.coreFlatpaks {
+		t.Fatal("revisiting the same image overrode the user's No")
+	}
+
+	w.c.entry = CatalogEntry{Name: "sundog", Ref: sundogRef}
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if !w.c.coreFlatpaks {
+		t.Fatal("a newly chosen image with a set: toggle off, want on")
+	}
+
+	w.c = wizardChoices{entry: CatalogEntry{Name: "snow", Ref: snowRef}} // Start over
+	mustRefresh(t, w)
+	w.flatpaksForm()
+	if !w.c.coreFlatpaks {
+		t.Fatal("after Start over: toggle off, want on")
 	}
 }
 

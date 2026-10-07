@@ -69,10 +69,11 @@ The flatpaks page inspects the chosen image's
 [core Flatpaks label](../specs/core-flatpaks-label.md) when it opens, behind a
 progress spinner with a 30-second timeout, using preflight's local-first selection without signature
 verification, and again whenever the chosen image changes. It lists a
-published set's app names beside the toggle; explains instead of offering
+published set's app names beside the toggle, initially on for each newly
+chosen image; explains instead of offering
 the toggle when the image publishes no set or a malformed one (and clears any
-earlier answer); and keeps the toggle with an "available at install time"
-note when inspection fails. The preview never enters the recipe: preflight
+earlier answer); and keeps the toggle, initially off, with an "available at
+install time" note when inspection fails. The preview never enters the recipe: preflight
 reads the label again at install.
 
 Each interactive run owns a randomly named 0700 directory below `/run/firn`.

@@ -160,7 +160,10 @@ type wizardChoices struct {
 	userSSHKey      string
 
 	coreFlatpaks bool
-	flatpaksRaw  string
+	// coreFlatpaksRef is the image ref coreFlatpaks was last set for; a
+	// different chosen image resets the toggle to that image's default.
+	coreFlatpaksRef string
+	flatpaksRaw     string
 }
 
 // run drives the page flow: welcome, then a collection pass (image, advanced

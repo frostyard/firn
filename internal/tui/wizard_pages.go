@@ -464,7 +464,16 @@ func (w *wizard) userForm() *huh.Form {
 // An image with no set, or a malformed one, gets an explanation instead of
 // the toggle, and the toggle's value is cleared so the recipe never asks
 // for a set the wizard did not offer.
+//
+// The toggle starts on for a set the preview read, and off when the label
+// could not be read: preflight fails with core_flatpaks_label_unreadable
+// if it still cannot read it. That initial selection applies once per
+// chosen image, so a rebuilt form or a return visit keeps the user's answer.
 func (w *wizard) flatpaksForm() *huh.Form {
+	if ref := w.c.entry.Ref; w.c.coreFlatpaksRef != ref {
+		w.c.coreFlatpaksRef = ref
+		w.c.coreFlatpaks = w.preview.state == corePreviewAvailable
+	}
 	var core huh.Field
 	switch w.preview.state {
 	case corePreviewNone:
@@ -480,7 +489,7 @@ func (w *wizard) flatpaksForm() *huh.Form {
 	case corePreviewAvailable:
 		core = huh.NewConfirm().
 			Title("Install this image's core app set?").
-			Description("Initially No. This image publishes these Flatpak apps:\n" + wrapNames(w.preview.apps, 64)).
+			Description("Initially Yes. This image publishes these Flatpak apps:\n" + wrapNames(w.preview.apps, 64)).
 			Value(&w.c.coreFlatpaks)
 	default:
 		desc := "Initially No. This image's list could not be read now; it is read\nagain at install time."
