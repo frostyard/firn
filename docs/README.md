@@ -32,6 +32,7 @@ Docs are split by the question they answer:
 - [0017 — Publish Debian packages through frostyard/apt-publisher](adr/0017-publish-debian-packages-through-apt-publisher.md)
 - [0018 — Read each image's core flatpak set from an OCI label](adr/0018-image-published-core-flatpaks-label.md)
 - [0019 — Start the wizard's core-flatpaks toggle on](adr/0019-wizard-offers-core-flatpaks-by-default.md)
+- [0020 — Pin the preflight-selected digest for unsigned registry installs (Proposed)](adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)
 
 ### Design
 
