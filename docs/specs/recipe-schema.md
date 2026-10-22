@@ -25,9 +25,9 @@ Top level:
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `family` | string | yes | MUST be `"bootc"`. Never inferred. |
-| `ref` | string | yes | OCI image reference. |
+| `ref` | string | yes | OCI image reference. For a registry reference, Firn installs the immutable `sha256` digest that `preflight-image` selected, so the tag cannot move between preflight and the pull (a source that reports no valid digest keeps the tag); day-two updates follow `target_ref`, or `ref` when `target_ref` is empty ([ADR-0020](../adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)). |
 | `target_ref` | string | no | Post-install upgrade ref; defaults to `ref`. |
-| `cosign_pub_key` | string (path) | no | Enables independent cosign verification of a registry `ref`. Before any destructive step, Firn selects the source it would install (preferring a valid embedded containers-storage image), resolves it to an immutable `sha256` digest, runs `cosign verify --key` against that digest, and installs that same digest. Verification failure emits `image_verification_failed`; when the registry itself cannot be reached it emits `registry_unreachable` (or `network_unreachable` with no network configured) instead, see the [progress protocol](progress-protocol.md#stable-codes). |
+| `cosign_pub_key` | string (path) | no | Enables independent cosign verification of a registry `ref`. Before any destructive step, Firn selects the source it would install (preferring a valid embedded containers-storage image), resolves it to an immutable `sha256` digest, runs `cosign verify --key` against that digest, and installs that same digest. Verification failure emits `image_verification_failed`; when the registry itself cannot be reached it emits `registry_unreachable` (or `network_unreachable` with no network configured) instead, see the [progress protocol](progress-protocol.md#stable-codes). Without this field a registry `ref` is still installed at the digest preflight selected, but that digest is not verified ([ADR-0020](../adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)). |
 
 ### `[target]`
 

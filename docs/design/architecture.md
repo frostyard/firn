@@ -143,7 +143,11 @@ assembly or disk writes.
 For bootc recipes that set `image.cosign_pub_key`, preflight selects the
 same embedded-or-remote source the install will consume, resolves it to an
 immutable digest, verifies that digest with cosign, and carries the pinned
-reference into both native-bootc and podman installation paths.
+reference into both native-bootc and podman installation paths. A bootc
+recipe without that field pins the same way but without verification: a
+registry reference installs the digest preflight selected, and a source that
+reports no valid digest keeps the tag
+([ADR-0020](../adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)).
 When the image cannot be resolved (or, for a signed recipe, its signature cannot
 be verified) with a failure whose text positively shows connectivity (DNS, dial,
 timeout), preflight probes the registry with an HTTPS request to its `/v2/`
@@ -219,8 +223,11 @@ comes from the selected image's `org.frostyard.core-flatpaks` label
 [spec](../specs/core-flatpaks-label.md)). `preflight-image` reads it from
 the same inspection that selects the source, before any disk write: a
 malformed label fails the install there, and an image with no set is
-reported as `no_core_set`. The flatpak step installs the recipe's explicit
-apps, then the core set, each once. Firn no longer reads first-setup's
+reported as `no_core_set`. An unsigned registry recipe installs the digest
+that inspection selected, so the label describes the deployed image
+([ADR-0020](../adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)).
+The flatpak step installs the recipe's explicit apps, then the core set,
+each once. Firn no longer reads first-setup's
 `core.json` or the ISO's `/usr/share/firn/core-flatpaks.json`.
 
 ### Trust
@@ -233,7 +240,12 @@ built-in TUI bootc catalog supplies the installer medium's
 `/usr/lib/snosi/cosign.pub`; override catalogs may supply their own key path.
 Headless recipes that omit the field rely on the host container policy and
 cached-image provenance; Firn does not claim independent cosign verification
-for that case.
+for that case. Such a recipe is still installed at the digest preflight
+selected, so the install is reproducible, not verified: the pinned digest
+proves what was deployed, never who built it
+([ADR-0020](../adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)).
+A source that reports no valid digest keeps the tag, and that residual
+tag-movement race stays.
 
 ### Progress and frontends
 

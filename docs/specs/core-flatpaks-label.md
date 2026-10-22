@@ -48,8 +48,11 @@ publishes no label key.
 2. Firn reads the label in `preflight-image`, before any disk write, from
    the image that step selects: the local containers-storage copy when it is
    selected, otherwise the registry image. For a signed recipe that is the
-   cosign-verified digest firn deploys. For an unsigned recipe bootc resolves
-   the tag again when it pulls, so a tag that moves during the install can
+   cosign-verified digest firn deploys. For an unsigned recipe firn installs
+   the digest it selected, so the label describes the deployed image
+   ([ADR-0020](../adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)).
+   A source that reports no valid digest keeps the tag, and bootc resolves
+   that tag again when it pulls: a tag that moves during the install can then
    deploy a newer build than the label described
    ([firn#109](https://github.com/frostyard/firn/issues/109)).
 3. With `core_flatpaks = true`:

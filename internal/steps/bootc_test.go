@@ -407,3 +407,81 @@ func dryRunFake(t *testing.T) *runner.Runner {
 		func(name string) (string, error) { return "/usr/bin/" + name, nil },
 	)
 }
+
+// An unsigned registry recipe installs the digest preflight selected
+// (ADR-0020): env.BootcSourceRef carries it, one info event names it, no
+// cosign runs, and --target-imgref keeps the recipe tag for day-two updates.
+func TestUnsignedRegistryInstallPinsPreflightDigest(t *testing.T) {
+	const lsblkJSON = `{"blockdevices": [
+	  {"path": "/dev/vda", "type": "disk", "size": 64000000000, "fstype": null, "label": null, "mountpoints": [null]}]}`
+	var commands []string
+	fake := runner.NewFake(
+		func(_ context.Context, name string, args ...string) ([]byte, error) {
+			commands = append(commands, strings.Join(append([]string{name}, args...), " "))
+			switch name {
+			case "skopeo":
+				if strings.HasPrefix(args[1], "docker://") {
+					return []byte(`{"Digest":"` + verifiedBootcDigest + `","Labels":{"containers.bootc":"1"}}`), nil
+				}
+				return nil, errors.New("not cached")
+			case "lsblk":
+				return []byte(lsblkJSON), nil
+			case "findmnt":
+				return []byte("overlay\n"), nil
+			}
+			return []byte(""), nil
+		},
+		func(name string) (string, error) {
+			if name == "bootc" {
+				return "", errors.New("not on PATH") // force the podman path
+			}
+			return "/usr/bin/" + name, nil
+		},
+	)
+	l := load(t, strings.Replace(bootcBase, "%s", "none", 1))
+	var events []progress.Event
+	env := &pipeline.Env{
+		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
+		TargetDir:  filepath.Join(t.TempDir(), "target"),
+		ScratchDir: filepath.Join(t.TempDir(), "scratch"),
+		Emitter: progress.EmitterFunc(func(e progress.Event) error {
+			events = append(events, e)
+			return nil
+		}),
+	}
+	// Dry run executes the preflight steps only.
+	if err := Assemble(l).Run(context.Background(), env, true); err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+	pinned := "ghcr.io/frostyard/snow@" + verifiedBootcDigest
+	if env.BootcSourceRef != pinned {
+		t.Fatalf("BootcSourceRef = %q, want the pinned digest %q", env.BootcSourceRef, pinned)
+	}
+	wantInfo := "bootc image pinned to " + pinned + " (unsigned; not verified)"
+	var sawInfo bool
+	for _, e := range events {
+		if info, ok := e.(progress.Info); ok && info.Message == wantInfo {
+			sawInfo = true
+		}
+	}
+	if !sawInfo {
+		t.Fatalf("events %v missing the pinned-digest info %q", events, wantInfo)
+	}
+	for _, command := range commands {
+		if strings.HasPrefix(command, "cosign ") {
+			t.Fatalf("cosign ran for an unsigned recipe: %s", command)
+		}
+	}
+
+	// The install gets the digest as its source and the recipe tag for day-two.
+	if err := runBootcInstall(context.Background(), env); err != nil {
+		t.Fatalf("bootc install: %v", err)
+	}
+	joined := strings.Join(commands, "\n")
+	if !strings.Contains(joined, "ghcr.io/frostyard/snow@"+verifiedBootcDigest) {
+		t.Errorf("bootc install did not receive the pinned digest:\n%s", joined)
+	}
+	if !strings.Contains(joined, "--target-imgref ghcr.io/frostyard/snow:latest") {
+		t.Errorf("bootc install lost the day-two tag:\n%s", joined)
+	}
+}
