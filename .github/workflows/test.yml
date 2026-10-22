@@ -87,14 +87,18 @@ jobs:
         # Codecov's measurement scope (codecov.yml does not ignore cmd/).
         run: go test -v ./internal/... ./cmd/... -coverprofile=coverage.out -covermode=atomic
 
+      # The coverage upload is a required signal, not a courtesy: codecov.yml
+      # gates pull requests on project and patch statuses that only exist once
+      # this profile arrives. A suppressed upload failure would leave this job
+      # green with no coverage statuses to report, so the action fails the job
+      # (fail_ci_if_error) and the step carries no continue-on-error.
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           use_oidc: true
           files: ./coverage.out
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           verbose: true
-        continue-on-error: true
 
   e2e-harness-syntax:
     name: E2E Harness Syntax
