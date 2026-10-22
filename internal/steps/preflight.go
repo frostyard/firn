@@ -81,6 +81,12 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 					if err := env.Emit(progress.Info{Message: "bootc image signature verified at immutable digest"}); err != nil {
 						return err
 					}
+				} else if source.Pinned {
+					// ADR-0020: the install matches what preflight inspected, but
+					// no signature backs it.
+					if err := env.Emit(progress.Info{Message: fmt.Sprintf("bootc image pinned to %s (unsigned; not verified)", source.Ref)}); err != nil {
+						return err
+					}
 				}
 				if env.Recipe.System.CoreFlatpaks {
 					return readCoreFlatpaks(env, source)

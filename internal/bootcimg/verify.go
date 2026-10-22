@@ -45,6 +45,10 @@ type Source struct {
 	// the selected image. When false the labels are unknown, not absent:
 	// a signed digest can verify while its registry inspection failed.
 	Inspected bool
+	// Pinned reports that Ref is a digest Firn selected (or that the recipe
+	// supplied), not the tag bootc would resolve again. An unsigned pinned
+	// digest is reproducible, not verified (firn ADR-0020).
+	Pinned bool
 }
 
 // CheckAndPinImage checks that image is reachable or cached. When keyPath is
@@ -57,6 +61,8 @@ type Source struct {
 // runner error). When probe is non-nil, a failure that looks like a transport
 // failure is checked against the registry and may be returned as a
 // *RegistryUnreachableError wrapping the original (see diagnoseTransport).
+// An unsigned recipe whose image is a registry reference installs the digest
+// preflight selected, without cosign verification (firn ADR-0020).
 func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath string, warn func(string), probe Prober) (Source, error) {
 	if keyPath != "" && !IsRegistryRef(image) {
 		return Source{}, fmt.Errorf("bootcimg: cosign verification requires a registry image reference, got %q", image)
@@ -72,17 +78,53 @@ func CheckAndPinImage(ctx context.Context, r *runner.Runner, image, keyPath stri
 	remoteOK := remoteErr == nil && json.Unmarshal(remoteOut, &remote) == nil
 
 	if keyPath == "" {
-		// Unsigned sources keep the tag, so bootc resolves it again when it
-		// pulls; a tag that moves meanwhile can deploy a newer build than
-		// these labels describe (ADR-0018, firn#109).
-		if localOK {
-			return Source{Ref: image, Labels: local.Labels, Inspected: true}, nil
+		if !IsRegistryRef(image) {
+			// A local transport cannot be resolved independently, so its
+			// reference is unchanged: reachable-or-cached is the whole check.
+			if localOK {
+				return Source{Ref: image, Labels: local.Labels, Inspected: true}, nil
+			}
+			if remoteErr == nil {
+				return Source{Ref: image, Labels: remote.Labels, Inspected: remoteOK}, nil
+			}
+			return Source{}, diagnoseTransport(ctx, probe, image, remoteErr,
+				fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr))
 		}
-		if remoteErr == nil {
-			return Source{Ref: image, Labels: remote.Labels, Inspected: remoteOK}, nil
+		// An unsigned registry recipe installs the digest selected here, as the
+		// signed path does but without cosign: bootc cannot resolve the tag
+		// again, so it cannot deploy a build newer than these labels describe
+		// (ADR-0018, firn#109, ADR-0020). A source that reports no valid digest
+		// keeps the tag, as before; that residual race stays.
+		digest, pinned := digestReference(bare)
+		var labels map[string]string
+		var inspected bool
+		switch {
+		case pinned:
+			// Reachable-or-cached still holds for a recipe-supplied digest.
+			if !localOK && remoteErr != nil {
+				return Source{}, diagnoseTransport(ctx, probe, image, remoteErr,
+					fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr))
+			}
+			if localOK && local.Digest == digest {
+				labels, inspected = local.Labels, true
+			} else if remoteOK {
+				labels, inspected = remote.Labels, true
+			}
+			return Source{Ref: image, Labels: labels, Inspected: inspected, Pinned: true}, nil
+		case localOK:
+			labels, inspected = local.Labels, true
+			digest = local.Digest
+		case remoteErr != nil:
+			return Source{}, diagnoseTransport(ctx, probe, image, remoteErr,
+				fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr))
+		default:
+			labels, inspected = remote.Labels, remoteOK
+			digest = manifestDigest(remoteOut, remoteErr)
 		}
-		return Source{}, diagnoseTransport(ctx, probe, image, remoteErr,
-			fmt.Errorf("bootcimg: image %q is not reachable in its registry and not present in local containers-storage: %w", image, remoteErr))
+		if !sha256DigestRE.MatchString(digest) {
+			return Source{Ref: image, Labels: labels, Inspected: inspected}, nil
+		}
+		return Source{Ref: repositoryName(bare) + "@" + digest, Labels: labels, Inspected: inspected, Pinned: true}, nil
 	}
 
 	var labels map[string]string
