@@ -254,7 +254,7 @@ The implementation ports fisherman's `internal/secure` behavior into
 <a id="phase-9-bootc-only-transition-bounded-cross-repo-implementation-in-progress"></a>
 ## Phase 9 — bootc-only transition (bounded, cross-repo) — ⏳ implementation in progress
 
-**Implementation in progress.** [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md)
+**Implementation in progress.** [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md)
 describes scope; [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md)
 sets the implemented version-2 contract and bootc-v1 migration window. The
 [architecture](../design/architecture.md#current-bootc-only-recipe-boundary),
