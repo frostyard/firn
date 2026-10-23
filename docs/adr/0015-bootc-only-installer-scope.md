@@ -1,7 +1,7 @@
 # 0015 — Propose a post-cutoff bootc-only installer scope
 
-- **Status:** Proposed
-- **Date:** 2026-09-24
+- **Status:** Accepted
+- **Date:** 2026-10-23
 
 ## Context
 

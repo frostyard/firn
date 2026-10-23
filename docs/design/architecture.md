@@ -6,7 +6,7 @@ Living document. Rationale:
 [ADR-0005](../adr/0005-toml-recipe-model.md),
 [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
 [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
-[ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
+[ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
 [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
 [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) (media
 boundary: firn ships binary + kiosk unit + contracts; snosi ships the
@@ -303,7 +303,7 @@ uses the same engine preflight as headless installation.
   [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
   [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
   [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)
-- Scope and contract: [ADR-0015 (Proposed)](../adr/0015-bootc-only-installer-scope.md),
+- Scope and contract: [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
   [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
   [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md),
   [roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
