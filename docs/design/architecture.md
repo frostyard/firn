@@ -28,9 +28,10 @@ authorization.
 ## Overview
 
 Firn is a single Go binary that installs bootc OCI images from a version-2
-TOML recipe (temporarily accepting bootc-v1 with a warning), either
-headless (`firn install recipe.toml`) or through a built-in TUI wizard
-that generates the same recipe and runs the same pipeline in-process.
+TOML recipe (accepting bootc-v1 with a warning until 2026-12-30, then
+rejecting it), either headless (`firn install recipe.toml`) or through a
+built-in TUI wizard that generates the same recipe and runs the same
+pipeline in-process.
 
 ```
  interactive ──► TUI wizard (bubbletea/huh)

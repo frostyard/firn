@@ -7,9 +7,21 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/frostyard/firn/internal/bootcimg"
 )
+
+// BootcV1EndDate is the day bootc recipe version 1 stops being accepted:
+// from 2026-12-30T00:00:00Z the validator rejects it.
+const BootcV1EndDate = "2026-12-30"
+
+// bootcV1End is the UTC instant BootcV1EndDate names.
+var bootcV1End = time.Date(2026, 12, 30, 0, 0, 0, 0, time.UTC)
+
+// BootcV1Expired reports whether now is on or after BootcV1EndDate. The
+// comparison is in UTC, so the local zone of now does not matter.
+func BootcV1Expired(now time.Time) bool { return !now.UTC().Before(bootcV1End) }
 
 // Env carries the install-machine facts validation depends on (spec
 // rule 3). Callers probe or override these; validation never probes.
@@ -19,6 +31,17 @@ type Env struct {
 	// ZoneinfoDir is consulted for timezone existence when non-empty
 	// and present; "" skips the existence check (format still applies).
 	ZoneinfoDir string
+	// Now reports the current time for the bootc-v1 end-date check. Nil
+	// means time.Now; tests inject a fixed clock.
+	Now func() time.Time
+}
+
+// now applies the injected clock, defaulting to time.Now.
+func (e Env) now() time.Time {
+	if e.Now == nil {
+		return time.Now()
+	}
+	return e.Now()
 }
 
 // Issue is one validation failure. Code is a stable identifier (one
@@ -36,6 +59,7 @@ func (i Issue) Error() string { return fmt.Sprintf("%s: %s (%s)", i.Field, i.Mes
 const (
 	CodeVersion           = "bad-version"
 	CodeDeprecatedVersion = "deprecated-version"
+	CodeExpiredVersion    = "expired-version"
 	CodeRequired          = "required"
 	CodeEnum              = "enum"
 	CodeFamilyScope       = "family-scope"
@@ -68,11 +92,16 @@ var (
 )
 
 // Deprecations reports migration guidance separately from validation errors.
-func Deprecations(l *Loaded) []Issue {
-	if l.Recipe.Version == SchemaVersionV1Bootc && l.Recipe.Image.Family == FamilyBootc {
-		return []Issue{{Code: CodeDeprecatedVersion, Field: "version", Message: "bootc recipe version 1 is deprecated; change version to 2 after validating the bootc fields before the published compatibility end date"}}
+// Bootc version 1 gets the deprecation warning only before its end date; on
+// and after that date validation rejects it instead.
+func Deprecations(l *Loaded, env Env) []Issue {
+	if l.Recipe.Version != SchemaVersionV1Bootc || l.Recipe.Image.Family != FamilyBootc {
+		return nil
 	}
-	return nil
+	if BootcV1Expired(env.now()) {
+		return nil
+	}
+	return []Issue{{Code: CodeDeprecatedVersion, Field: "version", Message: fmt.Sprintf("bootc recipe version 1 is deprecated and is rejected on and after %s; validate the bootc fields, then change only version to 2", BootcV1EndDate)}}
 }
 
 // Validate checks a loaded recipe against the schema spec and the
@@ -86,6 +115,9 @@ func Validate(l *Loaded, env Env) []Issue {
 	r := &l.Recipe
 	if l.legacyAB {
 		return []Issue{{Code: CodeFamilyScope, Field: "image.family", Message: "A/B version 1 is unsupported by this bootc-only Firn; no conversion was performed; use a pre-transition installer only where separately authorized"}}
+	}
+	if r.Version == SchemaVersionV1Bootc && BootcV1Expired(env.now()) {
+		return []Issue{{Code: CodeExpiredVersion, Field: "version", Message: fmt.Sprintf("bootc recipe version 1 is no longer accepted on and after %s; validate the bootc fields, then change only version to 2; no conversion was performed", BootcV1EndDate)}}
 	}
 
 	if r.Version != SchemaVersion && r.Version != SchemaVersionV1Bootc {

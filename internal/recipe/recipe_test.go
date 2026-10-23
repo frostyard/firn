@@ -26,7 +26,7 @@ func swapLine(base, prefix, replacement string) string {
 
 func validBootc() string {
 	return `
-version = 1
+version = 2
 
 [image]
 family = "bootc"
@@ -50,7 +50,7 @@ func validBootcWithUser(t *testing.T) string {
 	mok := writeSecret(t, "mok-pw", "hunter2")
 	pw := writeSecret(t, "user-pw", "hunter2")
 	return `
-version = 1
+version = 2
 
 [image]
 family = "bootc"
@@ -123,7 +123,7 @@ func TestValidateRejections(t *testing.T) {
 		env  Env
 		code string
 	}{
-		{"unsupported version", replace(validBootc(), "version = 1", "version = 3"), fullEnv, CodeVersion},
+		{"unsupported version", replace(validBootc(), "version = 2", "version = 3"), fullEnv, CodeVersion},
 		{"missing family", replace(validBootc(), `family = "bootc"`, ""), fullEnv, CodeRequired},
 		{"bad family", replace(validBootc(), `family = "bootc"`, `family = "ostree"`), fullEnv, CodeEnum},
 		{"missing ref", replace(validBootc(), `ref = "ghcr.io/frostyard/snow:latest"`, ""), fullEnv, CodeRequired},

@@ -107,7 +107,7 @@ func TestBootcPipelineEndToEnd(t *testing.T) {
 	)
 
 	src := fmt.Sprintf(`
-version = 1
+version = 2
 [image]
 family = "bootc"
 ref = "ghcr.io/frostyard/snow:latest"
@@ -230,7 +230,7 @@ func TestBootcVerificationFailureLeavesTargetUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := fmt.Sprintf(`
-version = 1
+version = 2
 [image]
 family = "bootc"
 ref = "ghcr.io/frostyard/snow:latest"
@@ -326,7 +326,7 @@ func TestBootcUnreachableRegistryStopsPreflight(t *testing.T) {
 				keyLine = fmt.Sprintf("cosign_pub_key = %q\n", tc.cosign)
 			}
 			l := load(t, fmt.Sprintf(`
-version = 1
+version = 2
 [image]
 family = "bootc"
 ref = "ghcr.io/frostyard/snow:latest"
