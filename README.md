@@ -19,7 +19,8 @@ forking is [ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md).
   image, security options, and system configuration. Validation is
   fail-closed: unknown fields, unknown enum values, and wrong-family fields are
   errors, never warnings. New recipes use version 2; bootc version 1 is
-  temporarily accepted with a deprecation warning; A/B version 1 is rejected.
+  accepted with a deprecation warning until 2026-12-30 and is rejected from
+  that date; A/B version 1 is rejected.
 - **Security options.** LUKS root with passphrase or TPM2 auto-unlock;
   UEFI Secure Boot with MOK enrollment via secure-install schema-1
   ([ADR-0014](docs/adr/0014-port-secure-install-schema-1-for-bootc.md)).

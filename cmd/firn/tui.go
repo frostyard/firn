@@ -93,7 +93,7 @@ func runTUIWithRuntime(parent context.Context, o tuiOptions, rt tuiRuntime) (ret
 	defer stop()
 
 	env := &pipeline.Env{
-		Machine:       recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
+		Machine:       recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo", Now: clock},
 		Runner:        runner.New(),
 		Version:       Version,
 		RegistryProbe: bootcimg.HTTPRegistryProbe,
@@ -183,7 +183,7 @@ func runTUIInstall(ctx context.Context, env *pipeline.Env, l *recipe.Loaded) (tu
 	// The in-process channel is the interactive flow's only progress consumer
 	// (ADR-0007). NDJSON is headless-only because the TUI owns stdout.
 	ch := progress.NewChannel(64)
-	env.Emitter = deprecationEmitter{Emitter: ch, issues: recipe.Deprecations(l)}
+	env.Emitter = deprecationEmitter{Emitter: ch, issues: recipe.Deprecations(l, env.Machine)}
 
 	ictx, cancel := context.WithCancel(ctx)
 	defer cancel()

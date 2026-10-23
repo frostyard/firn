@@ -32,7 +32,7 @@ func names(p *pipeline.Pipeline) []string {
 }
 
 const bootcBase = `
-version = 1
+version = 2
 [image]
 family = "bootc"
 ref = "ghcr.io/frostyard/snow:latest"

@@ -43,6 +43,7 @@ hostname = "frost01"
 }
 
 func TestTUIDeprecationEventsFollowStartBeforeStep(t *testing.T) {
+	beforeV1End(t)
 	loaded, err := recipe.Parse([]byte(`version = 1
 [image]
 family = "bootc"
@@ -55,7 +56,7 @@ ref = "ghcr.io/frostyard/floe:latest"
 	e := deprecationEmitter{Emitter: progress.EmitterFunc(func(event progress.Event) error {
 		events = append(events, event)
 		return nil
-	}), issues: recipe.Deprecations(loaded)}
+	}), issues: recipe.Deprecations(loaded, recipe.Env{Now: clock})}
 	for _, event := range []progress.Event{progress.Start{}, progress.StepStart{}} {
 		if err := e.Emit(event); err != nil {
 			t.Fatal(err)
@@ -65,7 +66,7 @@ ref = "ghcr.io/frostyard/floe:latest"
 		t.Fatalf("TUI event order: %+v", events)
 	}
 	w, ok := events[1].(progress.Warning)
-	if !ok || w.Code != progress.CodeRecipeV1Deprecated || w.Message != recipe.Deprecations(loaded)[0].Message {
+	if !ok || w.Code != progress.CodeRecipeV1Deprecated || w.Message != recipe.Deprecations(loaded, recipe.Env{Now: clock})[0].Message {
 		t.Fatalf("TUI deprecation event: %+v", events[1])
 	}
 }

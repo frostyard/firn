@@ -3,11 +3,16 @@ package firn
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/frostyard/firn/internal/recipe"
 )
+
+// clock reports the current time for the bootc-v1 end-date check. Tests
+// override it to pin both sides of the date.
+var clock = time.Now
 
 func newValidateCmd() *cobra.Command {
 	var probes probeFlags
@@ -16,7 +21,7 @@ func newValidateCmd() *cobra.Command {
 		Short: "Validate a recipe against this machine",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			env := recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"}
+			env := recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo", Now: clock}
 			var err error
 			if env.SecureBoot, env.TPM, _, err = probes.resolve(); err != nil {
 				return err
@@ -31,7 +36,7 @@ func newValidateCmd() *cobra.Command {
 				}
 				return fmt.Errorf("recipe is invalid (%d issue(s))", len(issues))
 			}
-			for _, issue := range recipe.Deprecations(l) {
+			for _, issue := range recipe.Deprecations(l, env) {
 				fmt.Fprintln(os.Stderr, issue)
 			}
 			fmt.Printf("firn: recipe is valid (family %s)\n", l.Recipe.Image.Family)

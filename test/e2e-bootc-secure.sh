@@ -103,9 +103,10 @@ qemu-img create -f qcow2 -F qcow2 -b "$cache/$base_img" "$work/installer.qcow2" 
 truncate -s 30G "$work/target.raw"
 ssh-keygen -t ed25519 -N "" -f "$work/id_e2e" -C firn-e2e >/dev/null
 
-# Deliberately exercises the deprecated v1 bootc compatibility path.
+# Uses a version-2 bootc recipe: v1 is deprecated, and rejected from
+# 2026-12-30, so the harness must not depend on the compatibility window.
 cat >"$work/recipe.toml" <<EOF
-version = 1
+version = 2
 
 [image]
 family = "bootc"

@@ -65,7 +65,7 @@ func newInstallCmd() *cobra.Command {
 			}
 
 			env := &pipeline.Env{
-				Machine:       recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo"},
+				Machine:       recipe.Env{ZoneinfoDir: "/usr/share/zoneinfo", Now: clock},
 				Runner:        runner.New(),
 				Version:       Version,
 				RegistryProbe: bootcimg.HTTPRegistryProbe,
@@ -104,7 +104,7 @@ func newInstallCmd() *cobra.Command {
 					return nil
 				})
 			}
-			env.Emitter = deprecationEmitter{Emitter: env.Emitter, issues: recipe.Deprecations(l)}
+			env.Emitter = deprecationEmitter{Emitter: env.Emitter, issues: recipe.Deprecations(l, env.Machine)}
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()

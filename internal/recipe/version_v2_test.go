@@ -3,6 +3,7 @@ package recipe
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 const bootcV2 = `version = 2
@@ -23,20 +24,90 @@ func TestV2BootcValid(t *testing.T) {
 	if got := Validate(l, Env{}); len(got) != 0 {
 		t.Fatalf("issues: %v", got)
 	}
-	if got := Deprecations(l); len(got) != 0 {
+	if got := Deprecations(l, Env{}); len(got) != 0 {
 		t.Fatalf("deprecations: %v", got)
 	}
 }
 
-func TestV1BootcDeprecatedButValid(t *testing.T) {
-	l := mustParse(t, strings.Replace(bootcV2, "version = 2", "version = 1", 1))
-	if got := Validate(l, Env{}); len(got) != 0 {
+// at returns a clock fixed at t.
+func at(t time.Time) func() time.Time { return func() time.Time { return t } }
+
+func TestV1BootcDeprecationWindow(t *testing.T) {
+	const (
+		warningMessage  = "bootc recipe version 1 is deprecated and is rejected on and after 2026-12-30; validate the bootc fields, then change only version to 2"
+		rejectedMessage = "bootc recipe version 1 is no longer accepted on and after 2026-12-30; validate the bootc fields, then change only version to 2; no conversion was performed"
+	)
+	cases := []struct {
+		name     string
+		now      time.Time
+		rejected bool
+	}{
+		{"release day", time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC), false},
+		{"decision day", time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC), false},
+		{"last second before end", time.Date(2026, 12, 29, 23, 59, 59, 0, time.UTC), false},
+		{"end boundary", time.Date(2026, 12, 30, 0, 0, 0, 0, time.UTC), true},
+		{"end day noon", time.Date(2026, 12, 30, 12, 0, 0, 0, time.UTC), true},
+		{"much later", time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC), true},
+		{"local time ahead of UTC", time.Date(2026, 12, 29, 20, 0, 0, 0, time.FixedZone("EST", -5*60*60)), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			l := mustParse(t, strings.Replace(bootcV2, "version = 2", "version = 1", 1))
+			env := Env{Now: at(tc.now)}
+			issues := Validate(l, env)
+			deps := Deprecations(l, env)
+			if l.Recipe.Version != SchemaVersionV1Bootc {
+				t.Fatalf("version was rewritten to %d; there is no auto-upgrade", l.Recipe.Version)
+			}
+			if tc.rejected {
+				if len(issues) != 1 || issues[0].Code != CodeExpiredVersion || issues[0].Field != "version" || issues[0].Message != rejectedMessage {
+					t.Fatalf("issues at %s: %v", tc.now, issues)
+				}
+				if deps != nil {
+					t.Fatalf("deprecations at %s: %v", tc.now, deps)
+				}
+				return
+			}
+			if len(issues) != 0 {
+				t.Fatalf("issues at %s: %v", tc.now, issues)
+			}
+			if len(deps) != 1 || deps[0].Field != "version" || deps[0].Code != CodeDeprecatedVersion || deps[0].Message != warningMessage || !strings.Contains(deps[0].Message, BootcV1EndDate) {
+				t.Fatalf("deprecations at %s: %v", tc.now, deps)
+			}
+		})
+	}
+}
+
+func TestV2BootcValidAfterEndDate(t *testing.T) {
+	env := Env{Now: at(time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC))}
+	l := mustParse(t, bootcV2)
+	if got := Validate(l, env); len(got) != 0 {
 		t.Fatalf("issues: %v", got)
 	}
-	got := Deprecations(l)
-	const message = "bootc recipe version 1 is deprecated; change version to 2 after validating the bootc fields before the published compatibility end date"
-	if len(got) != 1 || got[0].Field != "version" || got[0].Code != CodeDeprecatedVersion || got[0].Message != message {
+	if got := Deprecations(l, env); len(got) != 0 {
 		t.Fatalf("deprecations: %v", got)
+	}
+}
+
+func TestV1ABKeepsFamilyScopeAfterEndDate(t *testing.T) {
+	env := Env{Now: at(time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC))}
+	l, err := Parse([]byte("version = 1\n[image]\nfamily = \"ab\"\nproduct = \"floe-ab\"\n"))
+	if err != nil {
+		t.Fatalf("legacy A/B must parse to report targeted validation issue: %v", err)
+	}
+	got := Validate(l, env)
+	if len(got) != 1 || got[0].Code != CodeFamilyScope || got[0].Field != "image.family" {
+		t.Fatalf("issues: %v", got)
+	}
+}
+
+func TestBootcV1EndDateIsReleasePlusNinetyDays(t *testing.T) {
+	want := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, 90).Format("2006-01-02")
+	if BootcV1EndDate != want {
+		t.Fatalf("BootcV1EndDate = %q, want %q (v0.6.0 released 2026-10-01 plus 90 days)", BootcV1EndDate, want)
+	}
+	if got := bootcV1End.Format("2006-01-02"); got != BootcV1EndDate || bootcV1End.Location() != time.UTC || !bootcV1End.Equal(bootcV1End.Truncate(24*time.Hour)) {
+		t.Fatalf("bootcV1End = %s, want %s 00:00 UTC", bootcV1End, BootcV1EndDate)
 	}
 }
 
