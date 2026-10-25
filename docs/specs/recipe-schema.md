@@ -14,7 +14,7 @@ Top level:
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
-| `version` | integer | yes | `2` is the operative contract; bootc `1` is temporarily accepted with a deprecation warning (see compatibility below). All other versions are rejected. |
+| `version` | integer | yes | `2` is the operative contract; bootc `1` is accepted with a deprecation warning until 2026-12-30 and rejected on and after that date (see compatibility below). All other versions are rejected. |
 | `[image]` | table | yes | See below. |
 | `[target]` | table | yes | See below. |
 | `[security]` | table | yes | See below. |
@@ -136,23 +136,34 @@ hostname = "frost01"
 ### Bootc version-1 compatibility
 
 `version = 1` with `image.family = "bootc"` remains accepted under the
-existing bootc validation rules, without rewriting the recipe. The
-non-fatal `recipe.Deprecations` issue has field `version`, code
-`deprecated-version`, and message: `bootc recipe version 1 is deprecated;
-change version to 2 after validating the bootc fields before the published
-compatibility end date`. `firn validate` prints this warning to stderr and
-exits 0; `firn install` and the TUI emit the
+existing bootc validation rules, without rewriting the recipe, until the
+end date below. The non-fatal `recipe.Deprecations` issue has field
+`version`, code `deprecated-version`, and message: `bootc recipe version 1
+is deprecated and is rejected on and after 2026-12-30; validate the bootc
+fields, then change only version to 2`. `firn validate` prints this warning
+to stderr and exits 0; `firn install` and the TUI emit the
 [`recipe_v1_deprecated` warning](progress-protocol.md#stable-codes) before
 the first step event. Migrate only after confirming the family and checking
 all bootc fields and referenced files on the intended installer medium;
 change only `version = 1` to `version = 2`. Old Firn releases cannot consume
 v2 recipes. Never infer a family or convert an A/B recipe to bootc.
 
-The bootc-v1 compatibility window is **90 days from the release that ships
-v2**, not from a calendar cutoff. The actual release and exact end dates
-must be recorded at release; neither is set here. The validator has no
-automatic expiry: rejecting bootc-v1 after that window requires a later
-reviewed code and release change.
+The version-2 contract shipped in release **v0.6.0**, published
+**2026-10-01**. Its bootc-v1 compatibility window ends at
+**2026-12-30T00:00:00Z** (the release plus 90 days), decided by Brian on
+2026-10-23. Before that instant validation accepts bootc v1 with the
+warning above. On and after it, validation fails closed before assembly
+with exactly one issue: field `version`, code `expired-version`, message
+`bootc recipe version 1 is no longer accepted on and after 2026-12-30;
+validate the bootc fields, then change only version to 2; no conversion was
+performed`. The comparison is in UTC. `version = 1` with `family = "ab"`
+still returns only `family-scope`. The validator never changes the recipe's
+`version` or its bytes; there is no auto-upgrade.
+
+The end date is compiled into the validator
+([firn#116](https://github.com/frostyard/firn/issues/116)); no setting or
+environment variable moves it. It takes effect only in a Firn release that
+contains that change; older releases keep accepting bootc v1.
 
 `version = 1` with `image.family = "ab"` parses but fails validation before
 pipeline assembly or disk writes with one issue: field `image.family`, code

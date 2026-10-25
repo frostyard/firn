@@ -260,9 +260,12 @@ sets the implemented version-2 contract and bootc-v1 migration window. The
 [architecture](../design/architecture.md#current-bootc-only-recipe-boundary),
 [recipe schema v2](../specs/recipe-schema.md#bootc-version-1-compatibility) and
 [progress protocol](../specs/progress-protocol.md#stable-codes) reflect the
-bootc-only code. The 90-day v1 window begins with the v2 release; record
-release and exact expiry dates at release. Expiry needs a later reviewed
-validator change, not a time-triggered switch. Phase 7's
+bootc-only code. Release v0.6.0 shipped the v2 contract on 2026-10-01, and
+Brian set the bootc-v1 end date to 2026-12-30 (the release plus 90 days) on
+2026-10-23. Issue #116 compiles that expiry into the validator; it takes
+effect only in a release that contains it, so a Firn release before
+2026-12-30 must ship the expiry. Older releases keep accepting bootc v1.
+Phase 7's
 published-ISO, real-hardware **both-family** Done-when remains incomplete;
 this phase does not rewrite its historical A/B evidence or mark it done.
 
@@ -273,10 +276,12 @@ this phase does not rewrite its historical A/B evidence or mark it done.
    `internal/enroll`. The wizard emits v2 and the bootc-only built-ins are
    Snow, Snowfield and Floe. `tui.loadCatalogFrom` / `checkCatalog` reject
    unsupported overrides wholesale and fall back to bootc-only built-ins.
-   Remaining rollout work includes inventory and migration of stored v1
-   recipes, release-date/expiry recording, and coordination with snosi on
-   its shipped catalog and ISO/tool payload. Snowfield's scope needs
-   confirmation. Sundog is offered on the ISO through snosi's shipped
+   The 2026-10-23 inventory found no stored bootc-v1 recipes in snosi
+   (catalog and ISO payload), lab or testsuite; the wizard emits v2, and
+   Firn's own fixtures and E2E harnesses now use v2. Remaining rollout work
+   includes shipping the compiled expiry in a release before 2026-12-30,
+   and coordination with snosi on its shipped catalog and ISO/tool payload.
+   Snowfield's scope needs confirmation. Sundog is offered on the ISO through snosi's shipped
    `/etc/firn/catalog.json`, which carries its ref and cosign key; it is not
    in `builtinCatalog()`, which applies only without that file. Keep Firn's media boundary from
    [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) and UEFI floor

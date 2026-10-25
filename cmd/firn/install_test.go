@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
@@ -30,7 +31,17 @@ func commandRecipeFile(t *testing.T, family string) string {
 	return path
 }
 
+// beforeV1End pins clock before the bootc-v1 end date so v1 tests never
+// depend on the real clock.
+func beforeV1End(t *testing.T) {
+	t.Helper()
+	old := clock
+	clock = func() time.Time { return time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { clock = old })
+}
+
 func TestInstallV1WarnsBeforeFirstStep(t *testing.T) {
+	beforeV1End(t)
 	old := assembleInstall
 	t.Cleanup(func() { assembleInstall = old })
 	assembleInstall = func(l *recipe.Loaded) *pipeline.Pipeline {
@@ -67,12 +78,13 @@ func TestInstallV1WarnsBeforeFirstStep(t *testing.T) {
 	if len(events) < 3 || events[1]["event"] != "warning" || events[1]["code"] != progress.CodeRecipeV1Deprecated || events[2]["event"] != "step_start" {
 		t.Fatalf("event order: %+v", events)
 	}
-	if events[1]["message"] != recipe.Deprecations(mustLoadRecipe(t, commandRecipeFile(t, "bootc")))[0].Message {
+	if events[1]["message"] != recipe.Deprecations(mustLoadRecipe(t, commandRecipeFile(t, "bootc")), recipe.Env{Now: clock})[0].Message {
 		t.Fatalf("wrong deprecation message: %+v", events[1])
 	}
 }
 
 func TestInstallWiresRegistryProbe(t *testing.T) {
+	beforeV1End(t) // commandRecipeFile writes a bootc-v1 recipe
 	old := assembleInstall
 	t.Cleanup(func() { assembleInstall = old })
 	var wired bool
@@ -137,7 +149,39 @@ func TestInstallPubringUnknown(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsExpiredV1BeforeAssemble(t *testing.T) {
+	oldClock := clock
+	clock = func() time.Time { return time.Date(2026, 12, 30, 0, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { clock = oldClock })
+	old := assembleInstall
+	t.Cleanup(func() { assembleInstall = old })
+	assembleInstall = func(*recipe.Loaded) *pipeline.Pipeline { t.Fatal("assembled an expired v1 recipe"); return nil }
+	f, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = f
+	t.Cleanup(func() { os.Stderr = oldStderr })
+	cmd := newInstallCmd()
+	cmd.SetArgs([]string{"--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "bootc")})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "recipe is invalid") {
+		t.Fatalf("expired v1 install error: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "expired-version") || !strings.Contains(string(data), "bootc recipe version 1 is no longer accepted on and after 2026-12-30") {
+		t.Fatalf("missing expired-version diagnostic: %s", data)
+	}
+}
+
 func TestValidateV1DeprecationExitsZero(t *testing.T) {
+	beforeV1End(t)
 	f, err := os.CreateTemp(t.TempDir(), "stderr")
 	if err != nil {
 		t.Fatal(err)
