@@ -19,7 +19,14 @@ import (
 // inside the @ subvolume, so any (re)mount of the root partition that post-install
 // steps write through must use these options; a bare mount would expose the
 // btrfs top-level instead, where state/deploy does not exist.
-const BtrfsRootMountOpts = "subvol=@,compress=zstd:1"
+//
+// There is deliberately no compress option. The composefs objects are
+// fs-verity files, and the installed system mounts /sysroot without compress,
+// so install-time compression would be inconsistent with later updates. Kernels
+// 7.2.11 and 7.2.12 also have a defect: readahead of compressed Btrfs extents
+// on fs-verity files logs "fs-verity: FILE CORRUPTED!".
+// See https://github.com/frostyard/snosi/issues/1130.
+const BtrfsRootMountOpts = "subvol=@"
 
 // MountTarget mounts the install target tree under targetDir: the root
 // filesystem first, then the separate /boot (grub2 layout only), then

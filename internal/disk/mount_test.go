@@ -54,7 +54,7 @@ func TestMountTargetSystemdBootBtrfs(t *testing.T) {
 	if len(rec.calls) != 2 {
 		t.Fatalf("expected 2 mount calls (no separate /boot), got %d: %+v", len(rec.calls), rec.calls)
 	}
-	assertCall(t, rec, 0, "mount", "-t", "btrfs", "-o", "subvol=@,compress=zstd:1", "/dev/mapper/firn-root", target)
+	assertCall(t, rec, 0, "mount", "-t", "btrfs", "-o", "subvol=@", "/dev/mapper/firn-root", target)
 	assertCall(t, rec, 1, "mount", "/dev/nvme0n1p1", filepath.Join(target, "boot", "efi"))
 }
 
@@ -231,4 +231,12 @@ func TestUnmountRecursive(t *testing.T) {
 		t.Fatalf("expected 1 call, got %d: %+v", len(rec.calls), rec.calls)
 	}
 	assertCall(t, rec, 0, "umount", "-R", "/mnt/target")
+}
+
+// TestBtrfsRootMountOptsNoCompression guards against install-time Btrfs
+// compression: composefs objects are fs-verity files (frostyard/snosi#1130).
+func TestBtrfsRootMountOptsNoCompression(t *testing.T) {
+	if strings.Contains(BtrfsRootMountOpts, "compress") {
+		t.Fatalf("BtrfsRootMountOpts = %q must not contain any compress option", BtrfsRootMountOpts)
+	}
 }
