@@ -160,22 +160,6 @@ missing built-in entry and Snowfield's support/catalog scope before rollout.
   No production writes, post-cutoff code changes, changes to current v1
   validity, or claim of sole-production readiness are authorized here.
 
-## Rollout record
-
-- **2026-10-01:** release v0.6.0 ships steps 1 and 2 of the rollout (#101):
-  the version-2 bootc contract and the bootc-v1 deprecation warning.
-  A/B-v1 is rejected before assembly.
-- **2026-10-23:** Brian sets the bootc-v1 end date to **2026-12-30,
-  00:00 UTC** (the v0.6.0 release plus 90 days).
-- **#116 (step 3):** the reviewed change compiles that end date into the
-  validator. On and after 2026-12-30 validation rejects bootc v1 with the
-  `expired-version` issue before assembly; before it, the deprecation
-  warning applies. The expiry takes effect only in a Firn release that
-  contains this change, so such a release must ship before 2026-12-30.
-
-Exact text and behavior: [recipe schema, bootc version-1
-compatibility](../specs/recipe-schema.md#bootc-version-1-compatibility).
-
 ## Alternatives considered
 
 - **Accept bootc-v1 indefinitely but reject A/B-v1:** minimizes immediate
