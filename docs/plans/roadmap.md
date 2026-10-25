@@ -261,8 +261,12 @@ sets the implemented version-2 contract and bootc-v1 migration window. The
 [recipe schema v2](../specs/recipe-schema.md#bootc-version-1-compatibility) and
 [progress protocol](../specs/progress-protocol.md#stable-codes) reflect the
 bootc-only code. Release v0.6.0 shipped the v2 contract on 2026-10-01, and
-Brian set the bootc-v1 end date to 2026-12-30 (the release plus 90 days) on
-2026-10-23. Issue #116 compiles that expiry into the validator; it takes
+Brian set the bootc-v1 end date to 2026-12-30, 00:00 UTC (the release plus
+90 days) on 2026-10-23. Issue #116 (#118) compiles that expiry into the
+validator: on and after it, validation rejects bootc v1 with
+`expired-version` before assembly. The ADR stays as accepted; this roadmap
+and the [recipe schema](../specs/recipe-schema.md#bootc-version-1-compatibility)
+are the rollout record. The expiry takes
 effect only in a release that contains it, so a Firn release before
 2026-12-30 must ship the expiry. Older releases keep accepting bootc v1.
 Phase 7's
