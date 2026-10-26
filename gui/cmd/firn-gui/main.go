@@ -51,6 +51,13 @@ func main() {
 	var sessionEnv envFlags
 	fs.Var(&sessionEnv, "session-env", "a display variable forwarded through pkexec (set by firn-gui itself)")
 	_ = fs.Parse(os.Args[1:])
+	// Go's flag package stops at the first non-flag argument, so flags after
+	// a stray one would be ignored without a word: refuse it instead.
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "firn-gui: unexpected argument %q; firn-gui takes only flags\n", fs.Arg(0))
+		fs.Usage()
+		os.Exit(2)
+	}
 
 	if *showVersion {
 		fmt.Printf("firn-gui %s (commit %s, built %s by %s)\n", version, commit, date, builtBy)
@@ -76,6 +83,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := guardUpdateCleanup(); err != nil {
+		fmt.Fprintf(os.Stderr, "firn-gui: %v\n", err)
+		os.Exit(1)
+	}
 	err := installer.Run(installer.Options{
 		Demo:       *demo,
 		SecureBoot: *secureBoot,
@@ -88,6 +99,24 @@ func main() {
 		fmt.Fprintf(os.Stderr, "firn-gui: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// guardUpdateCleanup refuses to start where mygo would delete files that
+// are not firn-gui's. At startup mygo removes every ".*.old-*" entry in the
+// executable's directory, leftovers of its self-updater, which firn-gui does
+// not use; as root in a shared directory such as /usr/bin that could remove
+// another program's files. Packages install firn-gui alone in
+// /usr/libexec/firn-gui for this reason; this check covers other installs.
+func guardUpdateCleanup() error {
+	self, err := os.Executable()
+	if err != nil {
+		return nil // mygo then has no directory to clean either
+	}
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(self), ".*.old-*"))
+	if err != nil || len(matches) == 0 {
+		return nil
+	}
+	return fmt.Errorf("refusing to start: the GUI toolkit deletes %s at startup; run firn-gui from a directory of its own", strings.Join(matches, ", "))
 }
 
 // elevate replaces this process with pkexec running this executable again,

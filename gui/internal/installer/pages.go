@@ -217,6 +217,12 @@ func (a *app) storagePage(c *ui.Context) {
 				}
 			}).Gap(10).Label("Target disk")
 		}
+		if a.c.disk != "" {
+			a.diskNotice = "" // the user chose again
+		}
+		if a.diskNotice != "" {
+			callout(c, p, calloutWarning, "Your disk choice was cleared", a.diskNotice)
+		}
 		if msg := a.errText(fieldDisk); msg != "" {
 			ui.Text(c, msg).FontSize(13).TextColor(p.danger)
 		}
@@ -248,6 +254,20 @@ func (a *app) storagePage(c *ui.Context) {
 	}
 }
 
+// diskIdentity is the hardware identity the TUI's disk picker shows beside
+// vendor and model: the serial number and WWN, which tell apart two disks of
+// the same model.
+func diskIdentity(d diskInfo) string {
+	var parts []string
+	if s := strings.TrimSpace(d.Serial); s != "" {
+		parts = append(parts, "serial "+s)
+	}
+	if w := strings.TrimSpace(d.WWN); w != "" {
+		parts = append(parts, "wwn "+w)
+	}
+	return strings.Join(parts, "  ·  ")
+}
+
 func (a *app) chosenDisk() (diskInfo, bool) {
 	for _, d := range a.disks {
 		if d.Path == a.c.disk {
@@ -269,6 +289,9 @@ func (a *app) diskCard(c *ui.Context, d diskInfo) {
 	}
 	body := strings.Join(parts, "  ·  ")
 	card := choiceCard(c.Key(d.Path), p, &a.c.disk, d.Path, ic, d.title(), body, func() {
+		if ids := diskIdentity(d); ids != "" {
+			ui.Text(c, ids).Font("monospace").FontSize(11.5).TextColor(p.faint)
+		}
 		labels := disk.Labels(d.Device)
 		if len(labels) == 0 && d.refused == "" {
 			ui.Text(c, "No labeled partitions").FontSize(12).TextColor(p.faint)
@@ -633,6 +656,9 @@ func (a *app) reviewPage(c *ui.Context) {
 		storage := [][2]string{{"Disk", a.c.disk}}
 		if d, ok := a.chosenDisk(); ok {
 			storage = [][2]string{{"Disk", d.title()}, {"Device", d.Path + " · " + humanBytes(d.Size)}}
+			if ids := diskIdentity(d); ids != "" {
+				storage = append(storage, [2]string{"Identity", ids})
+			}
 		}
 		fs := a.c.filesystem
 		if fs == "btrfs" && a.c.btrfsSubvolumes {

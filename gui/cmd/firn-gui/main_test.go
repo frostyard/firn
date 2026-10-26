@@ -19,3 +19,11 @@ func TestSessionVarsForwardOnlyTheAllowlist(t *testing.T) {
 		t.Errorf("sessionVars = %v, want %v", got, want)
 	}
 }
+
+func TestGuardUpdateCleanupAllowsAPrivateDirectory(t *testing.T) {
+	// The test binary runs from a fresh temporary directory, where mygo
+	// would find nothing to delete.
+	if err := guardUpdateCleanup(); err != nil {
+		t.Fatalf("guard refused a clean directory: %v", err)
+	}
+}

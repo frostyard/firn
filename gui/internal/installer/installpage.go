@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -261,6 +260,10 @@ func (a *app) confirmDialog(c *ui.Context) {
 					FontSize(13.5).TextColor(p.muted)
 			})
 		})
+		if ids := diskIdentity(d); ids != "" {
+			ui.Text(c, ids).Font("monospace").FontSize(12.5).TextColor(p.muted).
+				Padding(10, 12).Radius(8).Background(p.inset).Border(1, p.cardBorder).Selectable()
+		}
 		ui.Field(c, "Type "+a.c.disk+" to confirm", func() {
 			in := ui.TextInput(c, &a.confirmText).Placeholder(a.c.disk).Font("monospace").AutoFocus()
 			if in.Submitted() && matches() {
@@ -312,7 +315,7 @@ func (a *app) recoveryKeyDialog(c *ui.Context) {
 					FontSize(13.5).TextColor(p.muted)
 			})
 		})
-		ui.Column(c).Gap(10).Padding(16).Radius(12).Background(p.inset).Border(1, p.cardBorder).Children(func() {
+		ui.Column(c).Gap(10).Padding(16).Radius(12).Background(p.inset).Border(1, p.cardBorder).Unselectable().Children(func() {
 			ui.Grid(c).Columns(4).GapX(10).GapY(8).Children(func() {
 				for _, group := range keyGroups(a.inst.recoveryKey, 8) {
 					ui.Text(c, group).Font("monospace").FontSize(18).FontWeight(600).LetterSpacing(0.5).
@@ -321,17 +324,13 @@ func (a *app) recoveryKeyDialog(c *ui.Context) {
 			})
 			ui.Text(c, "Grouped for reading: type it as one string, without spaces.").FontSize(12).TextColor(p.faint).TextAlign(ui.Center)
 		})
+		// No Copy button and no text selection: the clipboard outlives the
+		// installer (mygo hands it to the clipboard manager on quit), and the
+		// key must stay in-process (progress protocol, recovery-key
+		// disclosure). The window cannot close until the key is acknowledged.
 		ui.Row(c).Gap(10).Children(func() {
-			if ui.Button(c, "").Label("Copy recovery key").Children(func() {
-				ui.Icon(c, iconCopy).FontSize(14)
-				ui.Text(c, "Copy").SingleLine()
-			}).Clicked() {
-				mygo.Clipboard.WriteText(a.inst.recoveryKey)
-			}
+			ui.Checkbox(c, &a.keySaved, "I have written down or photographed this key")
 			ui.Spacer(c)
-			ui.Checkbox(c, &a.keySaved, "I have stored this key safely")
-		})
-		ui.Row(c).Justify(ui.End).Children(func() {
 			if ui.PrimaryButton(c, "Continue").Disabled(!a.keySaved).Clicked() && a.keySaved {
 				a.inst.recoveryKey = ""
 			}

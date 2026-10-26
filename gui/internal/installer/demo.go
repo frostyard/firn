@@ -47,12 +47,12 @@ func (b *demoBackend) Disks(ctx context.Context) ([]diskInfo, error) {
 	return []diskInfo{
 		{Device: disk.Device{
 			Path: "/dev/nvme0n1", Type: "disk", Size: 953 * gib, Model: "Samsung SSD 980 PRO 1TB",
-			Serial: "S5GXNF0R123456", Transport: "nvme",
+			Serial: "S5GXNF0R123456", WWN: "eui.002538b111b2c3d4", Transport: "nvme",
 			Children: []disk.Device{{Path: "/dev/nvme0n1p1", Type: "part", Fstype: "vfat", Label: "EFI"}, {Path: "/dev/nvme0n1p2", Type: "part", Fstype: "ntfs", Label: "Windows"}},
 		}},
 		{Device: disk.Device{
 			Path: "/dev/sda", Type: "disk", Size: 477 * gib, Vendor: "ATA", Model: "Crucial MX500",
-			Serial: "2041E4A1B2C3", Transport: "sata",
+			Serial: "2041E4A1B2C3", WWN: "0x500a0751e4a1b2c3", Transport: "sata",
 			Children: []disk.Device{{Path: "/dev/sda1", Type: "part", Fstype: "ext4", Label: "data"}},
 		}},
 		{Device: disk.Device{

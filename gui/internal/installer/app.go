@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -97,6 +99,11 @@ type app struct {
 	disks        []diskInfo
 	disksErr     string
 	disksLoading bool
+	// disksScanned is set after the first scan, the only one that may
+	// choose a disk by itself; later scans never switch the user's choice.
+	disksScanned bool
+	// diskNotice says why a rescan cleared the chosen disk.
+	diskNotice string
 
 	preview        corePreview
 	previewLoading string // the ref being inspected, or ""
@@ -106,6 +113,16 @@ type app struct {
 
 	inst          installState
 	cancelInstall context.CancelFunc
+	// pipelineDone is closed once the install's pipeline has returned,
+	// its cleanups unwound.
+	pipelineDone chan struct{}
+	// quitWhenDone quits once a running install, canceled by a signal or
+	// a quit request, has finished unwinding.
+	quitWhenDone bool
+	// forceQuit lets a signal close the window over an unacknowledged
+	// recovery key.
+	forceQuit bool
+	signals   int
 
 	themeMode   int // 0 follows the desktop, 1 light, 2 dark
 	showHelp    bool
@@ -123,8 +140,11 @@ type app struct {
 
 	ctx  context.Context
 	post func(func())
-	quit func()
-	p    palette
+	// quit closes the window, asking OnClose; quitApp quits the whole
+	// application, asking OnBeforeQuit. Tests replace both.
+	quit    func()
+	quitApp func()
+	p       palette
 }
 
 // Run probes the machine, opens the installer window and returns when it
@@ -136,7 +156,9 @@ func Run(o Options) error {
 	}
 	defer a.cleanup()
 	mygo.App.WhenReady(func() { a.openWindow() })
-	return mygo.App.Run()
+	err = mygo.App.Run()
+	a.shutdown()
+	return err
 }
 
 // openWindow shows the installer's window and starts the first disk scan.
@@ -152,15 +174,90 @@ func (a *app) openWindow() *mygo.Window {
 	})
 	a.post = win.Update
 	a.quit = win.Close
+	// The window stays while an install runs, and while a recovery key
+	// waits to be acknowledged: it is shown once, and closing would lose it.
 	win.OnClose(func(e *mygo.CloseEvent) {
-		if a.installing() {
+		if !a.closeAllowed() {
 			e.PreventDefault()
-			a.closeDenied = true
 			win.Invalidate()
 		}
 	})
+	// Any other quit cancels a running install and waits for its cleanups.
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		if a.installing() {
+			e.PreventDefault()
+			a.quitWhenDone = true
+			a.cancel()
+			win.Invalidate()
+		}
+	})
+	a.takeSignals()
 	a.rescan()
 	return win
+}
+
+// takeSignals replaces mygo's SIGINT and SIGTERM handling, which quits at
+// once and exits outright on a second signal. An installer must instead
+// cancel a running install and quit only after its cleanups have closed
+// the mounts and encrypted volumes it opened.
+func (a *app) takeSignals() {
+	var sigs []os.Signal
+	for _, s := range []os.Signal{syscall.SIGINT, syscall.SIGTERM} {
+		// Keep signals the parent ignores ignored, as mygo does.
+		if !signal.Ignored(s) {
+			sigs = append(sigs, s)
+		}
+	}
+	if len(sigs) == 0 {
+		return
+	}
+	signal.Reset(sigs...)
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, sigs...)
+	post := a.post
+	go func() {
+		for range ch {
+			post(a.onSignal)
+		}
+	}()
+}
+
+// onSignal handles SIGINT or SIGTERM on the main thread.
+func (a *app) onSignal() {
+	a.signals++
+	switch {
+	case a.installing():
+		a.quitWhenDone = true
+		a.cancel()
+	case a.keyPending() && a.signals == 1:
+		a.closeDenied = true // a second signal quits anyway
+	default:
+		a.forceQuit = true
+		a.quitApp()
+	}
+}
+
+// shutdown makes sure no install outlives the window: if the event loop
+// ended with the pipeline still running, cancel it and wait for its
+// cleanups to unwind, as the TUI does.
+func (a *app) shutdown() {
+	if a.cancelInstall != nil && a.pipelineDone != nil {
+		a.cancelInstall()
+		<-a.pipelineDone
+	}
+}
+
+func (a *app) keyPending() bool { return a.inst.recoveryKey != "" }
+
+// closeAllowed decides a request to close the window: refused, with an
+// explanation, while an install runs or a recovery key waits to be
+// acknowledged, unless a signal forces the quit.
+func (a *app) closeAllowed() bool {
+	if a.installing() || (a.keyPending() && !a.forceQuit) {
+		a.closeDenied = true
+		return false
+	}
+	return true
 }
 
 func newApp(o Options) (*app, error) {
@@ -176,6 +273,7 @@ func newApp(o Options) (*app, error) {
 		inst:    newInstallState(),
 		post:    func(fn func()) { fn() },
 		quit:    func() {},
+		quitApp: mygo.App.Quit,
 	}
 	if warn != nil {
 		a.notices = append(a.notices, warn.Error())
@@ -308,18 +406,37 @@ func (a *app) rescan() {
 	}()
 }
 
+// setDisks records a scan. Only the first scan chooses a disk by itself,
+// the first usable one; a later scan never moves the choice to another
+// disk. When the chosen disk is gone or refused, the choice is cleared with
+// a notice, so the user picks the target again.
 func (a *app) setDisks(disks []diskInfo, err error) {
 	a.disksLoading = false
 	a.disks, a.disksErr = disks, ""
 	if err != nil {
 		a.disksErr = err.Error()
+		return
 	}
-	for _, d := range disks {
-		if d.Path == a.c.disk && d.refused == "" {
+	first := !a.disksScanned
+	a.disksScanned = true
+	if prev := a.c.disk; prev != "" {
+		for _, d := range disks {
+			if d.Path != prev {
+				continue
+			}
+			if d.refused != "" {
+				a.c.disk = ""
+				a.diskNotice = fmt.Sprintf("%s can no longer be used (%s). Choose the disk to install to.", prev, d.refused)
+			}
 			return
 		}
+		a.c.disk = ""
+		a.diskNotice = prev + " is no longer present. Choose the disk to install to."
+		return
 	}
-	a.c.disk = ""
+	if !first {
+		return
+	}
 	for _, d := range disks {
 		if d.refused == "" {
 			a.c.disk = d.Path
@@ -487,6 +604,9 @@ func (a *app) openConfirm() {
 
 func (a *app) startInstall() {
 	a.confirmOpen = false
+	if a.installing() || a.cancelInstall != nil {
+		return // one install at a time: Enter and a click can land together
+	}
 	path, l, err := persist(a.c, a.machine.env, a.session, a.reviewed)
 	if err != nil {
 		a.installErr = err.Error()
@@ -505,19 +625,31 @@ func (a *app) startInstall() {
 
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelInstall = cancel
+	done := make(chan struct{})
+	a.pipelineDone = done
 	ch := progress.NewChannel(64)
+	var pipeErr error
 	go func() {
+		defer close(done)
 		defer func() { _ = ch.Close() }()
-		_ = a.be.Install(ctx, l, ch)
+		pipeErr = a.be.Install(ctx, l, ch)
 	}()
+	// The consumer keeps draining after the window is gone (posts are then
+	// dropped), so the pipeline never blocks on a full channel.
 	go func() {
 		for e := range ch.Events() {
 			a.post(func() { a.inst.apply(e) })
 		}
+		<-done
+		err := pipeErr
 		a.post(func() {
-			a.inst.truncated()
+			a.inst.finish(err)
 			cancel()
 			a.cancelInstall = nil
+			if a.quitWhenDone {
+				a.forceQuit = true
+				a.quitApp()
+			}
 		})
 	}()
 }
@@ -578,7 +710,7 @@ func (a *app) reboot() {
 
 func (a *app) requestQuit() {
 	switch {
-	case a.installing():
+	case a.installing(), a.keyPending():
 		a.closeDenied = true
 	case a.page == pageWelcome || a.inst.phase != phaseIdle:
 		a.quit()
@@ -930,5 +1062,9 @@ func (a *app) dialogs(c *ui.Context) {
 	case 1:
 		a.cancel()
 	}
-	ui.AlertDialog(c, &a.closeDenied, "Installation in progress", "Wait for the installation to finish, or stop it first.", "OK")
+	if a.keyPending() && !a.installing() {
+		ui.AlertDialog(c, &a.closeDenied, "Save the recovery key first", "It is shown only once. Confirm you have stored it, then close the installer.", "OK")
+	} else {
+		ui.AlertDialog(c, &a.closeDenied, "Installation in progress", "Wait for the installation to finish, or stop it first.", "OK")
+	}
 }

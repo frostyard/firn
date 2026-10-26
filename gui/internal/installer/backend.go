@@ -138,7 +138,10 @@ func (b *realBackend) InspectCore(ctx context.Context, ref string) corePreview {
 }
 
 // Install runs firn's pipeline in-process, with progress over emit — the
-// TUI's model (ADR-0007, ADR-0021); there is no subprocess.
+// TUI's model (ADR-0007, ADR-0021); there is no subprocess. Unlike the TUI
+// it adds no deprecationEmitter (cmd/firn): the GUI only builds version-2
+// recipes, so there is no recipe_v1_deprecated warning to emit. A GUI that
+// loads existing recipes must add it.
 func (b *realBackend) Install(ctx context.Context, l *recipe.Loaded, emit progress.Emitter) error {
 	env := &pipeline.Env{
 		Recipe:        &l.Recipe,

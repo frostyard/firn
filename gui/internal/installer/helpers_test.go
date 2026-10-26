@@ -53,6 +53,7 @@ func newTestApp(t *testing.T, o Options) (*app, *testQueue) {
 	q := &testQueue{}
 	a.post = q.post
 	a.quit = func() { a.status = "quit" }
+	a.quitApp = func() { a.status = "quit app" }
 	return a, q
 }
 

@@ -94,11 +94,21 @@ func (s *installState) apply(e progress.Event) {
 	}
 }
 
-// truncated records a stream that ended without a terminal event: firn died,
-// which the protocol says consumers render as failure, never cancellation.
-func (s *installState) truncated() {
-	if s.phase == phaseRunning {
-		s.apply(progress.Error{Code: progress.CodeStreamTruncated, Message: "the install stopped without reporting an outcome"})
+// finish records the pipeline's own return once its stream has ended. A
+// stream without a terminal event failed (stream_truncated, which the
+// protocol says consumers render as failure, never cancellation), and an
+// error the stream did not report still fails the install, as in the TUI.
+// err's text is kept either way.
+func (s *installState) finish(err error) {
+	switch {
+	case s.phase == phaseRunning:
+		msg := "the install stopped without reporting an outcome"
+		if err != nil {
+			msg += ": " + err.Error()
+		}
+		s.apply(progress.Error{Code: progress.CodeStreamTruncated, Message: msg})
+	case s.phase == phaseDone && err != nil:
+		s.apply(progress.Error{Code: progress.CodeStepFailed, Message: err.Error()})
 	}
 }
 

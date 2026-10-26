@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -228,9 +229,17 @@ func TestInstallReducer(t *testing.T) {
 	if s.recoveryKey != "k" {
 		t.Error("recovery key not held for acknowledgement")
 	}
-	s.truncated()
-	if s.phase != phaseFailed || s.errCode != progress.CodeStreamTruncated {
-		t.Errorf("a stream without a terminal event must fail as stream_truncated, got %v %q", s.phase, s.errCode)
+	s.finish(errors.New("emitter broke"))
+	if s.phase != phaseFailed || s.errCode != progress.CodeStreamTruncated || !strings.Contains(s.errMessage, "emitter broke") {
+		t.Errorf("a stream without a terminal event must fail as stream_truncated with the pipeline's error, got %v %q %q", s.phase, s.errCode, s.errMessage)
+	}
+
+	done := newInstallState()
+	done.phase = phaseRunning
+	done.apply(progress.Done{OK: true})
+	done.finish(errors.New("late failure"))
+	if done.phase != phaseFailed || !strings.Contains(done.errMessage, "late failure") {
+		t.Errorf("a pipeline error the stream did not report must fail the install, got %v %q", done.phase, done.errMessage)
 	}
 }
 
@@ -238,5 +247,137 @@ func TestKeyGroups(t *testing.T) {
 	got := keyGroups(strings.Repeat("ab", 32), 8)
 	if len(got) != 8 || strings.Join(got, "") != strings.Repeat("ab", 32) {
 		t.Errorf("keyGroups = %v", got)
+	}
+}
+
+// The recovery key is shown once: neither closing nor quitting may lose it
+// before the user acknowledges it, and it never reaches the clipboard.
+func TestRecoveryKeyHoldsTheWindow(t *testing.T) {
+	a, _ := newTestApp(t, Options{})
+	a.page = pageInstall
+	a.inst.phase = phaseDone
+	a.inst.recoveryKey = strings.Repeat("ab", 32)
+	tt := ui.NewTester(a.view, 1120, 760)
+	if tt.HasText("Copy") {
+		t.Error("the recovery key dialog offers to copy the key to the clipboard")
+	}
+	if a.closeAllowed() || !a.closeDenied {
+		t.Fatal("the window may close over an unacknowledged recovery key")
+	}
+	a.closeDenied = false
+	a.requestQuit()
+	if a.status == "quit" || !a.closeDenied {
+		t.Fatal("a quit request closed the window over an unacknowledged recovery key")
+	}
+	a.closeDenied = false
+	a.onSignal()
+	if a.status != "" || !a.closeDenied {
+		t.Fatal("the first signal quit over an unacknowledged recovery key")
+	}
+	a.onSignal()
+	if a.status != "quit app" || !a.forceQuit {
+		t.Fatal("a second signal must quit anyway")
+	}
+}
+
+// A signal during an install cancels it and quits only once the pipeline
+// has unwound; the pipeline's error is kept.
+func TestSignalCancelsTheInstallThenQuits(t *testing.T) {
+	a, q := newTestApp(t, Options{})
+	ready(t, a)
+	completeAnswers(a)
+	a.furthest = pageReview
+	a.goTo(pageReview)
+	a.be.(*demoBackend).pace = time.Millisecond // slow enough to interrupt
+	a.startInstall()
+	if !a.installing() {
+		t.Fatalf("install did not start: %s", a.installErr)
+	}
+	a.startInstall()
+	if a.pipelineDone == nil {
+		t.Fatal("no pipeline is tracked")
+	}
+	a.onSignal()
+	if !a.quitWhenDone || !a.inst.canceling {
+		t.Fatal("a signal during the install did not cancel it")
+	}
+	if a.status == "quit app" {
+		t.Fatal("quit before the pipeline unwound")
+	}
+	select {
+	case <-a.pipelineDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the canceled pipeline never returned")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for a.status != "quit app" && time.Now().Before(deadline) {
+		q.drain()
+		time.Sleep(2 * time.Millisecond)
+	}
+	if a.status != "quit app" || a.inst.phase != phaseFailed {
+		t.Fatalf("after unwinding: status %q phase %v", a.status, a.inst.phase)
+	}
+}
+
+func TestOneInstallAtATime(t *testing.T) {
+	a, _ := newTestApp(t, Options{})
+	ready(t, a)
+	completeAnswers(a)
+	a.goTo(pageReview)
+	a.be.(*demoBackend).pace = time.Millisecond
+	a.startInstall()
+	first := a.pipelineDone
+	a.startInstall()
+	if a.pipelineDone != first {
+		t.Fatal("a second start launched another pipeline")
+	}
+	a.cancelInstall()
+	<-first
+}
+
+func TestRescanNeverSwitchesTheDisk(t *testing.T) {
+	a, _ := newTestApp(t, Options{})
+	disks, _ := a.be.Disks(t.Context())
+	a.setDisks(disks, nil)
+	if a.c.disk != "/dev/nvme0n1" {
+		t.Fatalf("first scan chose %q, want the first usable disk", a.c.disk)
+	}
+	a.c.disk = "/dev/sda"
+	a.setDisks(disks, nil)
+	if a.c.disk != "/dev/sda" {
+		t.Fatalf("a rescan moved the choice to %q", a.c.disk)
+	}
+	a.setDisks(disks[:1], nil) // /dev/sda unplugged
+	if a.c.disk != "" || !strings.Contains(a.diskNotice, "/dev/sda") {
+		t.Fatalf("a vanished disk must clear the choice with a notice, got %q %q", a.c.disk, a.diskNotice)
+	}
+	a.setDisks(disks, nil)
+	if a.c.disk != "" {
+		t.Fatalf("a later scan chose %q by itself", a.c.disk)
+	}
+	a.c.disk = "/dev/nvme0n1"
+	refused := append([]diskInfo(nil), disks...)
+	refused[0].refused = "it is mounted"
+	a.setDisks(refused, nil)
+	if a.c.disk != "" || !strings.Contains(a.diskNotice, "it is mounted") {
+		t.Fatalf("a newly refused disk must clear the choice, got %q %q", a.c.disk, a.diskNotice)
+	}
+}
+
+func TestDiskIdentityShowsSerialAndWWN(t *testing.T) {
+	a, _ := newTestApp(t, Options{})
+	ready(t, a)
+	a.goTo(pageStorage)
+	tt := ui.NewTester(a.view, 1120, 760)
+	if !tt.HasText("serial S5GXNF0R123456  ·  wwn eui.002538b111b2c3d4") {
+		t.Errorf("disk card lacks serial and WWN: %q", tt.Texts())
+	}
+	completeAnswers(a)
+	a.goTo(pageReview)
+	tt.Frame()
+	a.openConfirm()
+	tt.Frame()
+	if !a.confirmOpen || !tt.HasText("serial S5GXNF0R123456  ·  wwn eui.002538b111b2c3d4") {
+		t.Errorf("confirmation lacks serial and WWN: %q", tt.Texts())
 	}
 }

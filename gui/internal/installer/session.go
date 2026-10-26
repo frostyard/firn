@@ -7,10 +7,11 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/frostyard/firn/internal/recipe"
 )
 
 // sessionDefaults are the running session's regional settings, used as the
@@ -21,31 +22,58 @@ type sessionDefaults struct {
 	keyboard string
 }
 
-// Shapes the schema accepts (internal/recipe/validate.go); prefills that do
-// not fit are dropped rather than shown as errors the user did not cause.
-var (
-	prefillLocaleRe   = regexp.MustCompile(`^[a-z]{2,3}_[A-Z]{2}(\.[A-Za-z0-9-]+)?$`)
-	prefillKeyboardRe = regexp.MustCompile(`^[a-z0-9_-]+(:[a-z0-9_-]+(:[a-z0-9_-]+)?)?$`)
-)
+// schemaAccepts reports whether the schema takes the [system] value set
+// sets, by validating a minimal recipe that carries it and looking for an
+// issue on field. Prefills and suggestions the schema would reject are
+// dropped rather than shown as errors the user did not cause; the schema
+// stays the only authority on its patterns (ADR-0021).
+func schemaAccepts(field, zoneinfoDir string, set func(*recipe.System)) bool {
+	r := &recipe.Recipe{
+		Version:  recipe.SchemaVersion,
+		Image:    recipe.Image{Family: recipe.FamilyBootc, Ref: "example.org/image:latest"},
+		Target:   recipe.Target{Disk: "/dev/null", Filesystem: "btrfs"},
+		Security: recipe.Security{Encryption: "none"},
+		System:   recipe.System{Hostname: "example"},
+	}
+	set(&r.System)
+	data, err := recipe.Marshal(r)
+	if err != nil {
+		return false
+	}
+	l, err := recipe.Parse(data)
+	if err != nil {
+		return false
+	}
+	for _, is := range recipe.Validate(l, recipe.Env{ZoneinfoDir: zoneinfoDir}) {
+		if is.Field == field {
+			return false
+		}
+	}
+	return true
+}
+
+func acceptsLocale(v string) bool {
+	return v != "" && schemaAccepts("system.locale", "", func(s *recipe.System) { s.Locale = v })
+}
 
 // detectSession reads the session's locale from the environment, its zone
 // from /etc/localtime, and its keyboard from /etc/default/keyboard.
 func detectSession(getenv func(string) string, zoneinfoDir, localtime, keyboardFile string) sessionDefaults {
 	var s sessionDefaults
 	for _, name := range []string{"LC_ALL", "LANG"} {
-		if v := normalizeLocale(getenv(name)); prefillLocaleRe.MatchString(v) {
+		if v := normalizeLocale(getenv(name)); acceptsLocale(v) {
 			s.locale = v
 			break
 		}
 	}
 	if target, err := os.Readlink(localtime); err == nil {
-		if _, zone, ok := strings.Cut(target, "zoneinfo/"); ok {
-			if _, err := os.Stat(filepath.Join(zoneinfoDir, zone)); err == nil {
-				s.timezone = zone
-			}
+		if _, zone, ok := strings.Cut(target, "zoneinfo/"); ok &&
+			schemaAccepts("system.timezone", zoneinfoDir, func(s *recipe.System) { s.Timezone = zone }) {
+			s.timezone = zone
 		}
 	}
-	if kb := readXKB(keyboardFile); prefillKeyboardRe.MatchString(kb) {
+	if kb := readXKB(keyboardFile); kb != "" &&
+		schemaAccepts("system.keyboard", "", func(s *recipe.System) { s.Keyboard = kb }) {
 		s.keyboard = kb
 	}
 	return s
@@ -119,7 +147,7 @@ func readLocales(path string) []string {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		name, _, _ := strings.Cut(strings.TrimSpace(sc.Text()), " ")
-		if !strings.HasSuffix(name, ".UTF-8") || !prefillLocaleRe.MatchString(name) || seen[name] {
+		if !strings.HasSuffix(name, ".UTF-8") || seen[name] || !acceptsLocale(name) {
 			continue
 		}
 		seen[name] = true
