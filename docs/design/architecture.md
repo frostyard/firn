@@ -6,7 +6,7 @@ Living document. Rationale:
 [ADR-0005](../adr/0005-toml-recipe-model.md),
 [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
 [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
-[ADR-0021 (Proposed)](../adr/0021-graphical-installer-separate-executable.md),
+[ADR-0021 (Accepted)](../adr/0021-graphical-installer-separate-executable.md),
 [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
 [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
 [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) (media
@@ -265,7 +265,8 @@ its Go pin and `make check` are unchanged. `make gui-build` writes
 `build/firn-gui`; `make gui-check` is its gate (tidy diff, gofmt, vet,
 tests) until the pinned golangci-lint is built with Go 1.27.3 or newer.
 CI runs it as the `gui` job of `.github/workflows/test.yml`, with Go from
-`gui/go.mod` and Pango and Cairo installed.
+`gui/go.mod` and Pango and Cairo installed, and the release workflow runs
+it after `make verify` and before GoReleaser.
 The UI is mygo native UI (`github.com/egoist/mygo`, exact pin in
 `gui/go.mod`): drawn in Go with OpenGL or the CPU, GTK 3, Pango and Cairo
 loaded with `dlopen`, no cgo, no webview.
@@ -276,18 +277,27 @@ and `actions/setup-go` exports `GOTOOLCHAIN=local`, so the build sets
 `GOTOOLCHAIN=auto` and that Go fetches 1.27.3. It ships as a `firn-gui_*`
 archive and the `frostyard-firn-gui` package (deb, rpm, apk):
 
-- `/usr/bin/firn-gui`;
+- `/usr/libexec/firn-gui/firn-gui`, alone in its directory, and a
+  `/usr/bin/firn-gui` symlink to it: at startup mygo deletes every
+  `.*.old-*` entry beside its executable (its self-updater's leftovers),
+  so the binary must never sit in a shared directory such as `/usr/bin`.
+  `main.guardUpdateCleanup` also refuses to start where any such entry
+  exists;
 - `/usr/share/applications/firn-gui.desktop` (from `gui/data/`), which
   runs `firn-gui` unprivileged and lets it elevate;
 - `/usr/share/polkit-1/actions/org.frostyard.firn.gui.policy`, whose
-  `org.freedesktop.policykit.exec.path` names `/usr/bin/firn-gui`, so
-  pkexec's prompt describes the installer; active sessions authenticate
-  as an administrator once and keep it (`auth_admin_keep`).
+  `org.freedesktop.policykit.exec.path` names
+  `/usr/libexec/firn-gui/firn-gui` (pkexec runs the resolved path), so
+  pkexec's prompt describes the installer. Only an active local session
+  may run it, with an administrator's password every time (`auth_admin`;
+  `no` for inactive and remote sessions).
 
 Like `frostyard-firn`, the package declares no dependencies: the
 libraries are loaded with `dlopen`, and the live desktop image provides
 them, `pkexec` and the install tools. Each archive and package names its
 build ids, so `frostyard-firn` and the `firn_*` archive keep only `firn`.
+The package is for live desktop media only: installed images must not
+include it, or every desktop would get a launcher that can erase a disk.
 
 It follows the TUI's model exactly: a recipe generator running the
 pipeline in-process.
@@ -324,13 +334,31 @@ pipeline in-process.
   are removed on exit; a persisted one stays for the printed
   `firn install --confirm <disk> <recipe>` until reboot. A failed install
   can go back to the review; the retry persists into a fresh session.
+- **Disks.** Disk cards show path, size, transport, partition labels,
+  serial and WWN (the TUI picker's identity fields), as do the review and
+  the confirmation. Only the first scan chooses a disk by itself; a
+  rescan never moves the choice, and clears it with a notice when the
+  chosen disk is gone or newly refused (`app.setDisks`).
 - **Confirmation and cancel.** Installing requires typing the exact target
-  disk path in a dialog. During the install, Stop cancels the pipeline's
-  context so it unwinds its cleanups; closing the window is refused while
-  it runs. A `recovery_key` event opens a dialog that cannot be dismissed
-  until the user confirms storing the key, after which the key is cleared
-  from state.
-- **Privilege.** `firn-gui` needs root. Started unprivileged, it
+  disk path in a dialog; one install runs at a time. During the install,
+  Stop cancels the pipeline's context so it unwinds its cleanups, and the
+  pipeline's own returned error is kept on the outcome screen
+  (`installState.finish`). A `recovery_key` event opens a dialog that
+  cannot be dismissed until the user confirms having written the key
+  down, after which the key is cleared from state. There is no Copy
+  button and the key is not selectable: mygo hands the clipboard to the
+  desktop's clipboard manager on quit, and the key must stay in-process.
+- **Closing and signals.** `app.closeAllowed` refuses to close the window
+  while an install runs or a recovery key awaits acknowledgement.
+  `app.takeSignals` replaces mygo's SIGINT/SIGTERM handling (quit at once,
+  `os.Exit` on a second signal): a signal during an install cancels it
+  and quits once the pipeline has unwound, and over an unacknowledged key
+  the first signal is refused and a second quits. An `OnBeforeQuit`
+  listener does the same for any other quit, and `app.shutdown` cancels
+  and waits for a pipeline still running when the event loop ends.
+- **Privilege.** `firn-gui` takes flags only (a stray argument is an
+  error, so no flag after it is silently ignored) and needs root. Started
+  unprivileged, it
   `syscall.Exec`s `pkexec` on itself, forwarding an allowlist of display
   and locale variables as `--session-env` flags (`WAYLAND_DISPLAY` made
   absolute, since root keeps its own `XDG_RUNTIME_DIR`) and the desktop's

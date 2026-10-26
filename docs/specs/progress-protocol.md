@@ -109,7 +109,7 @@ contain the key.
 | Artifact | Derivation |
 | --- | --- |
 | TUI progress view | Renders the same event structs pre-serialization. Warning and error stable codes remain visible alongside their messages; `flatpak_unreachable` is expanded into an intelligible sentence without dropping the code. A closed channel without a terminal event becomes `stream_truncated`. |
-| GUI progress view | The graphical installer ([ADR-0021](../adr/0021-graphical-installer-separate-executable.md)) renders the same event structs in-process: weighted overall progress from `start` weights, per-step `step_progress`, warnings with their stable codes, `summary` items on the outcome screen, and `recovery_key` behind a blocking acknowledgement that clears the key afterwards. A closed channel without a terminal event becomes `stream_truncated`. |
+| GUI progress view | The graphical installer ([ADR-0021](../adr/0021-graphical-installer-separate-executable.md)) renders the same event structs in-process: weighted overall progress from `start` weights, per-step `step_progress`, warnings with their stable codes, `summary` items on the outcome screen, and `recovery_key` behind a blocking acknowledgement that clears the key afterwards; the key is never copied to the clipboard, and the window cannot close before the acknowledgement. A closed channel without a terminal event becomes `stream_truncated`. |
 | Headless human renderer | Renders every event kind to stderr, including fraction- and byte-based `step_progress`; the NDJSON stdout contract is unchanged. |
 | E2E test assertions | Tests assert on `code` values and terminal events. |
 

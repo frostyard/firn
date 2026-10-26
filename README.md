@@ -93,8 +93,10 @@ make gui-demo  # run the graphical installer in demo mode
 draws with OpenGL, or on the CPU without it. Install Pango and Cairo
 before `make gui-check`: without them mygo falls back to a stub text
 engine that draws no text, and the tests pass without real layout.
-Releases ship it as the `frostyard-firn-gui` package, with a desktop
-entry and a polkit action for `/usr/bin/firn-gui`.
+Releases ship it as the `frostyard-firn-gui` package: the binary in
+`/usr/libexec/firn-gui/` behind a `/usr/bin/firn-gui` symlink, a desktop
+entry, and a polkit action that asks for an administrator's password each
+time. It is meant for live desktop media, not installed systems.
 
 End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
 and verify the booted disk over SSH (`test/e2e-bootc.sh`,

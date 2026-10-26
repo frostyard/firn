@@ -75,8 +75,10 @@ removed. -->
   the recipe schema and progress protocol, not Go APIs).
 - Releases: conventional commits; `make bump` tags via svu; GoReleaser
   Pro builds `frostyard-firn` and `frostyard-firn-gui` packages (the
-  latter from `gui/` with `GOTOOLCHAIN=auto`) plus a nightly `dev`
-  snapshot. The tag workflow attests every release asset, then sends
+  latter from `gui/` with `GOTOOLCHAIN=auto`, installed alone in
+  `/usr/libexec/firn-gui` because mygo deletes `.*.old-*` files beside
+  its executable; the release workflow runs `make gui-check` first) plus a
+  nightly `dev` snapshot. The tag workflow attests every release asset, then sends
   one unguarded `publish-deb` request to frostyard/apt-publisher, which
   publishes the `.deb` files and dispatches snosi's rebuild (ADR-0017).
   apt-publisher refuses a release with a package name its

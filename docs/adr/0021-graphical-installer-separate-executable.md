@@ -1,6 +1,6 @@
 # 0021 — Ship a graphical installer as a separate executable in its own Go module
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-26)
 - **Date:** 2026-10-25
 
 ## Context
@@ -62,8 +62,11 @@ in a separate project.
    TOML on its review page, validates those bytes with `recipe.Parse` and
    `recipe.Validate`, writes and reloads `recipe.toml`, and runs
    `steps.Assemble` with progress over a `progress.Channel`. There is no
-   subprocess and no NDJSON parsing. The recovery key stays in-process and
-   is shown on a blocking acknowledgement.
+   subprocess and no NDJSON parsing. The recovery key stays in-process: it
+   is shown on a blocking acknowledgement, never copied to the clipboard,
+   and the window cannot close until the user acknowledges it. The window
+   also stays while an install runs; a quit or SIGINT/SIGTERM cancels the
+   install and quits only after its cleanups have closed what it opened.
 3. **Typed confirmation.** Before installing, the user types the exact
    target disk path: the same rule as headless `--confirm` and the TUI's
    confirmation page.
@@ -113,8 +116,18 @@ in a separate project.
   contain API churn; upgrades are deliberate.
 - The `gui/` tests load Pango through mygo's text engine, so the machine
   running them needs Pango and Cairo installed.
-- Packaging `firn-gui` (a GoReleaser build and a `frostyard-firn-gui`
-  package) is not part of this decision; it is tracked in the roadmap.
+- Releases ship `firn-gui` as the `frostyard-firn-gui` package: the binary
+  alone in `/usr/libexec/firn-gui/` behind a `/usr/bin/firn-gui` symlink,
+  because mygo deletes `.*.old-*` entries beside its executable at
+  startup (firn-gui also refuses to start where any exist), a desktop
+  entry, and a polkit action that requires an administrator's password
+  every time and only in an active local session. The package is for live
+  desktop media; installed images must not ship it, or every desktop
+  would get a launcher that can erase a disk. apt-publisher must list the
+  package before a release ships it
+  ([ADR-0017](0017-publish-debian-packages-through-apt-publisher.md)).
+- ADR-0007 stays Accepted, amended by this ADR where it limits firn to a
+  TUI.
 
 ## Alternatives considered
 
@@ -142,6 +155,7 @@ in a separate project.
   [specs/recipe-schema.md](../specs/recipe-schema.md#interactive-wizard-parity),
   [specs/progress-protocol.md](../specs/progress-protocol.md#derived-artifacts),
   [plans/roadmap.md](../plans/roadmap.md#phase-11-graphical-installer-medium-in-progress)
+- Amends: [ADR-0007](0007-tui-only-frontend-single-binary.md)
 - Builds on: [ADR-0005](0005-toml-recipe-model.md),
   [ADR-0007](0007-tui-only-frontend-single-binary.md),
   [ADR-0011](0011-adopt-frostyard-go-conventions.md),
