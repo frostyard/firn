@@ -377,6 +377,63 @@ snosi.
   set before install, and neither firn nor the ISO references first-setup's
   `core.json` or `core-flatpaks.json`.
 
+<a id="phase-11-graphical-installer-medium-in-progress"></a>
+## Phase 11 — Graphical installer (medium) — ⏳ in progress
+
+**In progress.** [ADR-0021](../adr/0021-graphical-installer-separate-executable.md)
+(Accepted 2026-10-26) adds `firn-gui`, a graphical wizard for live desktop sessions, as
+a separate executable in the nested module `gui/`
+([design](../design/architecture.md#graphical-installer-gui)). It produces
+recipes under the same parity rules as the TUI
+([recipe schema](../specs/recipe-schema.md#interactive-wizard-parity), rule
+5) and consumes the pipeline's events in-process
+([progress protocol](../specs/progress-protocol.md#derived-artifacts)).
+Out of scope: the installer ISO, which keeps its TUI kiosk and no graphics
+stack (ADR-0007, ADR-0010).
+
+1. ✅ **Share the catalog.** `internal/catalog` holds the image catalog and
+   the offered user groups; the TUI reads both from it.
+2. ✅ **The wizard.** mygo native UI pages for every field the TUI offers,
+   schema-backed field validation, typed disk confirmation, in-process
+   install with cancel, the recovery-key acknowledgement, pkexec
+   self-elevation, keyboard shortcuts for every action, and `--demo`.
+   Headless page tests, PNG snapshots and a real-window smoke test;
+   `make gui-build`, `make gui-check`, `make gui-demo`.
+3. ✅ **Gate it in CI.** The `gui` job in `.github/workflows/test.yml` sets
+   up Go from `gui/go.mod`, installs Pango and Cairo (without them mygo's
+   text engine falls back to a stub that draws no text) and runs
+   `make gui-check`; `make ci` is unchanged. The release workflow runs the
+   same gate after `make verify`, before GoReleaser. golangci-lint joins the
+   target, and so both jobs, once the mise.toml pin is built with Go 1.27.3
+   or newer.
+4. ✅ **Package it.** GoReleaser builds `firn-gui` from `gui/` (linux
+   amd64/arm64, no cgo, `GOTOOLCHAIN=auto` so the workflows' root-module Go
+   fetches 1.27.3) into a `firn-gui_*` archive and a `frostyard-firn-gui`
+   package (deb, rpm, apk): `/usr/libexec/firn-gui/firn-gui` behind a
+   `/usr/bin/firn-gui` symlink, a desktop entry and the polkit action
+   `org.frostyard.firn.gui` (administrator password every time, active
+   local sessions only). The existing archive and `frostyard-firn` keep
+   only `firn`. The tag workflow attests it and requests its publication
+   with `frostyard-firn`
+   ([ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)).
+5. **Register the package with apt-publisher (cross-repo).** Add
+   `frostyard-firn-gui` to firn's packages in frostyard/apt-publisher's
+   `config/producers.tsv` before the next firn tag. apt-publisher refuses a
+   release containing any `.deb` whose package name is not listed, so until
+   then a tag publishes neither package.
+6. **Keep it out of installed images (snosi, cross-repo).** snosi has no
+   live desktop image yet; its installed images must not install
+   `frostyard-firn-gui`, or every desktop would get a launcher that can
+   erase a disk. Ship it only on live desktop media, when one exists.
+7. **Prove it on hardware.** Install Snow from a live desktop session with
+   `firn-gui` on a real machine: unencrypted, `tpm2-luks` (recovery key
+   shown) and Secure Boot with MOK enrollment, plus the `pkexec` re-exec
+   and a GoReleaser snapshot release of the `GOTOOLCHAIN=auto` build.
+
+- **Done when:** a `frostyard-firn-gui` package from a tagged release
+  installs Snow from a live desktop session on real hardware, and the
+  booted system matches the reviewed recipe.
+
 ## Later / ideas
 
 - ✅ **Encrypted bootc installs of UKI-entry images — boot-time unlock

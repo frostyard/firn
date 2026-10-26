@@ -2,7 +2,7 @@
 
 This contract governs the machine-readable event stream firn emits with
 `--json-progress` — the only supported interface for external consumers
-(automation, tests, any future GUI), per
+(automation, tests, any GUI outside this repository), per
 [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md). The in-process
 TUI consumes the same event model over a Go channel; this spec pins its
 serialized form. It replaces fisherman's event stream and
@@ -87,7 +87,8 @@ version-1 wire contract.
 Recovery keys deliberately have different presentation boundaries for the
 two frontends:
 
-- **Interactive:** the `recovery_key` event remains in-process. The TUI shows
+- **Interactive:** the `recovery_key` event remains in-process. The TUI (and
+  the graphical installer, likewise) shows
   the literal key on a blocking acknowledgement screen, clears it from the
   returned result after acknowledgement, and MUST NOT repeat it to stdout,
   stderr, console scrollback, or ordinary logs after the TUI exits.
@@ -108,12 +109,15 @@ contain the key.
 | Artifact | Derivation |
 | --- | --- |
 | TUI progress view | Renders the same event structs pre-serialization. Warning and error stable codes remain visible alongside their messages; `flatpak_unreachable` is expanded into an intelligible sentence without dropping the code. A closed channel without a terminal event becomes `stream_truncated`. |
+| GUI progress view | The graphical installer ([ADR-0021](../adr/0021-graphical-installer-separate-executable.md)) renders the same event structs in-process: weighted overall progress from `start` weights, per-step `step_progress`, warnings with their stable codes, `summary` items on the outcome screen, and `recovery_key` behind a blocking acknowledgement that clears the key afterwards; the key is never copied to the clipboard, and the window cannot close before the acknowledgement. A closed channel without a terminal event becomes `stream_truncated`. |
 | Headless human renderer | Renders every event kind to stderr, including fraction- and byte-based `step_progress`; the NDJSON stdout contract is unchanged. |
 | E2E test assertions | Tests assert on `code` values and terminal events. |
 
 ## References
 
 - Rationale: [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
+  [ADR-0021](../adr/0021-graphical-installer-separate-executable.md)
+  (the graphical installer's in-process consumer),
   [ADR-0016](../adr/0016-bootc-only-recipe-contract.md),
   [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md)
   (`no_core_set`, `core_flatpaks_label_invalid`,

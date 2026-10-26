@@ -19,7 +19,7 @@ Docs are split by the question they answer:
 - [0004 — Single installer for all snosi images, UEFI floor, optional security features](adr/0004-single-installer-scope-and-support-matrix.md)
 - [0005 — Versioned, sectioned TOML recipe as the single configuration surface](adr/0005-toml-recipe-model.md)
 - [0006 — Install-time, offline-first flatpak provisioning on both paths](adr/0006-install-time-offline-first-flatpaks.md)
-- [0007 — TUI-only frontend in a single binary, one progress protocol](adr/0007-tui-only-frontend-single-binary.md)
+- [0007 — TUI-only frontend in a single binary, one progress protocol (amended by 0021)](adr/0007-tui-only-frontend-single-binary.md)
 - [0008 — /var filesystem choice for A/B installs](adr/0008-ab-var-filesystem-choice.md)
 - [0009 — A/B installs run only against an isolated partition namespace](adr/0009-ab-installs-require-partition-isolation.md)
 - [0010 — One installer ISO for all image families, built in the snosi repo](adr/0010-single-installer-iso-in-snosi.md)
@@ -33,6 +33,7 @@ Docs are split by the question they answer:
 - [0018 — Read each image's core flatpak set from an OCI label](adr/0018-image-published-core-flatpaks-label.md)
 - [0019 — Start the wizard's core-flatpaks toggle on](adr/0019-wizard-offers-core-flatpaks-by-default.md)
 - [0020 — Pin the preflight-selected digest for unsigned registry installs (Proposed)](adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)
+- [0021 — Ship a graphical installer as a separate executable in its own Go module (Accepted)](adr/0021-graphical-installer-separate-executable.md)
 
 ### Design
 

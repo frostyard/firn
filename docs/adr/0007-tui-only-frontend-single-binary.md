@@ -1,6 +1,8 @@
 # 0007 — TUI-only frontend in a single binary, one progress protocol
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by [ADR-0021](0021-graphical-installer-separate-executable.md)
+  (2026-10-26): firn also ships a graphical installer, `firn-gui`, as a
+  separate executable that runs the pipeline in-process like the TUI.
 - **Date:** 2026-08-11
 
 ## Context

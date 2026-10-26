@@ -1,7 +1,8 @@
 # Firn
 
 Firn installs snosi bootc OCI images from version-2 recipes (with temporary
-bootc-v1 compatibility), with a built-in TUI.
+bootc-v1 compatibility), with a built-in TUI and a separate graphical
+installer, `firn-gui` (nested module `gui/`, ADR-0021).
 It is a deeply-inspired GPL-3.0-only rewrite of fisherman (attribution in
 `NOTICE`, rationale in ADR-0003). Start at
 [docs/README.md](docs/README.md).
@@ -54,23 +55,44 @@ removed. -->
   install` when golangci-lint is absent (core ADR-0043). Run `mise install`
   once to provision the pinned golangci-lint (and Go) from
   [`mise.toml`](mise.toml)/[`mise.lock`](mise.lock) before any target.
+- The graphical installer is the nested Go module `gui/`
+  (`github.com/frostyard/firn/gui`, Go 1.27.3 for mygo; ADR-0021). Root
+  targets never enter it: changes under `gui/` also run `make gui-check`
+  (tidy diff, gofmt, vet, tests), which CI's `gui` job runs with Go from
+  `gui/go.mod`. Install Pango and Cairo first: without them mygo's text
+  engine falls back to a stub that draws no text and the tests pass
+  without real layout. The pinned golangci-lint cannot lint it until a
+  release is built with Go 1.27.3 or newer. Its field validation calls
+  `recipe.Validate` on an assembled recipe
+  (`gui/internal/installer/validate.go`) — never copy
+  schema patterns into it. Changing a page: re-render with
+  `FIRN_GUI_SNAPSHOTS=<dir> go test ./internal/installer -run TestSnapshots`
+  (from `gui/`) and look at both appearances.
 - Layout follows the frostyard Go conventions with documented
   deviations (ADR-0011): `cmd/firn-cli/main.go` is the clix entry,
   `cmd/firn/` holds cobra handlers, and — deviating from SDK-first —
   the pipeline stays under `internal/` (firn's public contracts are
   the recipe schema and progress protocol, not Go APIs).
 - Releases: conventional commits; `make bump` tags via svu; GoReleaser
-  Pro builds `frostyard-firn` packages plus a nightly `dev`
-  snapshot. The tag workflow attests every release asset, then sends
+  Pro builds `frostyard-firn` and `frostyard-firn-gui` packages (the
+  latter from `gui/` with `GOTOOLCHAIN=auto`, installed alone in
+  `/usr/libexec/firn-gui` because mygo deletes `.*.old-*` files beside
+  its executable; the release workflow runs `make gui-check` first) plus a
+  nightly `dev` snapshot. The tag workflow attests every release asset, then sends
   one unguarded `publish-deb` request to frostyard/apt-publisher, which
   publishes the `.deb` files and dispatches snosi's rebuild (ADR-0017).
-  Never add a repogen publish step or a direct snosi dispatch;
-  `cmd/firn-cli/release_workflow_contract_test.go` pins the workflow
+  apt-publisher refuses a release with a package name its
+  `config/producers.tsv` does not list for firn: register a new package
+  there before the tag that ships it. Every archive and nfpm entry names
+  its build `ids`. Never add a repogen publish step or a direct snosi
+  dispatch; `cmd/firn-cli/release_workflow_contract_test.go` pins the workflow
   (with `go.yaml.in/yaml/v3`, test-only, sanctioned by ADR-0017).
 - Pipeline and domain packages (`internal/*` except the TUI) use only the
   Go stdlib plus shelling out to host tools; the sanctioned exceptions are
-  the TOML decoder (ADR-0005) and, in the TUI layer only, the Charm stack
-  (ADR-0007). Do not add other dependencies without an ADR.
+  the TOML decoder (ADR-0005), in the TUI layer only, the Charm stack
+  (ADR-0007), and, in the `gui/` module only, mygo (ADR-0021). Do not add
+  other dependencies without an ADR. The image catalog and offered user
+  groups live in `internal/catalog`, shared by both frontends.
 - Recipe validation is fail-closed: unknown fields, unknown enum values,
   and wrong-family fields are errors (`internal/recipe/validate.go` is the
   canonical example). New recipe fields change

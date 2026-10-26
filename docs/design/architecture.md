@@ -6,6 +6,7 @@ Living document. Rationale:
 [ADR-0005](../adr/0005-toml-recipe-model.md),
 [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
 [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
+[ADR-0021 (Accepted)](../adr/0021-graphical-installer-separate-executable.md),
 [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
 [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
 [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) (media
@@ -31,7 +32,9 @@ Firn is a single Go binary that installs bootc OCI images from a version-2
 TOML recipe (accepting bootc-v1 with a warning until 2026-12-30, then
 rejecting it), either headless (`firn install recipe.toml`) or through a
 built-in TUI wizard that generates the same recipe and runs the same
-pipeline in-process.
+pipeline in-process. A separate graphical installer, `firn-gui`, does the
+same for live desktop sessions
+([below](#graphical-installer-gui)).
 
 ```
  interactive ──► TUI wizard (bubbletea/huh)
@@ -94,6 +97,8 @@ headless reproduction command until the installer environment reboots.
 | Layer | Packages (indicative) | Dependency rule |
 |---|---|---|
 | Frontend | `internal/tui` | Charm stack allowed (ADR-0007) |
+| Frontend (GUI) | `gui/internal/installer`, `gui/cmd/firn-gui` (nested module `github.com/frostyard/firn/gui`) | mygo allowed, in `gui/` only (ADR-0021) |
+| Shared frontend data | `internal/catalog` | stdlib + `internal/recipe` |
 | Pipeline | `internal/pipeline`, `internal/steps/*` | stdlib + host tools only |
 | Domain | `internal/recipe`, `internal/disk`, `internal/luks`, `internal/enroll`, `internal/sysconfig`, `internal/flatpak`, `internal/progress`, `internal/runner` | stdlib + host tools only (TOML decoder excepted, ADR-0005) |
 
@@ -248,12 +253,142 @@ proves what was deployed, never who built it
 A source that reports no valid digest keeps the tag, and that residual
 tag-movement race stays.
 
+<a id="graphical-installer-gui"></a>
+### Graphical installer (gui/)
+
+[ADR-0021](../adr/0021-graphical-installer-separate-executable.md) adds a
+second frontend, `firn-gui`, built from the nested module in `gui/`
+(`go 1.27.3`, `replace github.com/frostyard/firn => ../`). It imports
+firn's `internal/` packages directly (Go's internal rule is path-based in
+module mode); nothing in the root module imports it, so the `firn` binary,
+its Go pin and `make check` are unchanged. `make gui-build` writes
+`build/firn-gui`; `make gui-check` is its gate (tidy diff, gofmt, vet,
+tests) until the pinned golangci-lint is built with Go 1.27.3 or newer.
+CI runs it as the `gui` job of `.github/workflows/test.yml`, with Go from
+`gui/go.mod` and Pango and Cairo installed, and the release workflow runs
+it after `make verify` and before GoReleaser.
+The UI is mygo native UI (`github.com/egoist/mygo`, exact pin in
+`gui/go.mod`): drawn in Go with OpenGL or the CPU, GTK 3, Pango and Cairo
+loaded with `dlopen`, no cgo, no webview.
+
+Releases build it with GoReleaser (build id `firn-gui`, `dir: gui`, linux
+amd64/arm64, `CGO_ENABLED=0`). The workflows set up the root module's Go
+and `actions/setup-go` exports `GOTOOLCHAIN=local`, so the build sets
+`GOTOOLCHAIN=auto` and that Go fetches 1.27.3. It ships as a `firn-gui_*`
+archive and the `frostyard-firn-gui` package (deb, rpm, apk):
+
+- `/usr/libexec/firn-gui/firn-gui`, alone in its directory, and a
+  `/usr/bin/firn-gui` symlink to it: at startup mygo deletes every
+  `.*.old-*` entry beside its executable (its self-updater's leftovers),
+  so the binary must never sit in a shared directory such as `/usr/bin`.
+  `main.guardUpdateCleanup` also refuses to start where any such entry
+  exists;
+- `/usr/share/applications/firn-gui.desktop` (from `gui/data/`), which
+  runs `firn-gui` unprivileged and lets it elevate;
+- `/usr/share/polkit-1/actions/org.frostyard.firn.gui.policy`, whose
+  `org.freedesktop.policykit.exec.path` names
+  `/usr/libexec/firn-gui/firn-gui` (pkexec runs the resolved path), so
+  pkexec's prompt describes the installer. Only an active local session
+  may run it, with an administrator's password every time (`auth_admin`;
+  `no` for inactive and remote sessions).
+
+Like `frostyard-firn`, the package declares no dependencies: the
+libraries are loaded with `dlopen`, and the live desktop image provides
+them, `pkexec` and the install tools. Each archive and package names its
+build ids, so `frostyard-firn` and the `firn_*` archive keep only `firn`.
+The package is for live desktop media only: installed images must not
+include it, or every desktop would get a launcher that can erase a disk.
+
+It follows the TUI's model exactly: a recipe generator running the
+pipeline in-process.
+
+- **Pages.** Welcome (machine capabilities, catalog notices) → System
+  (catalog entry; opt-in advanced `target_ref` and bootloader, GRUB 2
+  offered only with Secure Boot inactive) → Storage (disk cards with
+  refusal reasons from `disk.RefusalReason`, filesystem, btrfs
+  subvolumes) → Security (encryption modes, TPM modes disabled without a
+  TPM; MOK enroll/skip only under Secure Boot) → Region (hostname, locale,
+  timezone, keyboard, root SSH keys) → Account (user, groups from
+  `catalog.Groups` preselected by the entry's `default_groups`, user SSH
+  keys) → Apps (core Flatpaks preview, extra Flatpak IDs) → Review →
+  Install. Initial selections are the TUI's; optional fields are prefilled
+  from the session (`$LC_ALL`/`$LANG`, `/etc/localtime`,
+  `/etc/default/keyboard`) and the hostname from the image name, only when
+  the schema accepts the value.
+- **Validation.** `validateChoices` (`gui/internal/installer/validate.go`)
+  assembles a recipe from the current answers with every secret pointing
+  at one 0600 placeholder file, round-trips it through `recipe.Marshal`,
+  `recipe.Parse` and `recipe.Validate`, and maps each issue's dotted field
+  to the page that collects it (`pageFields`). The GUI adds only what the
+  schema cannot know: secrets entered and confirmed, a usable disk, and
+  the chosen image's preview having arrived. Missing values show after a
+  failed attempt to continue; wrong values show at once. Unclaimed issues
+  surface on the review page as a wizard bug.
+- **Session and secrets.** Each run owns a 0700 `gui-session-*` directory
+  under `/run/firn`. The review page shows `reviewBytes`, whose secret
+  paths name files in that directory without writing them. Confirming
+  writes the 0600 secret files, re-marshals and refuses if the bytes differ
+  from the reviewed ones, writes them as `recipe.toml`, reloads and
+  validates it, then calls `steps.Assemble(l).Run` with a
+  `progress.Channel` (`persist`, `realBackend.Install`). Abandoned sessions
+  are removed on exit; a persisted one stays for the printed
+  `firn install --confirm <disk> <recipe>` until reboot. A failed install
+  can go back to the review; the retry persists into a fresh session.
+- **Disks.** Disk cards show path, size, transport, partition labels,
+  serial and WWN (the TUI picker's identity fields), as do the review and
+  the confirmation. Only the first scan chooses a disk by itself; a
+  rescan never moves the choice, and clears it with a notice when the
+  chosen disk is gone or newly refused (`app.setDisks`).
+- **Confirmation and cancel.** Installing requires typing the exact target
+  disk path in a dialog; one install runs at a time. During the install,
+  Stop cancels the pipeline's context so it unwinds its cleanups, and the
+  pipeline's own returned error is kept on the outcome screen
+  (`installState.finish`). A `recovery_key` event opens a dialog that
+  cannot be dismissed until the user confirms having written the key
+  down, after which the key is cleared from state. There is no Copy
+  button and the key is not selectable: mygo hands the clipboard to the
+  desktop's clipboard manager on quit, and the key must stay in-process.
+- **Closing and signals.** `app.closeAllowed` refuses to close the window
+  while an install runs or a recovery key awaits acknowledgement.
+  `app.takeSignals` replaces mygo's SIGINT/SIGTERM handling (quit at once,
+  `os.Exit` on a second signal): a signal during an install cancels it
+  and quits once the pipeline has unwound, and over an unacknowledged key
+  the first signal is refused and a second quits. An `OnBeforeQuit`
+  listener does the same for any other quit, and `app.shutdown` cancels
+  and waits for a pipeline still running when the event loop ends.
+- **Privilege.** `firn-gui` takes flags only (a stray argument is an
+  error, so no flag after it is silently ignored) and needs root. Started
+  unprivileged, it
+  `syscall.Exec`s `pkexec` on itself, forwarding an allowlist of display
+  and locale variables as `--session-env` flags (`WAYLAND_DISPLAY` made
+  absolute, since root keeps its own `XDG_RUNTIME_DIR`) and the desktop's
+  light/dark preference from `gsettings` as `--appearance`. `--demo` swaps
+  in `demoBackend` (made-up disks, preview and progress events from the
+  real step assembly) and runs unprivileged without touching a disk.
+- **Keyboard.** Every action has a shortcut, bound in `app.shortcuts`:
+  Alt+←/→ (and mouse back/forward) move between steps, Ctrl+Enter
+  continues or opens the install confirmation, Alt+1…8 jumps to a reached
+  step whose predecessors are complete, Ctrl+R/F5 rescans disks, F1 or
+  Ctrl+/ lists the shortcuts, Ctrl+Shift+L switches appearance, Ctrl+Q
+  quits (asking first mid-wizard, refused mid-install). Cards are radio
+  groups, so the arrow keys choose images, disks and encryption modes.
+- **Tests.** `ui.NewTester` drives pages headless (`app_test.go` walks the
+  wizard by keyboard and installs through the demo backend);
+  `FIRN_GUI_SNAPSHOTS=<dir>` renders every page in both appearances to
+  PNG; `FIRN_GUI_WINDOW_TEST=<png>` opens the real window and captures it.
+  mygo's text engine loads Pango and Cairo; without them it falls back to
+  a stub that lays out every rune as half an em and draws nothing, and the
+  tests still pass. CI installs them so the tests exercise real text
+  layout, and snapshots are only worth reading with them.
+
 ### Progress and frontends
 
 `internal/progress` defines one event model (step begin/progress/end,
 info, warning, summary items such as unreachable flatpaks, recovery-key
 disclosure, and terminal completion or failure). The TUI consumes it over a
-channel in-process; `--json-progress` serializes the same events as
+channel in-process, as does the graphical installer
+([ADR-0021](../adr/0021-graphical-installer-separate-executable.md));
+`--json-progress` serializes the same events as
 versioned NDJSON for automation — the only supported external interface
 (ADR-0007), replacing fisherman's stream and snosi's proto-1. The frontend
 split preserves warning and error information: the TUI keeps and displays
@@ -290,11 +425,17 @@ uses the same engine preflight as headless installation.
   ([ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)):
   a tag runs `.github/workflows/release.yml`, which creates the GitHub
   release, attests its assets' build provenance, and asks
-  frostyard/apt-publisher to publish the `frostyard-firn` `.deb` files to
+  frostyard/apt-publisher to publish the `frostyard-firn` and
+  `frostyard-firn-gui` `.deb` files to
   `https://repository.frostyard.org/debian/` (`trixie` and `forky`).
+  apt-publisher refuses a release containing a package name its
+  `config/producers.tsv` does not list for firn, so a new package is
+  registered there before the first tag that ships it.
   apt-publisher then dispatches snosi's rebuild; the installer ISO installs
   its pinned firn version from `trixie`
-  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)).
+  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)) and not
+  `frostyard-firn-gui`, which is for live desktop sessions. The nightly
+  `dev` snapshot builds both packages but is never published to APT.
 
 ## References
 
@@ -303,7 +444,8 @@ uses the same engine preflight as headless installation.
   [ADR-0005](../adr/0005-toml-recipe-model.md),
   [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
   [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
-  [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md)
+  [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md),
+  [ADR-0021](../adr/0021-graphical-installer-separate-executable.md)
 - Scope and contract: [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
   [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
   [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md),
@@ -312,4 +454,5 @@ uses the same engine preflight as headless installation.
   [specs/progress-protocol.md](../specs/progress-protocol.md),
   [specs/core-flatpaks-label.md](../specs/core-flatpaks-label.md)
 - Release and distribution: [ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)
-- Built in: [roadmap — Phases 1–7](../plans/roadmap.md)
+- Built in: [roadmap — Phases 1–7](../plans/roadmap.md); the graphical
+  installer in [Phase 11](../plans/roadmap.md#phase-11-graphical-installer-medium-in-progress)
