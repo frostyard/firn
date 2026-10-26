@@ -58,10 +58,13 @@ removed. -->
 - The graphical installer is the nested Go module `gui/`
   (`github.com/frostyard/firn/gui`, Go 1.27.3 for mygo; ADR-0021). Root
   targets never enter it: changes under `gui/` also run `make gui-check`
-  (tidy diff, gofmt, vet, tests; the tests need Pango and Cairo). The
-  pinned golangci-lint cannot lint it until a release is built with Go
-  1.27.3 or newer. Its field validation calls `recipe.Validate` on an
-  assembled recipe (`gui/internal/installer/validate.go`) — never copy
+  (tidy diff, gofmt, vet, tests), which CI's `gui` job runs with Go from
+  `gui/go.mod`. Install Pango and Cairo first: without them mygo's text
+  engine falls back to a stub that draws no text and the tests pass
+  without real layout. The pinned golangci-lint cannot lint it until a
+  release is built with Go 1.27.3 or newer. Its field validation calls
+  `recipe.Validate` on an assembled recipe
+  (`gui/internal/installer/validate.go`) — never copy
   schema patterns into it. Changing a page: re-render with
   `FIRN_GUI_SNAPSHOTS=<dir> go test ./internal/installer -run TestSnapshots`
   (from `gui/`) and look at both appearances.
@@ -71,12 +74,16 @@ removed. -->
   the pipeline stays under `internal/` (firn's public contracts are
   the recipe schema and progress protocol, not Go APIs).
 - Releases: conventional commits; `make bump` tags via svu; GoReleaser
-  Pro builds `frostyard-firn` packages plus a nightly `dev`
+  Pro builds `frostyard-firn` and `frostyard-firn-gui` packages (the
+  latter from `gui/` with `GOTOOLCHAIN=auto`) plus a nightly `dev`
   snapshot. The tag workflow attests every release asset, then sends
   one unguarded `publish-deb` request to frostyard/apt-publisher, which
   publishes the `.deb` files and dispatches snosi's rebuild (ADR-0017).
-  Never add a repogen publish step or a direct snosi dispatch;
-  `cmd/firn-cli/release_workflow_contract_test.go` pins the workflow
+  apt-publisher refuses a release with a package name its
+  `config/producers.tsv` does not list for firn: register a new package
+  there before the tag that ships it. Every archive and nfpm entry names
+  its build `ids`. Never add a repogen publish step or a direct snosi
+  dispatch; `cmd/firn-cli/release_workflow_contract_test.go` pins the workflow
   (with `go.yaml.in/yaml/v3`, test-only, sanctioned by ADR-0017).
 - Pipeline and domain packages (`internal/*` except the TUI) use only the
   Go stdlib plus shelling out to host tools; the sanctioned exceptions are

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  firn-gui started without root re-runs itself through pkexec (ADR-0021).
+  This action names that executable so the prompt describes the installer
+  instead of pkexec's generic "run a program as another user".
+-->
+<policyconfig>
+  <vendor>Frostyard</vendor>
+  <vendor_url>https://github.com/frostyard/firn</vendor_url>
+  <icon_name>system-software-install</icon_name>
+
+  <action id="org.frostyard.firn.gui">
+    <description>Install a snosi image on a disk</description>
+    <message>Authentication is required to run the installer, which erases the disk it installs to</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/firn-gui</annotate>
+  </action>
+
+</policyconfig>

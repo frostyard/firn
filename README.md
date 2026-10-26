@@ -85,12 +85,16 @@ make check     # fmt + lint + test — the gate for "done"
 make ci        # credential-free gate mirroring CI: verify, coverage, race
                # detector, and linux amd64/arm64 builds
 make gui-build # build ./build/firn-gui (gui/ module, Go 1.27.3, no CGO)
-make gui-check # the gui/ gate: tidy, gofmt, vet, tests (needs Pango/Cairo)
+make gui-check # the gui/ gate (CI's gui job): tidy, gofmt, vet, tests
 make gui-demo  # run the graphical installer in demo mode
 ```
 
 `firn-gui` loads GTK 3, Pango and Cairo at run time (no WebKitGTK) and
-draws with OpenGL, or on the CPU without it.
+draws with OpenGL, or on the CPU without it. Install Pango and Cairo
+before `make gui-check`: without them mygo falls back to a stub text
+engine that draws no text, and the tests pass without real layout.
+Releases ship it as the `frostyard-firn-gui` package, with a desktop
+entry and a polkit action for `/usr/bin/firn-gui`.
 
 End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
 and verify the booted disk over SSH (`test/e2e-bootc.sh`,

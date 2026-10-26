@@ -264,9 +264,30 @@ module mode); nothing in the root module imports it, so the `firn` binary,
 its Go pin and `make check` are unchanged. `make gui-build` writes
 `build/firn-gui`; `make gui-check` is its gate (tidy diff, gofmt, vet,
 tests) until the pinned golangci-lint is built with Go 1.27.3 or newer.
+CI runs it as the `gui` job of `.github/workflows/test.yml`, with Go from
+`gui/go.mod` and Pango and Cairo installed.
 The UI is mygo native UI (`github.com/egoist/mygo`, exact pin in
 `gui/go.mod`): drawn in Go with OpenGL or the CPU, GTK 3, Pango and Cairo
 loaded with `dlopen`, no cgo, no webview.
+
+Releases build it with GoReleaser (build id `firn-gui`, `dir: gui`, linux
+amd64/arm64, `CGO_ENABLED=0`). The workflows set up the root module's Go
+and `actions/setup-go` exports `GOTOOLCHAIN=local`, so the build sets
+`GOTOOLCHAIN=auto` and that Go fetches 1.27.3. It ships as a `firn-gui_*`
+archive and the `frostyard-firn-gui` package (deb, rpm, apk):
+
+- `/usr/bin/firn-gui`;
+- `/usr/share/applications/firn-gui.desktop` (from `gui/data/`), which
+  runs `firn-gui` unprivileged and lets it elevate;
+- `/usr/share/polkit-1/actions/org.frostyard.firn.gui.policy`, whose
+  `org.freedesktop.policykit.exec.path` names `/usr/bin/firn-gui`, so
+  pkexec's prompt describes the installer; active sessions authenticate
+  as an administrator once and keep it (`auth_admin_keep`).
+
+Like `frostyard-firn`, the package declares no dependencies: the
+libraries are loaded with `dlopen`, and the live desktop image provides
+them, `pkexec` and the install tools. Each archive and package names its
+build ids, so `frostyard-firn` and the `firn_*` archive keep only `firn`.
 
 It follows the TUI's model exactly: a recipe generator running the
 pipeline in-process.
@@ -327,7 +348,10 @@ pipeline in-process.
   wizard by keyboard and installs through the demo backend);
   `FIRN_GUI_SNAPSHOTS=<dir>` renders every page in both appearances to
   PNG; `FIRN_GUI_WINDOW_TEST=<png>` opens the real window and captures it.
-  The tests need Pango and Cairo, which mygo's text engine loads.
+  mygo's text engine loads Pango and Cairo; without them it falls back to
+  a stub that lays out every rune as half an em and draws nothing, and the
+  tests still pass. CI installs them so the tests exercise real text
+  layout, and snapshots are only worth reading with them.
 
 ### Progress and frontends
 
@@ -373,11 +397,17 @@ uses the same engine preflight as headless installation.
   ([ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)):
   a tag runs `.github/workflows/release.yml`, which creates the GitHub
   release, attests its assets' build provenance, and asks
-  frostyard/apt-publisher to publish the `frostyard-firn` `.deb` files to
+  frostyard/apt-publisher to publish the `frostyard-firn` and
+  `frostyard-firn-gui` `.deb` files to
   `https://repository.frostyard.org/debian/` (`trixie` and `forky`).
+  apt-publisher refuses a release containing a package name its
+  `config/producers.tsv` does not list for firn, so a new package is
+  registered there before the first tag that ships it.
   apt-publisher then dispatches snosi's rebuild; the installer ISO installs
   its pinned firn version from `trixie`
-  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)).
+  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)) and not
+  `frostyard-firn-gui`, which is for live desktop sessions. The nightly
+  `dev` snapshot builds both packages but is never published to APT.
 
 ## References
 

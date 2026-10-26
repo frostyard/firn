@@ -63,11 +63,49 @@ builds:
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser
 
+  # The graphical installer is the nested module in gui/ (ADR-0021), which
+  # needs Go 1.27.3 for mygo. The workflows set up the root module's Go and
+  # actions/setup-go exports GOTOOLCHAIN=local, so this build sets
+  # GOTOOLCHAIN=auto to let that go fetch gui/go.mod's toolchain. mygo loads
+  # GTK, Pango and Cairo with dlopen, so it cross-builds without cgo.
+  - id: "firn-gui"
+    binary: firn-gui
+    dir: gui
+    main: ./cmd/firn-gui
+    env:
+      - CGO_ENABLED=0
+      - GOTOOLCHAIN=auto
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser
+
+# Each archive and package names its build ids: without them every one would
+# take both binaries.
 archives:
-  - files:
+  - id: firn
+    ids:
+      - firn
+    files:
       - README.md
       - LICENSE
       - NOTICE
+  - id: firn-gui
+    ids:
+      - firn-gui
+    name_template: "firn-gui_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - NOTICE
+      - gui/data/firn-gui.desktop
+      - gui/data/org.frostyard.firn.gui.policy
 
 
 checksum:
@@ -102,7 +140,10 @@ changelog:
       order: 9999
 
 nfpms:
-  - file_name_template: "{{ .ConventionalFileName }}"
+  - id: firn
+    ids:
+      - firn
+    file_name_template: "{{ .ConventionalFileName }}"
     package_name: frostyard-firn
     description: |-
       The bootc installer for snosi images.
@@ -116,6 +157,32 @@ nfpms:
         dst: /usr/share/zsh/site-functions/_firn
       - src: ./manpages/firn.1.gz
         dst: /usr/share/man/man1/firn.1.gz
+    formats:
+      - deb
+      - rpm
+      - apk
+
+  # /usr/bin/firn-gui comes from the build. Like frostyard-firn, the package
+  # declares no Depends: GTK 3, Pango and Cairo are loaded with dlopen, and
+  # the live desktop image provides them, pkexec and the install tools.
+  - id: firn-gui
+    ids:
+      - firn-gui
+    file_name_template: "{{ .ConventionalFileName }}"
+    package_name: frostyard-firn-gui
+    description: |-
+      The graphical installer for snosi images.
+    license: GPL-3.0-only
+    contents:
+      - src: ./gui/data/firn-gui.desktop
+        dst: /usr/share/applications/firn-gui.desktop
+        file_info:
+          mode: 0644
+      # firn-gui re-runs itself through pkexec; this action names it.
+      - src: ./gui/data/org.frostyard.firn.gui.policy
+        dst: /usr/share/polkit-1/actions/org.frostyard.firn.gui.policy
+        file_info:
+          mode: 0644
     formats:
       - deb
       - rpm

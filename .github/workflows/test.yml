@@ -43,6 +43,40 @@ jobs:
       - name: Run canonical gate
         run: make ci
 
+  gui:
+    name: Graphical installer gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # gui/ is a nested module on its own Go pin (go 1.27.3 for mygo,
+      # ADR-0021). setup-go exports GOTOOLCHAIN=local, so this job installs
+      # gui/go.mod's version instead of the root module's go1.26.10.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: gui/go.mod
+          cache-dependency-path: gui/go.sum
+
+      # mygo's text engine loads Pango and Cairo with dlopen. Without them it
+      # falls back to a stub that lays out every rune as half an em and draws
+      # nothing, and the headless page tests still pass: these libraries make
+      # them exercise real text layout. GTK 3 is only loaded to open a window,
+      # which the opt-in window smoke test does and CI does not.
+      - name: Install Pango and Cairo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangocairo-1.0-0 libcairo2
+
+      # make gui-check is gui/'s gate: tidy diff, gofmt, vet, tests. The
+      # pinned golangci-lint cannot read go1.27.3 export data yet, so it is
+      # not part of this job; `make ci` above stays the root module's gate.
+      - name: Run gui/ gate
+        run: make gui-check
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

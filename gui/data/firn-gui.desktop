@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Install snosi
+GenericName=System Installer
+Comment=Install a snosi image on this computer's disk
+Exec=firn-gui
+Icon=system-software-install
+Terminal=false
+Categories=System;
+Keywords=install;installer;bootc;snosi;disk;
+StartupNotify=true
+StartupWMClass=firn-gui
