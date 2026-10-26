@@ -1,6 +1,10 @@
 # 0021 — Ship a graphical installer as a separate executable in its own Go module
 
-- **Status:** Accepted (2026-10-26)
+- **Status:** Accepted (2026-10-26); amended by snosi
+  [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)
+  ([frostyard/snosi#1155](https://github.com/frostyard/snosi/pull/1155)): the installer ISO is no longer
+  unaffected, since its boot menu adds a graphical entry that runs `firn-gui`
+  full screen beside the console entry that keeps the TUI kiosk.
 - **Date:** 2026-10-25
 
 ## Context

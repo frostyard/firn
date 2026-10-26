@@ -27,8 +27,9 @@ forking is [ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md).
 - **Built-in TUI.** The bare `firn` command opens a terminal wizard
   (single binary, Charm stack, [ADR-0007](docs/adr/0007-tui-only-frontend-single-binary.md))
   that walks the install and emits a recipe you can reproduce headlessly.
-- **Graphical installer.** `firn-gui` is a windowed wizard for live
-  desktop sessions, built from the nested module [`gui/`](gui/)
+- **Graphical installer.** `firn-gui` is a windowed wizard, run by the
+  installer ISO's graphical boot entry or from a live desktop session, built
+  from the nested module [`gui/`](gui/)
   ([ADR-0021](docs/adr/0021-graphical-installer-separate-executable.md)).
   It writes the same recipe as the TUI, runs the same pipeline in-process,
   and has a keyboard shortcut for every action (F1 lists them).
@@ -96,7 +97,9 @@ engine that draws no text, and the tests pass without real layout.
 Releases ship it as the `frostyard-firn-gui` package: the binary in
 `/usr/libexec/firn-gui/` behind a `/usr/bin/firn-gui` symlink, a desktop
 entry, and a polkit action that asks for an administrator's password each
-time. It is meant for live desktop media, not installed systems.
+time. It is meant for installer media, not installed systems: snosi's
+installer ISO offers a graphical boot entry that runs it, beside the console
+entry that runs the TUI.
 
 End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
 and verify the booted disk over SSH (`test/e2e-bootc.sh`,

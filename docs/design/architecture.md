@@ -10,8 +10,9 @@ Living document. Rationale:
 [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
 [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
 [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) (media
-boundary: firn ships binary + kiosk unit + contracts; snosi ships the
-single installer ISO).
+boundary: firn ships the binaries and contracts; snosi ships the single
+installer ISO, its kiosk units, and the graphical/console boot entries of
+snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)).
 Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
 [specs/progress-protocol.md](../specs/progress-protocol.md),
 [specs/core-flatpaks-label.md](../specs/core-flatpaks-label.md).
@@ -33,7 +34,7 @@ TOML recipe (accepting bootc-v1 with a warning until 2026-12-30, then
 rejecting it), either headless (`firn install recipe.toml`) or through a
 built-in TUI wizard that generates the same recipe and runs the same
 pipeline in-process. A separate graphical installer, `firn-gui`, does the
-same for live desktop sessions
+same for the installer ISO's graphical boot entry and live desktop sessions
 ([below](#graphical-installer-gui)).
 
 ```
@@ -293,11 +294,16 @@ archive and the `frostyard-firn-gui` package (deb, rpm, apk):
   `no` for inactive and remote sessions).
 
 Like `frostyard-firn`, the package declares no dependencies: the
-libraries are loaded with `dlopen`, and the live desktop image provides
+libraries are loaded with `dlopen`, and the media that carry it provide
 them, `pkexec` and the install tools. Each archive and package names its
 build ids, so `frostyard-firn` and the `firn_*` archive keep only `firn`.
-The package is for live desktop media only: installed images must not
-include it, or every desktop would get a launcher that can erase a disk.
+The package is for installer media only: the installer ISO's graphical
+boot entry runs it full screen in cage as root, with no `pkexec`, and falls
+back to the TUI kiosk when there is no usable display (snosi
+[ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)). Installed images must not include it, or every
+desktop would get a launcher that can erase a disk; snosi's
+`test/firn-gui-scope-test.sh` fails a build that lists it outside the
+installer profile.
 
 It follows the TUI's model exactly: a recipe generator running the
 pipeline in-process.
@@ -433,8 +439,9 @@ uses the same engine preflight as headless installation.
   registered there before the first tag that ships it.
   apt-publisher then dispatches snosi's rebuild; the installer ISO installs
   its pinned firn version from `trixie`
-  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)) and not
-  `frostyard-firn-gui`, which is for live desktop sessions. The nightly
+  ([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)), with
+  `frostyard-firn-gui` for its graphical boot entry (snosi
+  [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)). The nightly
   `dev` snapshot builds both packages but is never published to APT.
 
 ## References

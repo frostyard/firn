@@ -1,6 +1,11 @@
 # 0010 — One installer ISO for all image families, built in the snosi repo
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by snosi
+  [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md): the ISO's boot menu offers a graphical entry
+  running `firn-gui` (`frostyard-firn-gui`, firn
+  [ADR-0021](0021-graphical-installer-separate-executable.md)) beside the
+  console entry running firn's TUI. The kiosk units live in snosi
+  (`shared/firn-installer/`); firn ships the binaries and contracts.
 - **Date:** 2026-08-11
 
 ## Context
