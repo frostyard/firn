@@ -104,6 +104,31 @@ ci:
 	done
 	@echo "==> ci passed"
 
+# ---------------------------------------------------------------------------
+# The graphical installer is a nested Go module (gui/, ADR-0021) on its own
+# Go pin (1.27.3, which mygo needs). The root targets above never enter it;
+# changes under gui/ also run `make gui-check`. golangci-lint joins that gate
+# once the mise.toml pin is built with Go 1.27.3 or newer: older builds
+# cannot read that toolchain's export data.
+
+.PHONY: gui-build gui-check gui-demo
+
+## gui-build: Build the graphical installer to ./build/firn-gui
+gui-build:
+	cd gui && $(GO) build $(LDFLAGS) -o ../build/firn-gui ./cmd/firn-gui
+
+## gui-check: gui/ gate: tidy diff, gofmt, vet, tests (needs Pango and Cairo installed)
+gui-check:
+	cd gui && $(GO) mod tidy -diff
+	@unformatted="$$($(GOFMT) -l gui)"; \
+	if [ -n "$$unformatted" ]; then echo "$$unformatted"; echo "gofmt: files need formatting (run make fmt)"; exit 1; fi
+	cd gui && $(GO) vet ./...
+	cd gui && $(GO) test ./...
+
+## gui-demo: Run the graphical installer in demo mode (no root, nothing written to disk)
+gui-demo: gui-build
+	./build/firn-gui --demo
+
 ## help: Show this help message
 help:
 	@echo "Usage: make [target]"
