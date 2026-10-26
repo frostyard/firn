@@ -169,3 +169,38 @@ func TestGroupsCoverBuiltinDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadReadsTheOverridePath(t *testing.T) {
+	// Load is LoadFrom(OverridePath), whatever this machine has there.
+	got, gotWarn := Load()
+	want, wantWarn := LoadFrom(OverridePath)
+	if len(got) != len(want) || (gotWarn == nil) != (wantWarn == nil) {
+		t.Fatalf("Load = %d entries (warn %v), LoadFrom(OverridePath) = %d (warn %v)", len(got), gotWarn, len(want), wantWarn)
+	}
+	for i := range got {
+		if got[i].Name != want[i].Name || got[i].Ref != want[i].Ref {
+			t.Errorf("entry %d: %+v != %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLoadUnreadableOrTrailingOverrideFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	trailing := filepath.Join(dir, "trailing.json")
+	body := `[{"family": "bootc", "name": "x", "ref": "r"}] []`
+	if err := os.WriteFile(trailing, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, path := range map[string]string{
+		"directory":     dir, // reading it fails with an error other than not-exist
+		"trailing JSON": trailing,
+	} {
+		entries, warn := LoadFrom(path)
+		if warn == nil || !strings.Contains(warn.Error(), "using built-in catalog") {
+			t.Errorf("%s: warn = %v, want a loud fallback", name, warn)
+		}
+		if len(entries) != len(Builtin()) {
+			t.Errorf("%s: got %d entries, want the built-ins", name, len(entries))
+		}
+	}
+}
