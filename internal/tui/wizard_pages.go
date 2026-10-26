@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 
+	"github.com/frostyard/firn/internal/catalog"
 	"github.com/frostyard/firn/internal/disk"
 	"github.com/frostyard/firn/internal/recipe"
 )
@@ -354,26 +355,22 @@ func (w *wizard) systemForm() *huh.Form {
 	)
 }
 
-// groupOptions is the single source of the group multi-select's offered
-// set. Every group a catalog entry's default_groups may preselect MUST be
-// listed here -- huh's MultiSelect silently drops selected values it has
+// groupOptions is the group multi-select's offered set, built from
+// catalog.Groups, the single source shared with the graphical installer.
+// Every group a catalog entry's default_groups may preselect MUST be
+// listed there -- huh's MultiSelect silently drops selected values it has
 // no option for (pinned by TestGroupOptionsCoverAllBuiltinDefaults).
 func groupOptions() []huh.Option[string] {
-	return []huh.Option[string]{
-		huh.NewOption("sudo — administrator", "sudo"),
-		huh.NewOption("docker — run containers without sudo", "docker"),
-		huh.NewOption("incus-admin — manage incus VMs/containers", "incus-admin"),
-		huh.NewOption("lpadmin — manage printers", "lpadmin"),
-		huh.NewOption("scanner — use scanners", "scanner"),
-		huh.NewOption("adm — read system logs", "adm"),
-		huh.NewOption("audio", "audio"),
-		huh.NewOption("video", "video"),
-		huh.NewOption("input — raw input devices", "input"),
-		huh.NewOption("render — GPU compute/render nodes", "render"),
-		huh.NewOption("dialout — serial devices", "dialout"),
-		huh.NewOption("plugdev — removable devices", "plugdev"),
-		huh.NewOption("netdev — network configuration", "netdev"),
+	groups := catalog.Groups()
+	opts := make([]huh.Option[string], 0, len(groups))
+	for _, g := range groups {
+		label := g.Name
+		if g.Description != "" {
+			label += " — " + g.Description
+		}
+		opts = append(opts, huh.NewOption(label, g.Name))
 	}
+	return opts
 }
 
 // groupOptionValues returns just the option values, for coverage checks.
