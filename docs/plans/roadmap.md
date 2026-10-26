@@ -423,12 +423,12 @@ kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/00
    lists `frostyard-firn-gui` for firn in `config/producers.tsv`, on trixie
    and forky. apt-publisher refuses a release containing any `.deb` whose
    package name is not listed.
-6. **Keep it out of installed images (snosi, cross-repo).**
-   [frostyard/snosi#1152](https://github.com/frostyard/snosi/pull/1152) adds
+6. ✅ **Keep it out of installed images (snosi, cross-repo).**
+   [frostyard/snosi#1152](https://github.com/frostyard/snosi/pull/1152) added
    `test/firn-gui-scope-test.sh`, which fails a build that lists
    `frostyard-firn-gui` outside the installer profile: every installed
    desktop would otherwise get a launcher that can erase a disk.
-7. **Graphical entry on the installer ISO (snosi, cross-repo).**
+7. ✅ **Graphical entry on the installer ISO (snosi, cross-repo).**
    [frostyard/snosi#1155](https://github.com/frostyard/snosi/pull/1155) (snosi
    [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)) gives the ISO a GRUB menu: **Install snosi
    (console)**, the default, boots the TUI kiosk as before; **Install snosi
@@ -436,8 +436,9 @@ kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/00
    to the TUI when there is no usable display, after Quit, or after three
    crashes. The serial TUI runs under both. The graphics stack (cage pulls
    Mesa through `libgbm1`) raises the ISO from 680 to 783 MiB and the RAM
-   needed to boot from about 3.6 to 4.5 GiB. It waits for a firn release
-   that publishes `frostyard-firn-gui`.
+   needed to boot from about 3.6 to 4.5 GiB. Shipped 2026-10-26 with firn
+   v0.10.0: snosi's `main` build promoted `snosi-installer_20261026191155`
+   (815 MiB) after its smoke test and the 38-check boot-entry test passed.
 8. **Kiosk polish (firn).** Found while building step 7, none blocking: a
    `--kiosk` mode for `firn-gui` (no Close or Ctrl+Q; after the install,
    offer the console installer or power off); a lock so two frontends
