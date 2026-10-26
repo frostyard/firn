@@ -16,12 +16,16 @@
   <action id="org.frostyard.firn.gui">
     <description>Install a snosi image on a disk</description>
     <message>Authentication is required to run the installer, which erases the disk it installs to</message>
+    <!-- Only an active local session may run it, and only with an
+         administrator's password every time: the installer erases a disk. -->
     <defaults>
-      <allow_any>auth_admin</allow_any>
-      <allow_inactive>auth_admin</allow_inactive>
-      <allow_active>auth_admin_keep</allow_active>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/firn-gui</annotate>
+    <!-- pkexec runs the resolved executable: the package installs it alone
+         in /usr/libexec/firn-gui, behind the /usr/bin/firn-gui symlink. -->
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/firn-gui/firn-gui</annotate>
   </action>
 
 </policyconfig>

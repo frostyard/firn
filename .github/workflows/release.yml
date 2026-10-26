@@ -47,6 +47,19 @@ jobs:
       - name: Verify
         run: make verify
 
+      # The graphical installer is the nested gui/ module on its own Go pin
+      # (go 1.27.3 for mygo, ADR-0021), which `make verify` never enters.
+      # setup-go above exports GOTOOLCHAIN=local for the root module's Go;
+      # auto lets that Go fetch gui/go.mod's toolchain, as the GoReleaser
+      # build does. Pango and Cairo make its page tests lay out real text.
+      - name: Verify gui/
+        env:
+          GOTOOLCHAIN: auto
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangocairo-1.0-0 libcairo2
+          make gui-check
+
       # More assembly might be required: Docker logins, GPG, etc.
       # It all depends on your needs.
       - name: Run GoReleaser

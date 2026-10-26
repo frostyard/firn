@@ -162,9 +162,12 @@ nfpms:
       - rpm
       - apk
 
-  # /usr/bin/firn-gui comes from the build. Like frostyard-firn, the package
-  # declares no Depends: GTK 3, Pango and Cairo are loaded with dlopen, and
-  # the live desktop image provides them, pkexec and the install tools.
+  # The binary goes alone into /usr/libexec/firn-gui, behind a /usr/bin
+  # symlink: at startup mygo deletes every ".*.old-*" entry beside its
+  # executable (its self-updater's leftovers), which must never be a shared
+  # directory such as /usr/bin. Like frostyard-firn, the package declares no
+  # Depends: GTK 3, Pango and Cairo are loaded with dlopen, and the live
+  # desktop image provides them, pkexec and the install tools.
   - id: firn-gui
     ids:
       - firn-gui
@@ -173,12 +176,17 @@ nfpms:
     description: |-
       The graphical installer for snosi images.
     license: GPL-3.0-only
+    bindir: /usr/libexec/firn-gui
     contents:
+      - src: /usr/libexec/firn-gui/firn-gui
+        dst: /usr/bin/firn-gui
+        type: symlink
       - src: ./gui/data/firn-gui.desktop
         dst: /usr/share/applications/firn-gui.desktop
         file_info:
           mode: 0644
-      # firn-gui re-runs itself through pkexec; this action names it.
+      # firn-gui re-runs itself through pkexec; this action names it and
+      # asks for an administrator's password every time.
       - src: ./gui/data/org.frostyard.firn.gui.policy
         dst: /usr/share/polkit-1/actions/org.frostyard.firn.gui.policy
         file_info:
