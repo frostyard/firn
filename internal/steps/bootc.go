@@ -38,17 +38,50 @@ func targetDir(env *pipeline.Env) string {
 	return env.TargetDir
 }
 
+// targetDisk returns the canonical whole-disk device path for the recipe's
+// target.disk, resolving a /dev/disk/by-id link once per install
+// (preflight-disk normally did it already and stored the result).
+//
+// Partitions must be named after the canonical device: a by-id link's
+// partition links are <link>-part<N>, so PartName on the link produced
+// paths that never exist, and udev may not have created the -part link yet
+// when the next mkfs runs (lab run run-snow-bootc-lifecycle-lnzgv, firn
+// 0.9.0: "mkfs.fat: unable to open
+// /dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_incus_root1: No such file or
+// directory"). Resolution failure — or a target that is not a whole disk —
+// is an error before any destructive call.
+func targetDisk(ctx context.Context, env *pipeline.Env) (string, error) {
+	if env.TargetDisk != "" {
+		return env.TargetDisk, nil
+	}
+	devices, err := disk.List(ctx, env.Runner)
+	if err != nil {
+		return "", err
+	}
+	dev, err := disk.Resolve(devices, env.Recipe.Target.Disk)
+	if err != nil {
+		return "", err
+	}
+	env.TargetDisk = dev.Path
+	return env.TargetDisk, nil
+}
+
 func runPartition(ctx context.Context, env *pipeline.Env) error {
 	r := env.Recipe
-	var layout disk.Layout
-	var err error
-	switch {
-	case r.Target.Filesystem == "zfs":
+	if r.Target.Filesystem == "zfs" {
 		return fmt.Errorf("zfs root is unsupported by recipe schema version 1")
-	case r.Target.Bootloader == "grub2":
-		layout, err = disk.PartitionGrub2(ctx, env.Runner, r.Target.Disk)
-	default: // systemd-boot is the recipe default (specs/recipe-schema.md)
-		layout, err = disk.PartitionSystemdBoot(ctx, env.Runner, r.Target.Disk)
+	}
+	// Resolve the target first: a by-id link must never reach sfdisk, and an
+	// unresolvable or non-whole-disk target must fail before any write.
+	diskDev, err := targetDisk(ctx, env)
+	if err != nil {
+		return err
+	}
+	var layout disk.Layout
+	if r.Target.Bootloader == "grub2" {
+		layout, err = disk.PartitionGrub2(ctx, env.Runner, diskDev)
+	} else { // systemd-boot is the recipe default (specs/recipe-schema.md)
+		layout, err = disk.PartitionSystemdBoot(ctx, env.Runner, diskDev)
 	}
 	if err != nil {
 		return err
@@ -452,6 +485,12 @@ func runRetagRoot(ctx context.Context, env *pipeline.Env) error {
 	if err != nil {
 		return err
 	}
+	// The retagged partition is named after the canonical device, like the
+	// layout (see targetDisk): a by-id target must never reach sfdisk.
+	diskDev, err := targetDisk(ctx, env)
+	if err != nil {
+		return err
+	}
 	encrypted := r.Security.Encryption != "none"
 	if err := disk.UnmountRecursive(ctx, env.Runner, dir); err != nil {
 		return err
@@ -461,10 +500,10 @@ func runRetagRoot(ctx context.Context, env *pipeline.Env) error {
 			return err
 		}
 	}
-	if err := disk.SetPartitionType(ctx, env.Runner, r.Target.Disk, partNum, disk.LinuxRootX8664GUID); err != nil {
+	if err := disk.SetPartitionType(ctx, env.Runner, diskDev, partNum, disk.LinuxRootX8664GUID); err != nil {
 		return err
 	}
-	if err := disk.WaitForPartition(ctx, env.Runner, r.Target.Disk, partNum, 10*time.Second); err != nil {
+	if err := disk.WaitForPartition(ctx, env.Runner, diskDev, partNum, 10*time.Second); err != nil {
 		return err
 	}
 	if encrypted {

@@ -54,7 +54,14 @@ type Env struct {
 	emitErr error
 
 	// Install state shared between steps, populated as steps run.
-	Layout     disk.Layout
+	Layout disk.Layout
+	// TargetDisk is the canonical whole-disk device path that
+	// recipe target.disk names (preflight-disk resolves it; the first
+	// destructive disk step resolves it lazily when preflight did not
+	// run). Partitioning, the layout and the retag use it, so a
+	// /dev/disk/by-id target gets /dev/sda1-style partition names;
+	// user-facing text and --confirm keep the recipe's path as written.
+	TargetDisk string
 	RootDev    string // device holding the root fs (mapper path when encrypted)
 	LuksKey    string // transient unlock key for TPM enrollment
 	TargetDir  string // where the target filesystem tree is mounted
