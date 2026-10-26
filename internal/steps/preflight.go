@@ -103,28 +103,26 @@ func preflightSteps(p *pipeline.Pipeline, r *recipe.Recipe) []pipeline.Step {
 				return err
 			}
 			target := env.Recipe.Target.Disk
-			dev, ok := disk.Find(devices, target)
-			if !ok {
-				return fmt.Errorf("target disk %s not found (whole disks present: %s)", target, diskPaths(devices))
+			// Resolve a /dev/disk/by-id target to its canonical device here,
+			// before anything destructive: the refusal rules and every later
+			// disk step must agree on the same device, and partition names
+			// must be built from it, not from the link.
+			dev, err := disk.Resolve(devices, target)
+			if err != nil {
+				return err
 			}
 			if reason := disk.RefusalReason(dev, disk.RootDevice(ctx, env.Runner)); reason != "" {
 				return fmt.Errorf("refusing to install to %s: %s", target, reason)
 			}
-			return env.Emit(progress.Info{Message: fmt.Sprintf("target disk %s acceptable (%d bytes)", dev.Path, dev.Size)})
+			env.TargetDisk = dev.Path
+			msg := fmt.Sprintf("target disk %s acceptable (%d bytes)", dev.Path, dev.Size)
+			if dev.Path != target {
+				msg = fmt.Sprintf("target disk %s resolves to %s, acceptable (%d bytes)", target, dev.Path, dev.Size)
+			}
+			return env.Emit(progress.Info{Message: msg})
 		},
 	})
 	return steps
-}
-
-func diskPaths(devices []disk.Device) string {
-	if len(devices) == 0 {
-		return "none"
-	}
-	paths := make([]string, len(devices))
-	for i, d := range devices {
-		paths[i] = d.Path
-	}
-	return strings.Join(paths, ", ")
 }
 
 // readCoreFlatpaks parses the selected image's core Flatpak label before any

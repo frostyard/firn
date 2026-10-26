@@ -11,12 +11,35 @@ package disk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"strings"
 
 	"github.com/frostyard/firn/internal/runner"
 )
+
+// Test seam: resolving a /dev/disk/by-* symlink to its canonical device
+// goes through filepath.EvalSymlinks. Tests replace it so a by-id target
+// resolves without real udev links or block devices.
+var evalSymlinks = filepath.EvalSymlinks
+
+// SwapEvalSymlinks replaces the symlink resolver CanonicalPath and Find
+// consult, returning a restore func. Exported only so pipeline-level tests
+// in OTHER packages — which drive resolution through an assembled step —
+// can simulate a by-id target's link without a real block device. Not for
+// production use.
+func SwapEvalSymlinks(fn func(string) (string, error)) (restore func()) {
+	old := evalSymlinks
+	evalSymlinks = fn
+	return func() { evalSymlinks = old }
+}
+
+// linkDir is where udev keeps its by-id, by-uuid, by-partuuid and by-path
+// symlinks: /dev/disk/by-id/<name> -> ../../sda. A target under it names a
+// link, never a device node.
+const linkDir = "/dev/disk/"
 
 // Device is one lsblk block device (disks with partition children).
 type Device struct {
@@ -77,12 +100,76 @@ func Labels(dev Device) []string {
 	return labels
 }
 
+// CanonicalPath resolves target to the canonical device path it names.
+//
+// A /dev/disk/by-* target (by-id, by-uuid, ...) MUST resolve: udev names a
+// by-id partition link <link>-part<N>, so appending a bare partition number
+// to the link gives paths that do not exist, and udev may not have created
+// the <link>-part<N> link yet when the next step looks for it (lab run
+// run-snow-bootc-lifecycle-lnzgv, firn 0.9.0: "mkfs.fat: unable to open
+// /dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_incus_root1: No such file or
+// directory"). This is a deliberate divergence from fisherman, which
+// appended the partition number to whatever path it was handed.
+//
+// A plain device path that does not exist on this host is returned
+// unchanged: there is no link to follow, and Resolve's lsblk lookup still
+// has to accept it (dry runs and unit-test fixtures name devices that are
+// not present on the machine).
+func CanonicalPath(target string) (string, error) {
+	resolved, err := evalSymlinks(target)
+	if err == nil {
+		return resolved, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) && !strings.HasPrefix(target, linkDir) {
+		return target, nil
+	}
+	return "", err
+}
+
+// Resolve returns the whole-disk Device that target names, with its path
+// already resolved to the canonical device (CanonicalPath). Callers MUST
+// use the returned Path — not the recipe's text — for partitioning,
+// PartName, SetPartitionType and WaitForPartition, so by-id targets get
+// /dev/sda1-style names instead of /dev/disk/by-id/<link>1.
+//
+// It fails before anything destructive runs when the target cannot be
+// resolved, or when it resolves to something that is not a whole disk
+// (a partition, or a link to a device lsblk does not list as a disk).
+func Resolve(devices []Device, target string) (Device, error) {
+	canonical, err := CanonicalPath(target)
+	if err != nil {
+		return Device{}, fmt.Errorf("target disk %s cannot be resolved: %w", target, err)
+	}
+	for _, d := range devices {
+		if d.Path == canonical {
+			return d, nil
+		}
+	}
+	if canonical != target {
+		return Device{}, fmt.Errorf("target disk %s resolves to %s, which is not a whole disk (whole disks present: %s)",
+			target, canonical, diskPaths(devices))
+	}
+	return Device{}, fmt.Errorf("target disk %s not found (whole disks present: %s)", target, diskPaths(devices))
+}
+
+func diskPaths(devices []Device) string {
+	if len(devices) == 0 {
+		return "none"
+	}
+	paths := make([]string, len(devices))
+	for i, d := range devices {
+		paths[i] = d.Path
+	}
+	return strings.Join(paths, ", ")
+}
+
 // Find returns the device for path from a List result, resolving
-// /dev/disk/by-* symlinks to their canonical device path.
+// /dev/disk/by-* symlinks to their canonical device path. It reports
+// false when nothing matches; Resolve reports why.
 func Find(devices []Device, path string) (Device, bool) {
-	resolved := path
-	if r, err := filepath.EvalSymlinks(path); err == nil {
-		resolved = r
+	resolved, err := CanonicalPath(path)
+	if err != nil {
+		resolved = path
 	}
 	for _, d := range devices {
 		if d.Path == resolved || d.Path == path {

@@ -33,7 +33,7 @@ Top level:
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
-| `disk` | string (path) | yes | Whole-disk block device (`/dev/…`, `by-id` paths allowed). Never a partition. |
+| `disk` | string (path) | yes | Whole-disk block device (`/dev/…`, `by-id` paths allowed). Never a partition. A `/dev/disk/by-*` path MUST resolve to a whole disk and is replaced by its canonical device (for example `/dev/sda`) before any destructive step, so partitions are named after the device while the typed `--confirm` value still matches the path as written. |
 | `filesystem` | string | yes | `"btrfs"`, `"xfs"`, or `"ext4"`. ZFS is not part of schema v2 because the installer does not yet have a complete bootable ZFS path. |
 | `btrfs_subvolumes` | bool | no | With btrfs only: create top-level `@`, `@home`, `@snapshots`. Default `false`. |
 | `bootloader` | string | no | `"systemd"` (default) or `"grub2"`. |
