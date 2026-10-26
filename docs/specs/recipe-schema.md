@@ -95,6 +95,14 @@ OpenSSH `sk-*` security-key types. A final newline is allowed; blank lines,
 
 ### Interactive wizard parity
 
+Both interactive frontends — the TUI and the graphical installer
+([ADR-0021](../adr/0021-graphical-installer-separate-executable.md)) —
+follow this section; "the wizard" means either. The graphical installer
+also prefills optional `locale`, `timezone` and `keyboard` values from the
+running session, and `hostname` from the image name, when the value passes
+validation; each prefill can be changed or cleared, and an empty field
+still preserves the image default.
+
 The wizard exposes the common schema plus an opt-in **Advanced image options**
 page for `target_ref` and `bootloader`. The wizard offers GRUB 2 only when Secure Boot is
 inactive because Firn's MOK enrollment path stages a signed systemd-boot
@@ -190,11 +198,12 @@ fail closed with `bad-version`; no downgrade or conversion is attempted.
    machines with no TPM (no silent fallback).
 4. Validation MUST succeed or fail entirely before any destructive step;
    a recipe that validates assembles a runnable pipeline.
-5. The TUI MUST NOT be able to produce a recipe this spec rejects, and
-   every recipe it produces MUST reproduce the same install headless. The
-   accepted review page's TOML byte sequence MUST be the exact persisted
-   `recipe.toml` artifact used by the in-process install and printed
-   reproduce-headless command; the command layer MUST NOT reserialize it.
+5. Neither interactive frontend (the TUI, the graphical installer) may be
+   able to produce a recipe this spec rejects, and every recipe either
+   produces MUST reproduce the same install headless. The accepted review
+   page's TOML byte sequence MUST be the exact persisted `recipe.toml`
+   artifact used by the in-process install and printed reproduce-headless
+   command; the command layer MUST NOT reserialize it.
 6. Secrets (`passphrase`, `password_hash`, file contents) MUST never be
    echoed in logs, progress events, or error messages.
 7. `version` gates the whole schema: any breaking change to this spec
@@ -209,5 +218,7 @@ fail closed with `bad-version`; no downgrade or conversion is attempted.
    [ADR-0015](../adr/0015-bootc-only-installer-scope.md),
    [ADR-0016](../adr/0016-bootc-only-recipe-contract.md),
    [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md)
-   (`core_flatpaks`; see [core Flatpaks label](core-flatpaks-label.md))
+   (`core_flatpaks`; see [core Flatpaks label](core-flatpaks-label.md)),
+   [ADR-0021](../adr/0021-graphical-installer-separate-executable.md)
+   (graphical installer parity)
 - Context: [design/architecture.md](../design/architecture.md)

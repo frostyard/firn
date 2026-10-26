@@ -377,6 +377,43 @@ snosi.
   set before install, and neither firn nor the ISO references first-setup's
   `core.json` or `core-flatpaks.json`.
 
+<a id="phase-11-graphical-installer-medium-in-progress"></a>
+## Phase 11 — Graphical installer (medium) — ⏳ in progress
+
+**In progress.** [ADR-0021](../adr/0021-graphical-installer-separate-executable.md)
+(Proposed) adds `firn-gui`, a graphical wizard for live desktop sessions, as
+a separate executable in the nested module `gui/`
+([design](../design/architecture.md#graphical-installer-gui)). It produces
+recipes under the same parity rules as the TUI
+([recipe schema](../specs/recipe-schema.md#interactive-wizard-parity), rule
+5) and consumes the pipeline's events in-process
+([progress protocol](../specs/progress-protocol.md#derived-artifacts)).
+Out of scope: the installer ISO, which keeps its TUI kiosk and no graphics
+stack (ADR-0007, ADR-0010).
+
+1. ✅ **Share the catalog.** `internal/catalog` holds the image catalog and
+   the offered user groups; the TUI reads both from it.
+2. ✅ **The wizard.** mygo native UI pages for every field the TUI offers,
+   schema-backed field validation, typed disk confirmation, in-process
+   install with cancel, the recovery-key acknowledgement, pkexec
+   self-elevation, keyboard shortcuts for every action, and `--demo`.
+   Headless page tests, PNG snapshots and a real-window smoke test;
+   `make gui-build`, `make gui-check`, `make gui-demo`.
+3. **Gate it in CI.** Run `make gui-check` in `.github/workflows/test.yml`
+   (with Pango and Cairo installed), and add golangci-lint to the target
+   once the mise.toml pin is built with Go 1.27.3 or newer.
+4. **Package it.** A GoReleaser build from `gui/` and a
+   `frostyard-firn-gui` package (deb), published like `frostyard-firn`
+   ([ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)),
+   with a desktop entry and a polkit action for `/usr/bin/firn-gui`.
+5. **Prove it on hardware.** Install Snow from a live desktop session with
+   `firn-gui` on a real machine: unencrypted, `tpm2-luks` (recovery key
+   shown) and Secure Boot with MOK enrollment.
+
+- **Done when:** a `frostyard-firn-gui` package from a tagged release
+  installs Snow from a live desktop session on real hardware, and the
+  booted system matches the reviewed recipe.
+
 ## Later / ideas
 
 - ✅ **Encrypted bootc installs of UKI-entry images — boot-time unlock

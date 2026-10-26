@@ -27,6 +27,11 @@ forking is [ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md).
 - **Built-in TUI.** The bare `firn` command opens a terminal wizard
   (single binary, Charm stack, [ADR-0007](docs/adr/0007-tui-only-frontend-single-binary.md))
   that walks the install and emits a recipe you can reproduce headlessly.
+- **Graphical installer.** `firn-gui` is a windowed wizard for live
+  desktop sessions, built from the nested module [`gui/`](gui/)
+  ([ADR-0021](docs/adr/0021-graphical-installer-separate-executable.md)).
+  It writes the same recipe as the TUI, runs the same pipeline in-process,
+  and has a keyboard shortcut for every action (F1 lists them).
 - **One progress protocol.** Every user-visible signal from the pipeline is a
   typed progress event ([spec](docs/specs/progress-protocol.md)); `--json-progress`
   streams it as NDJSON for automation.
@@ -50,6 +55,14 @@ rejected for bare `firn` before the wizard starts and for `firn validate`
 before validation, with an error directing the reader to the supported
 recipe-backed preflight command.
 
+The graphical installer takes the same detection overrides:
+
+```sh
+firn-gui                      # needs root; re-runs itself through pkexec when started without it
+firn-gui --demo               # try it unprivileged: simulated disks and install, nothing written
+firn-gui --appearance dark    # light or dark; default follows the desktop
+```
+
 `firn install` takes detection overrides (`--secure-boot`, `--tpm`, and
 `--uefi`, each `auto|on|off`) that force the machine-capability probes when you
 know better than autodetection — e.g. in a VM. They also reach the wizard when
@@ -71,7 +84,13 @@ make build     # build ./build/firn
 make check     # fmt + lint + test — the gate for "done"
 make ci        # credential-free gate mirroring CI: verify, coverage, race
                # detector, and linux amd64/arm64 builds
+make gui-build # build ./build/firn-gui (gui/ module, Go 1.27.3, no CGO)
+make gui-check # the gui/ gate: tidy, gofmt, vet, tests (needs Pango/Cairo)
+make gui-demo  # run the graphical installer in demo mode
 ```
+
+`firn-gui` loads GTK 3, Pango and Cairo at run time (no WebKitGTK) and
+draws with OpenGL, or on the CPU without it.
 
 End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
 and verify the booted disk over SSH (`test/e2e-bootc.sh`,
@@ -92,6 +111,10 @@ internal/bootcimg/    bootc install (podman/bootc)
 internal/enroll/      MOK and TPM enrollment helpers
 internal/secureboot/  UEFI Secure Boot ESP chain + contract (schema-1)
 internal/tui/         the terminal wizard
+internal/catalog/     image catalog + offered groups, shared by both wizards
+gui/                  the graphical installer (nested Go module, ADR-0021)
+  cmd/firn-gui/       its entry point: flags, pkexec self-elevation
+  internal/installer/ pages, schema-backed validation, in-process install
 internal/progress/    the progress protocol emitters
 ```
 

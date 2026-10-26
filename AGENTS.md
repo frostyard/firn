@@ -1,7 +1,8 @@
 # Firn
 
 Firn installs snosi bootc OCI images from version-2 recipes (with temporary
-bootc-v1 compatibility), with a built-in TUI.
+bootc-v1 compatibility), with a built-in TUI and a separate graphical
+installer, `firn-gui` (nested module `gui/`, ADR-0021).
 It is a deeply-inspired GPL-3.0-only rewrite of fisherman (attribution in
 `NOTICE`, rationale in ADR-0003). Start at
 [docs/README.md](docs/README.md).
@@ -54,6 +55,16 @@ removed. -->
   install` when golangci-lint is absent (core ADR-0043). Run `mise install`
   once to provision the pinned golangci-lint (and Go) from
   [`mise.toml`](mise.toml)/[`mise.lock`](mise.lock) before any target.
+- The graphical installer is the nested Go module `gui/`
+  (`github.com/frostyard/firn/gui`, Go 1.27.3 for mygo; ADR-0021). Root
+  targets never enter it: changes under `gui/` also run `make gui-check`
+  (tidy diff, gofmt, vet, tests; the tests need Pango and Cairo). The
+  pinned golangci-lint cannot lint it until a release is built with Go
+  1.27.3 or newer. Its field validation calls `recipe.Validate` on an
+  assembled recipe (`gui/internal/installer/validate.go`) — never copy
+  schema patterns into it. Changing a page: re-render with
+  `FIRN_GUI_SNAPSHOTS=<dir> go test ./internal/installer -run TestSnapshots`
+  (from `gui/`) and look at both appearances.
 - Layout follows the frostyard Go conventions with documented
   deviations (ADR-0011): `cmd/firn-cli/main.go` is the clix entry,
   `cmd/firn/` holds cobra handlers, and — deviating from SDK-first —
@@ -69,8 +80,10 @@ removed. -->
   (with `go.yaml.in/yaml/v3`, test-only, sanctioned by ADR-0017).
 - Pipeline and domain packages (`internal/*` except the TUI) use only the
   Go stdlib plus shelling out to host tools; the sanctioned exceptions are
-  the TOML decoder (ADR-0005) and, in the TUI layer only, the Charm stack
-  (ADR-0007). Do not add other dependencies without an ADR.
+  the TOML decoder (ADR-0005), in the TUI layer only, the Charm stack
+  (ADR-0007), and, in the `gui/` module only, mygo (ADR-0021). Do not add
+  other dependencies without an ADR. The image catalog and offered user
+  groups live in `internal/catalog`, shared by both frontends.
 - Recipe validation is fail-closed: unknown fields, unknown enum values,
   and wrong-family fields are errors (`internal/recipe/validate.go` is the
   canonical example). New recipe fields change
