@@ -81,7 +81,7 @@ ordered so every phase ends with something demonstrable in a VM.
 - **Done when:** an E2E matrix run applies every `[system]` field on
   both families and asserts each on the booted system.
 
-## Phase 6 — TUI (medium) — ✅ shipped 2026-08-11 (tmux-driven E2E walks the real wizard and installs both families in nested VMs; booted disks verify over SSH; wizard-generated recipes pass `firn validate` as validation-level headless reuse. The family engine E2Es cover execution; the TUI harness does not perform a redundant second install. Wizard opens with the bootc-vs-A/B guidance page; kiosk units in dist/)
+## Phase 6 — TUI (medium) — ✅ shipped 2026-08-11 (tmux-driven E2E walks the real wizard and installs both families in nested VMs; booted disks verify over SSH; wizard-generated recipes pass `firn validate` as validation-level headless reuse. The family engine E2Es cover execution; the TUI harness does not perform a redundant second install. Wizard opens with the bootc-vs-A/B guidance page; kiosk units, which now live in snosi's `shared/firn-installer/`)
 
 - Wizard flows per [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md):
   recipe generation, in-process pipeline run, progress view,
@@ -381,15 +381,17 @@ snosi.
 ## Phase 11 — Graphical installer (medium) — ⏳ in progress
 
 **In progress.** [ADR-0021](../adr/0021-graphical-installer-separate-executable.md)
-(Accepted 2026-10-26) adds `firn-gui`, a graphical wizard for live desktop sessions, as
+(Accepted 2026-10-26) adds `firn-gui`, a graphical wizard for installer media, as
 a separate executable in the nested module `gui/`
 ([design](../design/architecture.md#graphical-installer-gui)). It produces
 recipes under the same parity rules as the TUI
 ([recipe schema](../specs/recipe-schema.md#interactive-wizard-parity), rule
 5) and consumes the pipeline's events in-process
 ([progress protocol](../specs/progress-protocol.md#derived-artifacts)).
-Out of scope: the installer ISO, which keeps its TUI kiosk and no graphics
-stack (ADR-0007, ADR-0010).
+The installer ISO, built in snosi
+([ADR-0010](../adr/0010-single-installer-iso-in-snosi.md)), gains a
+graphical boot entry for it beside the console entry that keeps the TUI
+kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)).
 
 1. ✅ **Share the catalog.** `internal/catalog` holds the image catalog and
    the offered user groups; the TUI reads both from it.
@@ -416,23 +418,41 @@ stack (ADR-0007, ADR-0010).
    only `firn`. The tag workflow attests it and requests its publication
    with `frostyard-firn`
    ([ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)).
-5. **Register the package with apt-publisher (cross-repo).** Add
-   `frostyard-firn-gui` to firn's packages in frostyard/apt-publisher's
-   `config/producers.tsv` before the next firn tag. apt-publisher refuses a
-   release containing any `.deb` whose package name is not listed, so until
-   then a tag publishes neither package.
-6. **Keep it out of installed images (snosi, cross-repo).** snosi has no
-   live desktop image yet; its installed images must not install
-   `frostyard-firn-gui`, or every desktop would get a launcher that can
-   erase a disk. Ship it only on live desktop media, when one exists.
-7. **Prove it on hardware.** Install Snow from a live desktop session with
-   `firn-gui` on a real machine: unencrypted, `tpm2-luks` (recovery key
+5. ✅ **Register the package with apt-publisher (cross-repo).**
+   [frostyard/apt-publisher#17](https://github.com/frostyard/apt-publisher/pull/17)
+   lists `frostyard-firn-gui` for firn in `config/producers.tsv`, on trixie
+   and forky. apt-publisher refuses a release containing any `.deb` whose
+   package name is not listed.
+6. ✅ **Keep it out of installed images (snosi, cross-repo).**
+   [frostyard/snosi#1152](https://github.com/frostyard/snosi/pull/1152) added
+   `test/firn-gui-scope-test.sh`, which fails a build that lists
+   `frostyard-firn-gui` outside the installer profile: every installed
+   desktop would otherwise get a launcher that can erase a disk.
+7. ✅ **Graphical entry on the installer ISO (snosi, cross-repo).**
+   [frostyard/snosi#1155](https://github.com/frostyard/snosi/pull/1155) (snosi
+   [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)) gives the ISO a GRUB menu: **Install snosi
+   (console)**, the default, boots the TUI kiosk as before; **Install snosi
+   (graphical)** runs `firn-gui` full screen in cage as root and hands tty1
+   to the TUI when there is no usable display, after Quit, or after three
+   crashes. The serial TUI runs under both. The graphics stack (cage pulls
+   Mesa through `libgbm1`) raises the ISO from 680 to 783 MiB and the RAM
+   needed to boot from about 3.6 to 4.5 GiB. Shipped 2026-10-26 with firn
+   v0.10.0: snosi's `main` build promoted `snosi-installer_20261026191155`
+   (815 MiB) after its smoke test and the 38-check boot-entry test passed.
+8. **Kiosk polish (firn).** Found while building step 7, none blocking: a
+   `--kiosk` mode for `firn-gui` (no Close or Ctrl+Q; after the install,
+   offer the console installer or power off); a lock so two frontends
+   cannot install at once (the graphical and serial installers share
+   `/run/firn/target` and the `firn-root` mapper name); and a hard error
+   when Pango is missing instead of a window with no text.
+9. **Prove it on hardware.** Install Snow with `firn-gui` from the
+   installer ISO's graphical entry on a real machine: unencrypted, `tpm2-luks` (recovery key
    shown) and Secure Boot with MOK enrollment, plus the `pkexec` re-exec
    and a GoReleaser snapshot release of the `GOTOOLCHAIN=auto` build.
 
-- **Done when:** a `frostyard-firn-gui` package from a tagged release
-  installs Snow from a live desktop session on real hardware, and the
-  booted system matches the reviewed recipe.
+- **Done when:** the installer ISO's graphical entry, with a
+  `frostyard-firn-gui` package from a tagged release, installs Snow on real
+  hardware, and the booted system matches the reviewed recipe.
 
 ## Later / ideas
 

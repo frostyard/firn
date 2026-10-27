@@ -3,6 +3,9 @@
 - **Status:** Accepted; amended by [ADR-0021](0021-graphical-installer-separate-executable.md)
   (2026-10-26): firn also ships a graphical installer, `firn-gui`, as a
   separate executable that runs the pipeline in-process like the TUI.
+  The installer ISO's kiosk is no longer TUI-only: snosi
+  [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md) adds a graphical boot entry (cage running
+  `firn-gui`) beside the default console entry, which keeps this kiosk.
 - **Date:** 2026-08-11
 
 ## Context
