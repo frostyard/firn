@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,6 +111,9 @@ func TestEmitFailureStopsBeforeNextStepAndUnwinds(t *testing.T) {
 	}
 	if w.writes != 3 {
 		t.Fatalf("writer calls = %d, want 3 (failed emitter must not be reused)", w.writes)
+	}
+	if !lockIsFree(t, env.InstallLockPath) {
+		t.Error("the install lock must be released after an emitter failure")
 	}
 }
 
@@ -470,5 +474,65 @@ func TestUnusableLockPathFailsClosed(t *testing.T) {
 	terminal, ok := evs[len(evs)-1].(progress.Error)
 	if !ok || terminal.Code != progress.CodeStepFailed || terminal.Step != "" {
 		t.Fatalf("terminal error = %#v, want step_failed with an empty step", evs[len(evs)-1])
+	}
+}
+
+// A canceled run still unwinds and drops the install lock, so the next
+// install can start without a reboot.
+func TestLockReleasedAfterCancel(t *testing.T) {
+	env, _ := lockEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	p := &Pipeline{Steps: []Step{{Name: "write", Destructive: true, Run: func(ctx context.Context, _ *Env) error {
+		cancel()
+		return ctx.Err()
+	}}}}
+	if err := p.Run(ctx, env, false); !errors.Is(err, context.Canceled) {
+		t.Fatalf("run error = %v, want context.Canceled", err)
+	}
+	if !lockIsFree(t, env.InstallLockPath) {
+		t.Error("the install lock must be released after a canceled run")
+	}
+}
+
+// The locked descriptor is close-on-exec, so a child tool (bootc, mkfs,
+// mount) cannot inherit the lock and hold it after firn exits.
+func TestLockDescriptorIsCloseOnExec(t *testing.T) {
+	env, _ := lockEnv(t)
+	want, err := filepath.EvalSymlinks(filepath.Dir(env.InstallLockPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = filepath.Join(want, filepath.Base(env.InstallLockPath))
+	checked := false
+	p := &Pipeline{Steps: []Step{{Name: "write", Destructive: true, Run: func(context.Context, *Env) error {
+		entries, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			t.Skipf("no /proc/self/fd: %v", err)
+		}
+		for _, e := range entries {
+			target, err := os.Readlink(filepath.Join("/proc/self/fd", e.Name()))
+			if err != nil || target != want {
+				continue
+			}
+			var fd int
+			if _, err := fmt.Sscanf(e.Name(), "%d", &fd); err != nil {
+				t.Fatal(err)
+			}
+			flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), syscall.F_GETFD, 0)
+			if errno != 0 {
+				t.Fatalf("fcntl F_GETFD: %v", errno)
+			}
+			if flags&syscall.FD_CLOEXEC == 0 {
+				t.Errorf("lock descriptor %d is inheritable (flags %#x)", fd, flags)
+			}
+			checked = true
+		}
+		return nil
+	}}}}
+	if err := p.Run(context.Background(), env, false); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !checked {
+		t.Fatal("no open descriptor named the install lock during the step")
 	}
 }

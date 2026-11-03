@@ -16,7 +16,7 @@ func (a *app) installHeadline() (string, string) {
 	case phaseDone:
 		return name + " is installed", "Remove the installation media, then restart into your new system."
 	case phaseFailed:
-		if a.inst.canceling {
+		if a.inst.stoppedByUser() {
 			return "Installation stopped", "The install was stopped before it finished."
 		}
 		if a.inst.errCode == progress.CodeInstallInProgress {
@@ -177,7 +177,7 @@ func (a *app) outcome(c *ui.Context, kind calloutKind) {
 						next += " MokManager will ask for your one-time password: choose Enroll MOK."
 					}
 					ui.Text(c, next).FontSize(13.5).TextColor(p.text)
-				case s.canceling:
+				case s.stoppedByUser():
 					ui.Text(c, "The installation was stopped").FontSize(18).FontWeight(700)
 					ui.Text(c, "The disk will not boot until you install again.").FontSize(13.5)
 				default:

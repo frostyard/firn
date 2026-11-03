@@ -174,6 +174,14 @@ func stepTitle(name string) string {
 	return name
 }
 
+// stoppedByUser reports whether a failed install ended because the user asked
+// to stop it. A run that could not take the install lock touched no disk, so
+// it is never presented as a stop, even when a cancellation request arrived
+// before its terminal error (progress protocol, install_in_progress).
+func (s *installState) stoppedByUser() bool {
+	return s.canceling && s.errCode != progress.CodeInstallInProgress
+}
+
 // failureTitle is the failure card's heading for a terminal error code.
 func failureTitle(code string) string {
 	if code == progress.CodeInstallInProgress {

@@ -237,3 +237,28 @@ func TestFailureTextForOrdinaryFailure(t *testing.T) {
 		t.Errorf("failedStepLabel(%q) = %q", code, got)
 	}
 }
+
+// A cancellation request that arrives before the lock error must not hide
+// install_in_progress behind "stopped" text: no step ran and no disk was
+// touched (cross-review of frostyard/firn#125).
+func TestInstallInProgressWinsOverCancel(t *testing.T) {
+	a, _ := newTestApp(t, Options{})
+	a.inst.canceling = true
+	a.inst.apply(progress.Start{})
+	a.inst.apply(progress.Error{Code: progress.CodeInstallInProgress, Message: "another firn install is already running"})
+	if a.inst.stoppedByUser() {
+		t.Fatal("install_in_progress must not be presented as a user stop")
+	}
+	if title, _ := a.installHeadline(); title != "Installation not started" {
+		t.Errorf("headline = %q, want Installation not started", title)
+	}
+
+	a.inst = installState{canceling: true}
+	a.inst.apply(progress.Error{Step: "bootc-install", Code: progress.CodeStepFailed, Message: "context canceled"})
+	if !a.inst.stoppedByUser() {
+		t.Error("a canceled install that failed in a step is a user stop")
+	}
+	if title, _ := a.installHeadline(); title != "Installation stopped" {
+		t.Errorf("headline = %q, want Installation stopped", title)
+	}
+}
