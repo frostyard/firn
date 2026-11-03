@@ -71,8 +71,9 @@ func runCore(t *testing.T, l *recipe.Loaded, r *runner.Runner, dryRun bool) (*pi
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: r, UEFI: true, Version: "test",
-		TargetDir:  filepath.Join(t.TempDir(), "target"),
-		ScratchDir: filepath.Join(t.TempDir(), "scratch"),
+		InstallLockPath: lockPath(t),
+		TargetDir:       filepath.Join(t.TempDir(), "target"),
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
 		Emitter: progress.EmitterFunc(func(e progress.Event) error {
 			events = append(events, e)
 			return nil

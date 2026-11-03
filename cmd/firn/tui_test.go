@@ -263,6 +263,7 @@ func TestRunTUIPropagatesInstallResults(t *testing.T) {
 	}{
 		{name: "done", result: tui.InstallResult{Done: true}},
 		{name: "pipeline failure", result: tui.InstallResult{Failed: true, FailedStep: "partition", ErrorCode: progress.CodeStepFailed, ErrorMessage: "disk busy"}, wantErr: "install failed at partition [step_failed]: disk busy"},
+		{name: "install lock held", result: tui.InstallResult{Failed: true, ErrorCode: progress.CodeInstallInProgress, ErrorMessage: "another firn install is already running"}, wantErr: "install failed [install_in_progress]: another firn install is already running"},
 		{name: "view failure", uiErr: uiFailure, isErr: uiFailure},
 		{name: "truncated progress", wantErr: "install failed [stream_truncated]"},
 	}

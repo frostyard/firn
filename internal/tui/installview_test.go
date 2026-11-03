@@ -403,3 +403,35 @@ func TestEventLoopRearmsChannelRead(t *testing.T) {
 		t.Fatal("closed channel should produce channelClosedMsg")
 	}
 }
+
+// A run that could not take the install lock starts no step: the final view
+// must say so instead of "install failed", and keep the stable code
+// (progress protocol, install_in_progress).
+func TestInstallInProgressSaysNothingWasTouched(t *testing.T) {
+	m := startedModel(t)
+	m, _ = apply(t, m, progress.Error{
+		Code:    progress.CodeInstallInProgress,
+		Message: "another firn install is already running on this machine (it holds /run/firn/install.lock); no disk was touched: wait for it to finish, then try again",
+	})
+	view := m.View()
+	if !strings.Contains(view, "install not started") {
+		t.Errorf("view must head install_in_progress with \"install not started\":\n%s", view)
+	}
+	if strings.Contains(view, "install failed") {
+		t.Errorf("a held lock is not a failed install:\n%s", view)
+	}
+	hint := "Another firn install is already running on this machine. This install did not start and no disk was touched. Wait for the other install to finish, then try again."
+	// The sentence wraps to the terminal width; compare unwrapped text.
+	if flat := strings.Join(strings.Fields(ansi.Strip(view)), " "); !strings.Contains(flat, hint) {
+		t.Errorf("view must carry the clear sentence:\n%s", view)
+	}
+	// The message wraps, so the lock path is matched without its wrapping.
+	for _, want := range []string{"code: " + progress.CodeInstallInProgress, "install.lock"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view must contain %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "step: ") {
+		t.Errorf("no step ran, so the view must show no step line:\n%s", view)
+	}
+}

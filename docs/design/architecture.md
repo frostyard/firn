@@ -420,6 +420,14 @@ uses the same engine preflight as headless installation.
 - Cleanup stack unwinding must be idempotent: a failed install should
   leave no mounts, no open mappers, and a re-runnable installer without a
   reboot.
+- Only one firn install writes disks on a machine at a time: every non-dry
+  run — headless, TUI, or GUI — takes an exclusive, non-blocking `flock` on
+  `/run/firn/install.lock` after `start` and before the first step, and
+  holds it until cleanup has unwound. A second run fails at once with
+  `install_in_progress`, having started no step and touched no disk; dry
+  runs take no lock, and the kernel drops the lock when the process exits,
+  so a crashed install leaves no stale lock
+  ([progress protocol](../specs/progress-protocol.md#stable-codes)).
 - Space-constrained live environments (tmpfs/overlay roots) redirect
   scratch onto the target disk, carried from fisherman's
   `isSpaceConstrained` handling.

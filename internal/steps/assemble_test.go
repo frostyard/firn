@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -21,6 +22,13 @@ func load(t *testing.T, src string) *recipe.Loaded {
 		t.Fatal(err)
 	}
 	return l
+}
+
+// lockPath is a throwaway install lock path: a non-dry Run takes the
+// machine-wide lock, and a non-root test user cannot create /run/firn.
+func lockPath(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "install.lock")
 }
 
 func names(p *pipeline.Pipeline) []string {

@@ -8,6 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"syscall"
 
 	"github.com/frostyard/firn/internal/bootcimg"
 	"github.com/frostyard/firn/internal/disk"
@@ -50,6 +53,10 @@ type Env struct {
 	// RegistryProbe, when set, lets preflight-image diagnose an
 	// unreachable registry behind an image failure; nil disables probing.
 	RegistryProbe bootcimg.Prober
+	// InstallLockPath is the machine-wide install lock the pipeline takes
+	// for a non-dry run. Empty means DefaultInstallLockPath; tests set a
+	// temporary path.
+	InstallLockPath string
 
 	emitErr error
 
@@ -143,6 +150,51 @@ type Pipeline struct {
 	Steps []Step
 }
 
+// DefaultInstallLockPath is where a non-dry firn run takes its exclusive
+// install lock. The parent directory is created on demand; the file is never
+// removed.
+const DefaultInstallLockPath = "/run/firn/install.lock"
+
+// installLockPath is the lock path this run uses: InstallLockPath when the
+// caller set one, DefaultInstallLockPath otherwise.
+func (e *Env) installLockPath() string {
+	if e.InstallLockPath != "" {
+		return e.InstallLockPath
+	}
+	return DefaultInstallLockPath
+}
+
+// acquireInstallLock takes an exclusive, non-blocking flock on path so only
+// one firn install (headless, TUI, or GUI) writes disks on this machine at a
+// time. It returns a release function that drops the lock by closing the file
+// descriptor; closing is what releases the flock, so release is safe to call
+// on every exit path and never removes the file. Go opens files with O_CLOEXEC,
+// so child processes (bootc, mkfs, mount) do not inherit the locked
+// descriptor and cannot hold the lock after firn exits.
+//
+// A lock already held by another process is a coded failure
+// (CodeInstallInProgress) that names the lock file; every other failure is
+// plain, so the run fails closed with step_failed and no disk is touched.
+func acquireInstallLock(path string) (release func(), err error) {
+	release = func() {}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return release, fmt.Errorf("take install lock %s: %w", path, err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return release, fmt.Errorf("take install lock %s: %w", path, err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return release, WithErrorCode(progress.CodeInstallInProgress, fmt.Errorf(
+				"another firn install is already running on this machine (it holds %s); no disk was touched: wait for it to finish, then try again", path))
+		}
+		return release, fmt.Errorf("take install lock %s: %w", path, err)
+	}
+	return func() { f.Close() }, nil
+}
+
 type codedError struct {
 	code string
 	err  error
@@ -193,15 +245,29 @@ func (p *Pipeline) Tools() []string {
 	return out
 }
 
-// Run executes the pipeline: Start event, steps in order, cleanup unwind on
-// every exit path, any cleanup warnings, any accumulated summary, then exactly
-// one terminal event (Done or Error), per the progress protocol spec.
+// Run executes the pipeline: Start event, the machine-wide install lock (a
+// non-dry run only), steps in order, cleanup unwind on every exit path, any
+// cleanup warnings, any accumulated summary, then exactly one terminal event
+// (Done or Error), per the progress protocol spec. The lock is released only
+// after cleanup has unwound, because cleanup still touches the disk; a run
+// that cannot take it fails before the first step with an empty step and the
+// install_in_progress code.
 // In dry-run mode only preflight steps execute; the rest are announced
-// and skipped.
+// and skipped, and no lock is taken.
 func (p *Pipeline) Run(ctx context.Context, env *Env, dryRun bool) error {
 	startErr := env.Emit(progress.Start{Protocol: progress.Protocol, Firn: env.Version, Steps: p.ProgressSteps()})
 
 	failedStep, runErr := "", startErr
+	releaseLock := func() {}
+	if runErr == nil && !dryRun {
+		var lockErr error
+		if releaseLock, lockErr = acquireInstallLock(env.installLockPath()); lockErr != nil {
+			// No step ran and no step_start was emitted: the failure is
+			// run-level, so the terminal event carries an empty step.
+			releaseLock = func() {}
+			runErr = lockErr
+		}
+	}
 	if runErr == nil {
 		failedStep, runErr = p.runSteps(ctx, env, dryRun)
 	}
@@ -211,6 +277,9 @@ func (p *Pipeline) Run(ctx context.Context, env *Env, dryRun bool) error {
 		}
 		runErr = errors.Join(runErr, cerr)
 	}
+	// Cleanup is done touching the disk; the lock is no longer needed and is
+	// dropped before the summary and terminal events.
+	releaseLock()
 	if env.emitErr != nil && !errors.Is(runErr, env.emitErr) {
 		runErr = errors.Join(runErr, env.emitErr)
 	}

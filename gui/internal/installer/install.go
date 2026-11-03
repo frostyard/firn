@@ -174,6 +174,42 @@ func stepTitle(name string) string {
 	return name
 }
 
+// stoppedByUser reports whether a failed install ended because the user asked
+// to stop it. A run that could not take the install lock touched no disk, so
+// it is never presented as a stop, even when a cancellation request arrived
+// before its terminal error (progress protocol, install_in_progress).
+func (s *installState) stoppedByUser() bool {
+	return s.canceling && s.errCode != progress.CodeInstallInProgress
+}
+
+// failureTitle is the failure card's heading for a terminal error code.
+func failureTitle(code string) string {
+	if code == progress.CodeInstallInProgress {
+		return "Another installation is already running"
+	}
+	return "Something went wrong"
+}
+
+// failureHint is the plain sentence the failure card shows under its heading,
+// for codes a bare message does not explain. Empty means no hint: the code's
+// message stands on its own.
+func failureHint(code string) string {
+	if code == progress.CodeInstallInProgress {
+		return "Another firn install is already running on this machine. This install did not start and no disk was touched. Wait for the other install to finish, then try again."
+	}
+	return ""
+}
+
+// failedStepLabel is the install page's step line once the install has
+// stopped: the step it stopped at, or "Not started" when no step ran (a held
+// install lock stops the pipeline before the first step).
+func failedStepLabel(code, step string) string {
+	if code == progress.CodeInstallInProgress {
+		return "Not started"
+	}
+	return "Stopped at: " + stepTitle(step)
+}
+
 // warningText expands codes whose message alone is terse, keeping the code
 // visible beside it (progress protocol, derived artifacts).
 func warningText(code, message string) string {

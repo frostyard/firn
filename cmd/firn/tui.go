@@ -224,10 +224,14 @@ func reportTUIResult(stderr io.Writer, res tui.InstallResult, uiErr error, path,
 		runErr = uiErr
 	case res.Done:
 	case res.Failed:
+		where := "install failed"
+		if res.FailedStep != "" {
+			where += " at " + res.FailedStep
+		}
 		if res.ErrorCode == "" {
-			runErr = fmt.Errorf("install failed at %s: %s", res.FailedStep, res.ErrorMessage)
+			runErr = fmt.Errorf("%s: %s", where, res.ErrorMessage)
 		} else {
-			runErr = fmt.Errorf("install failed at %s [%s]: %s", res.FailedStep, res.ErrorCode, res.ErrorMessage)
+			runErr = fmt.Errorf("%s [%s]: %s", where, res.ErrorCode, res.ErrorMessage)
 		}
 	default:
 		runErr = fmt.Errorf("install failed [%s]: progress stream closed before a terminal event", progress.CodeStreamTruncated)
