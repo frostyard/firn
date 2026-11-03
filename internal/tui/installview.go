@@ -344,8 +344,15 @@ func (m installModel) finalView() string {
 	// a blank line or clipped redraw on physical consoles.
 	textWidth := max(10, m.width-1)
 	if m.result.Failed {
-		b.WriteString(errStyle.Render("install failed"))
-		b.WriteString("\n\n")
+		if m.result.ErrorCode == progress.CodeInstallInProgress {
+			b.WriteString(errStyle.Render("install not started"))
+			b.WriteString("\n\n")
+			b.WriteString(ansi.Wrap("Another firn install is already running on this machine. This install did not start and no disk was touched. Wait for the other install to finish, then try again.", textWidth, "/:.-"))
+			b.WriteString("\n\n")
+		} else {
+			b.WriteString(errStyle.Render("install failed"))
+			b.WriteString("\n\n")
+		}
 		if m.result.FailedStep != "" {
 			b.WriteString(ansi.Wrap("step: "+m.result.FailedStep, textWidth, "/:.-"))
 			b.WriteString("\n")

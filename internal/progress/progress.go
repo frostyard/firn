@@ -129,6 +129,11 @@ const (
 	CodeStoreCleanupFailed  = "store_cleanup_failed"
 	CodeStreamTruncated     = "stream_truncated"
 	CodeRecipeV1Deprecated  = "recipe_v1_deprecated"
+
+	// CodeInstallInProgress is raised when another firn process holds the
+	// machine-wide install lock: no step ran and no disk was touched
+	// (docs/specs/progress-protocol.md, stable codes).
+	CodeInstallInProgress = "install_in_progress"
 )
 
 func isTerminal(e Event) bool {

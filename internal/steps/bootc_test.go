@@ -133,8 +133,9 @@ groups = ["wheel"]
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-		TargetDir:  target,
-		ScratchDir: filepath.Join(t.TempDir(), "scratch"),
+		InstallLockPath: lockPath(t),
+		TargetDir:       target,
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
 		Emitter: progress.EmitterFunc(func(e progress.Event) error {
 			events = append(events, e)
 			return nil
@@ -266,6 +267,7 @@ hostname = "frost01"
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
+		InstallLockPath: lockPath(t),
 		Emitter: progress.EmitterFunc(func(e progress.Event) error {
 			events = append(events, e)
 			return nil
@@ -353,7 +355,8 @@ hostname = "frost01"
 			var events []progress.Event
 			env := &pipeline.Env{
 				Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-				RegistryProbe: func(context.Context, string) error { return tc.probeErr },
+				InstallLockPath: lockPath(t),
+				RegistryProbe:   func(context.Context, string) error { return tc.probeErr },
 				Emitter: progress.EmitterFunc(func(e progress.Event) error {
 					events = append(events, e)
 					return nil
@@ -378,6 +381,7 @@ func TestBootcZFSRootRefusedClearly(t *testing.T) {
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: dryRunFake(t), UEFI: true, Version: "test",
+		InstallLockPath: lockPath(t),
 		Emitter: progress.EmitterFunc(func(e progress.Event) error {
 			events = append(events, e)
 			return nil
@@ -442,8 +446,9 @@ func TestUnsignedRegistryInstallPinsPreflightDigest(t *testing.T) {
 	var events []progress.Event
 	env := &pipeline.Env{
 		Recipe: &l.Recipe, Runner: fake, UEFI: true, Version: "test",
-		TargetDir:  filepath.Join(t.TempDir(), "target"),
-		ScratchDir: filepath.Join(t.TempDir(), "scratch"),
+		InstallLockPath: lockPath(t),
+		TargetDir:       filepath.Join(t.TempDir(), "target"),
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
 		Emitter: progress.EmitterFunc(func(e progress.Event) error {
 			events = append(events, e)
 			return nil

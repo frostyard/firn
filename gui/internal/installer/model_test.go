@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/frostyard/firn/internal/catalog"
+	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
 )
 
@@ -199,5 +200,40 @@ func TestSplitList(t *testing.T) {
 	}
 	if splitList("  ") != nil {
 		t.Error("blank input should yield nil")
+	}
+}
+
+// A run that could not take the machine-wide install lock starts no step, so
+// the failure card says another installation is running and that nothing was
+// touched, and the step line says "Not started" (progress protocol,
+// install_in_progress).
+func TestFailureTextForInstallInProgress(t *testing.T) {
+	code := progress.CodeInstallInProgress
+	if got := failureTitle(code); got != "Another installation is already running" {
+		t.Errorf("failureTitle(%q) = %q", code, got)
+	}
+	hint := failureHint(code)
+	for _, want := range []string{"already running", "did not start", "no disk was touched", "try again"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("failureHint(%q) = %q, want it to mention %q", code, hint, want)
+		}
+	}
+	if got := failedStepLabel(code, ""); got != "Not started" {
+		t.Errorf("failedStepLabel(%q) = %q, want Not started", code, got)
+	}
+}
+
+// Every other failure keeps the generic heading, no hint, and the step the
+// install stopped at.
+func TestFailureTextForOrdinaryFailure(t *testing.T) {
+	code := progress.CodeStepFailed
+	if got := failureTitle(code); got != "Something went wrong" {
+		t.Errorf("failureTitle(%q) = %q", code, got)
+	}
+	if got := failureHint(code); got != "" {
+		t.Errorf("failureHint(%q) = %q, want no hint", code, got)
+	}
+	if got := failedStepLabel(code, "bootc-install"); got != "Stopped at: Installing the system image" {
+		t.Errorf("failedStepLabel(%q) = %q", code, got)
 	}
 }

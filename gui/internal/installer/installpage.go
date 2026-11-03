@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/frostyard/firn/internal/progress"
 )
 
 // installHeadline is the install page's title and subtitle for its phase.
@@ -16,6 +18,9 @@ func (a *app) installHeadline() (string, string) {
 	case phaseFailed:
 		if a.inst.canceling {
 			return "Installation stopped", "The install was stopped before it finished."
+		}
+		if a.inst.errCode == progress.CodeInstallInProgress {
+			return "Installation not started", "Another install is running on this machine. No disk was touched."
 		}
 		return "Installation failed", "Nothing more will be written to the disk."
 	}
@@ -46,7 +51,7 @@ func (a *app) installPage(c *ui.Context) {
 				case s.phase == phaseDone:
 					label = "Complete"
 				case s.phase == phaseFailed:
-					label = "Stopped at: " + stepTitle(s.failedStep)
+					label = failedStepLabel(s.errCode, s.failedStep)
 				case s.current < 0:
 					label = "Starting…"
 				}
@@ -177,11 +182,14 @@ func (a *app) outcome(c *ui.Context, kind calloutKind) {
 					ui.Text(c, "The disk will not boot until you install again.").FontSize(13.5)
 				default:
 					ui.Row(c).Gap(8).Children(func() {
-						ui.Text(c, "Something went wrong").FontSize(18).FontWeight(700)
+						ui.Text(c, failureTitle(s.errCode)).FontSize(18).FontWeight(700)
 						if s.errCode != "" {
 							chip(c, s.errCode, fg, p.card).Font("monospace")
 						}
 					})
+					if hint := failureHint(s.errCode); hint != "" {
+						ui.Text(c, hint).FontSize(13.5).TextColor(p.text)
+					}
 					ui.Text(c, s.errMessage).FontSize(13.5).Selectable()
 				}
 			})
