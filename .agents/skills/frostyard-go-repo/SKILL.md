@@ -7,9 +7,28 @@ description: Structure, build, test, and release a frostyard Go repository the w
 
 Produce a Go repo that matches frostyard's house pattern, extracted from
 [frostyard/updex](https://github.com/frostyard/updex) — the canonical
-exemplar; when this document and updex disagree, updex wins. "Done" is: `make
-check` passes, CI is green on the test workflow, and a tag would produce a
-GoReleaser release.
+exemplar; when this document and updex disagree, updex wins, except for the
+Fleet toolchain table below, which wins over every repository. "Done" is:
+`make check` passes, CI is green on the CI workflow, and a tag would produce
+a GoReleaser release.
+
+## Fleet toolchain
+
+Every frostyard Go repository uses one Go minor and one golangci-lint
+version
+([core ADR-0071](https://github.com/frostyard/core/blob/main/docs/adr/0071-hold-every-code-repository-to-one-baseline.md),
+baseline row B11):
+
+| Tool | Version | Where the repository pins it |
+| --- | --- | --- |
+| Go | 1.27 | `go.mod`: `go 1.27.<patch>`, a full version, the only Go pin ([ADR-0043](https://github.com/frostyard/core/blob/main/docs/adr/0043-pin-repository-tools-in-mise-and-name-the-verify-gate.md)) |
+| golangci-lint | 2.15.0 | `mise.toml`: `golangci-lint = "2.15.0"`; no workflow or Makefile pins another release |
+
+The pair moves together. A golangci-lint release built with Go N comes
+before Go N. The repository-hygiene line proposes a bump as one core pull
+request that changes this table; then each repository follows in its own
+pull request, and its CI is the compatibility proof. The `@go` skills-sync
+group carries this table to every Go repository.
 
 ## Layout: SDK-first
 
@@ -17,7 +36,7 @@ All logic lives in a public SDK package; the CLI is a thin shell over it.
 For a project named `<name>`:
 
 ```
-go.mod                    module github.com/frostyard/<name>, current Go (updex: 1.26)
+go.mod                    module github.com/frostyard/<name>, the fleet Go minor (see Fleet toolchain)
 <name>/                   public SDK: a Client struct + methods; the real API
 cmd/<name>/               Cobra command handlers: parse flags, call SDK, format output
 cmd/<name>-cli/main.go    entry point: clix.App{Version, Commit, Date, BuiltBy}.Run(NewRootCmd())
@@ -68,7 +87,8 @@ Rules:
      emit `completions/<name>.{bash,zsh,fish}` and `manpages/<name>.1.gz`
      (clix/fang provides the `completion` and `man` subcommands).
 3. **Copy the workflows** from `updex/.github/workflows/`:
-   - `test.yml` — jobs: golangci-lint, govulncheck, unit tests with Codecov
+   - `test.yml` (name it `ci.yml` in a new repository, ADR-0071 row B12;
+     its jobs run `make ci`) — jobs: golangci-lint, govulncheck, unit tests with Codecov
      OIDC upload, e2e tests, `-race`, verify (`go mod tidy` diff, `go vet`,
      `gofmt -l`), and a linux amd64/arm64 build matrix. Pin actions by SHA.
    - `release.yml` — on tag push, three steps:
@@ -106,15 +126,19 @@ Rules:
    instruction-surface convention): build commands, architecture map,
    code-pattern rules — mirror updex's CLAUDE.md sections.
 5. **Verify**: `make check` passes locally; push and confirm the test
-   workflow is green; `git tag v0.1.0 && git push origin v0.1.0` (or `make
-   bump`, which runs build/test/fmt/lint, requires a clean tree, then tags
-   `svu next` and pushes the tag) produces a GoReleaser release.
+   workflow is green. The first release is a maintainer's step, not an
+   agent's: a maintainer runs `make bump` (build/test/fmt/lint, a clean
+   tree, then tags `svu next` and pushes the tag), and the tag push produces
+   the GoReleaser release.
 
 ## Releasing day-to-day
 
 - Use conventional commits (`feat:`, `fix:`, `docs:`, …) — the changelog
   groups by them and svu derives the next version from them.
-- `make bump` is the release command; never hand-craft versions.
+- `make bump` is the release command; never hand-craft versions. A
+  maintainer runs it: agents never tag, push a tag, or publish a release.
+  An agent that finds a release due proposes the version (`svu next` is
+  read-only) and asks the maintainer to tag.
 - The `dev` pre-release is the rolling snapshot; real releases are svu tags.
 
 ## Pitfalls
