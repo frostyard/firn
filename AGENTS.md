@@ -62,7 +62,9 @@ removed. -->
   `node --test test/*.test.mjs`; it needs Node 22 or later from `mise
   install`. `scripts/check-*.mjs`, `scripts/lib/` and
   `test/check-template.test.mjs` are copies of bketelsen/agentic-template:
-  never edit them here. `make ci BASE=<ref>` adds the append-only check of
+  never edit them here. `test/risk-paths-policy.test.mjs` holds
+  `.github/risk-paths.json` to `policies/agent-governance.json`: change both
+  together. `make ci BASE=<ref>` adds the append-only check of
   `.memory/corrections.jsonl`. A blocking review point is fixed with a guard
   (a test that fails without the fix, or an `AGENTS.md` rule) and 1
   corrections line (core ADR-0018).
@@ -154,3 +156,7 @@ anchors valid) and add the back-links on the targets. Use relative paths.
 - New significant decision ⇒ new ADR *first*, then update the affected design
   docs/specs in the same change.
 - Convert relative dates ("next weekend") to absolute dates in all docs.
+- Before a README rewrite drops a fact, move it to `docs/` or `AGENTS.md`,
+  checked against the code, and list where each old section went (core
+  ADR-0072). A flag reference names every flag the code registers, or says
+  which ones it covers.

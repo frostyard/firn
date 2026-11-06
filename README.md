@@ -78,8 +78,8 @@ firn install --json-progress --confirm /dev/nvme0n1 recipe.toml   # NDJSON progr
 ```
 
 The [command-line surface](docs/design/architecture.md#command-line-surface)
-lists every flag, and the
-[recipe schema](docs/specs/recipe-schema.md) describes the file.
+explains the confirmation, dry-run and detection flags of both commands, and
+the [recipe schema](docs/specs/recipe-schema.md) describes the file.
 
 ## Develop
 

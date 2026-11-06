@@ -66,9 +66,10 @@ log reads as empty to the completion check. -->
 <!-- Tick exactly ONE box and leave its label text exactly as written —
 put the justification under Rationale, not on the checkbox line. Tiers come
 from `policies/agent-governance.json`: classify highest-applicable, and when
-uncertain take the higher plausible tier. Touching a protected boundary
-(`.github/workflows/**`, `.goreleaser.yaml`, `internal/install/**`,
-`cmd/**`) is never below high. -->
+uncertain take the higher plausible tier. Touching a protected boundary of
+that policy (its `protected_boundaries[].paths`) is never below high:
+[`.github/risk-paths.json`](risk-paths.json) mirrors those boundaries, and
+its workflow adds the `risk:high` label. -->
 
 - [ ] low
 - [ ] moderate

@@ -417,13 +417,23 @@ the wizard through `firn install` with no recipe. Bare `firn` always
 autodetects. `--uefi` is `install`-only: `firn validate` accepts
 `--secure-boot` and `--tpm` but not `--uefi`, which it does not consume.
 
-`gui/cmd/firn-gui/` takes its own flags:
-
 ```sh
 firn-gui                      # needs root; re-runs itself through pkexec when started without it
 firn-gui --demo               # unprivileged: simulated disks and install, nothing written
 firn-gui --appearance dark    # light or dark; default follows the desktop
 ```
+
+`firn-gui` takes only flags: a positional argument is refused before any
+window opens.
+
+| Flag | Effect |
+|---|---|
+| `--demo` | simulate the machine and the install; nothing is written to disk |
+| `--secure-boot`, `--tpm`, `--uefi` | each `auto\|on\|off`: the same detection overrides as `firn install` |
+| `--appearance` | `light` or `dark`; empty follows the desktop |
+| `--no-elevate` | fail instead of re-running through pkexec when not root |
+| `--version` | print the version and exit |
+| `--session-env` | a display variable forwarded through pkexec; set by `firn-gui` itself when it re-runs |
 
 ### Progress and frontends
 
