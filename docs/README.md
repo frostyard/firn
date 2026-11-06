@@ -11,6 +11,11 @@ Docs are split by the question they answer:
 
 ## Index
 
+### Org-wide decisions
+
+- [Org-wide decisions (frostyard/core ADRs)](org-adrs.md) — the org-level
+  decisions that bind this repository, and where each one lands here
+
 ### Decisions (ADRs)
 
 - [0001 — Record architecture decisions](adr/0001-record-architecture-decisions.md)
@@ -57,6 +62,7 @@ Docs are split by the question they answer:
 - Design docs are updated in place to always reflect reality.
 - Specs change only alongside the code that implements them.
 - Cross-links between categories are mandatory in both directions — see the
-  documentation rules in [AGENTS.md](../AGENTS.md) (CLAUDE.md/GEMINI.md are
-  symlinks to it, ADR-0002).
+  documentation rules in [AGENTS.md](../AGENTS.md) (`CLAUDE.md`, `GEMINI.md`,
+  `.cursorrules` and `.github/copilot-instructions.md` are symlinks to it,
+  ADR-0002).
 - Adding a doc means adding it to the index above.

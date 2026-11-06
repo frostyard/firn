@@ -1,6 +1,6 @@
 # Codecov configuration for firn.
 #
-# Coverage is uploaded by the "Unit Tests" job in .github/workflows/test.yml.
+# Coverage is uploaded by the "Unit Tests" job in .github/workflows/ci.yml.
 # The gates below run as status checks on pull requests.
 
 coverage:

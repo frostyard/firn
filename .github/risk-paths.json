@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "paths": [
+    {
+      "glob": ".github/risk-paths.json",
+      "why": "governance: the high-risk path list"
+    },
+    {
+      "glob": ".github/workflows/**",
+      "why": "governance: CI, the risk-paths caller and token permissions"
+    },
+    {
+      "glob": "Makefile",
+      "why": "governance: the verify gate"
+    },
+    {
+      "glob": "scripts/check-template.mjs",
+      "why": "governance: the template verification gate"
+    },
+    {
+      "glob": "scripts/check-corrections.mjs",
+      "why": "governance: the corrections validation gate"
+    },
+    {
+      "glob": "scripts/lib/**",
+      "why": "governance: the vendored risk-path validator and matcher"
+    },
+    {
+      "glob": "mise.toml",
+      "why": "supply chain: the tool pins that CI installs"
+    },
+    {
+      "glob": "mise.lock",
+      "why": "supply chain: the checksums of the tools that CI installs"
+    },
+    {
+      "glob": ".goreleaser.yaml",
+      "why": "release: the packages and archives a tag publishes"
+    },
+    {
+      "glob": ".svu.yml",
+      "why": "release: the version tags make bump derives"
+    },
+    {
+      "glob": "scripts/completions.sh",
+      "why": "release: a GoReleaser before-hook"
+    },
+    {
+      "glob": "scripts/manpages.sh",
+      "why": "release: a GoReleaser before-hook"
+    },
+    {
+      "glob": "cmd/firn-cli/release_workflow_contract_test.go",
+      "why": "governance: pins the release workflow"
+    },
+    {
+      "glob": "policies/**",
+      "why": "governance: agent policy and risk tiers"
+    },
+    {
+      "glob": ".golangci.yml",
+      "why": "governance: the lint gate"
+    },
+    {
+      "glob": "codecov.yml",
+      "why": "governance: the coverage gate"
+    },
+    {
+      "glob": "internal/disk/**",
+      "why": "product: partitions and formats the target disk"
+    },
+    {
+      "glob": "internal/luks/**",
+      "why": "product: disk encryption"
+    },
+    {
+      "glob": "internal/enroll/**",
+      "why": "product: MOK and TPM enrollment"
+    },
+    {
+      "glob": "internal/secureboot/**",
+      "why": "product: the Secure Boot ESP chain"
+    },
+    {
+      "glob": "internal/bootcimg/**",
+      "why": "product: image signature verification and deployment"
+    },
+    {
+      "glob": "internal/runner/**",
+      "why": "product: runs host tools as root"
+    },
+    {
+      "glob": "gui/cmd/firn-gui/**",
+      "why": "product: pkexec self-elevation"
+    },
+    {
+      "glob": "gui/data/**",
+      "why": "product: the polkit action and desktop entry"
+    }
+  ]
+}

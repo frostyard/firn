@@ -1,3 +1,7 @@
+# CI entry (frostyard/core ADR-0071 row B12): the job `gate` runs `make ci`,
+# the credential-free gate; the other jobs run beside it. The workflow name
+# stays "Tests": snapshot.yml triggers on workflow_run of that name, and the
+# ruleset requires the job names below.
 name: Tests
 
 on:
@@ -18,6 +22,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history: the append-only corrections check diffs BASE,
+          # the pull request's base commit, against the head.
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -25,23 +34,29 @@ jobs:
           go-version-file: go.mod
 
       # mise.toml and mise.lock are the single source of every tool pin
-      # (core ADR-0043): this installs exactly the locked golangci-lint,
-      # checksum-verified, the same way a developer's `mise install` and a
-      # Snowcat worker's target preparation do, so the three cannot drift.
-      # Go still comes from actions/setup-go above (go.mod's toolchain line).
+      # (core ADR-0043): this installs exactly the locked golangci-lint and
+      # Node, checksum-verified, the same way a developer's `mise install`
+      # and a Snowcat worker's target preparation do, so the three cannot
+      # drift. Go still comes from actions/setup-go above (go.mod's
+      # toolchain line); Node runs the template gate, which needs Node 22 or
+      # later.
       - name: Install pinned tools
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
         with:
           install: true
-          install_args: golangci-lint
+          install_args: golangci-lint node
           cache: true
 
       # make ci is the credential-free gate (core ADR-0043/ADR-0022): verify
-      # (tidy diff, gofmt, lint, vet, tests) plus coverage, the race
-      # detector, and cross-arch builds, replacing the lint/verify/race/build
-      # jobs this workflow ran individually before.
+      # (the template gate, then tidy diff, gofmt, lint, vet, tests) plus
+      # coverage, the race detector, and cross-arch builds, replacing the
+      # lint/verify/race/build jobs this workflow ran individually before.
+      # BASE, the pull request's base commit, also turns on the append-only
+      # check of .memory/corrections.jsonl (core ADR-0018).
       - name: Run canonical gate
-        run: make ci
+        run: make ci BASE="$BASE"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
 
   gui:
     name: Graphical installer gate
@@ -51,6 +66,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # gui/ is a nested module on its own Go pin (go 1.27.3 for mygo,
       # ADR-0021). setup-go exports GOTOOLCHAIN=local, so this job installs
@@ -85,6 +102,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -107,6 +126,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -142,6 +163,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # firn: root-requiring E2E harnesses live in test/e2e-*.sh and run
       # outside hosted CI (KVM required). This job only checks shell syntax.

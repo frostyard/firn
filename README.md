@@ -1,146 +1,107 @@
+<!-- readme-kind: tool -->
 # Firn
 
-Firn installs [snosi](https://github.com/frostyard) bootc OCI images from a
-declarative recipe, with a built-in terminal wizard and progress protocol.
+[![CI](https://github.com/frostyard/firn/actions/workflows/ci.yml/badge.svg)](https://github.com/frostyard/firn/actions/workflows/ci.yml)
 
-Firn is a GPL-3.0-only, deeply-inspired rewrite of
-[fisherman](https://github.com/frostyard). Attribution to the code it draws
-from lives in [`NOTICE`](NOTICE); the rationale for rewriting rather than
-forking is [ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md).
+Firn installs snosi bootc OCI images from a declarative TOML recipe, with a
+terminal wizard and a graphical installer. It is for anyone who puts a snosi
+image on a disk: the wizards write the recipe, and the same recipe installs
+headlessly.
+
+Firn is a GPL-3.0-only rewrite of fisherman, and it keeps the attribution of
+the code it draws from ([`NOTICE`](NOTICE),
+[ADR-0003](docs/adr/0003-rewrite-fisherman-as-firn.md)).
+
+**Status:** pre-release. It ships on the snosi installer ISO.
+
+**Documentation:** [docs/README.md](docs/README.md)
 
 ## What it does
 
-- **Bootc-only installer.** `family = "bootc"` installs an OCI
-  image straight from a container registry (deployed from the RAM installer
-  over containers-storage, [ADR-0012](docs/adr/0012-bootc-install-from-ram-installer.md)).
-- **Recipe-driven.** A single versioned TOML file
+- **Bootc-only installer.** `family = "bootc"` installs an OCI image straight
+  from a container registry, deployed from the RAM installer over
+  containers-storage
+  ([ADR-0012](docs/adr/0012-bootc-install-from-ram-installer.md)).
+- **Recipe-driven.** One versioned TOML file describes the target disk, image,
+  security options and system configuration
   ([schema](docs/specs/recipe-schema.md),
-  [ADR-0005](docs/adr/0005-toml-recipe-model.md)) describes the target disk,
-  image, security options, and system configuration. Validation is
-  fail-closed: unknown fields, unknown enum values, and wrong-family fields are
-  errors, never warnings. New recipes use version 2; bootc version 1 is
-  accepted with a deprecation warning until 2026-12-30 and is rejected from
-  that date; A/B version 1 is rejected.
-- **Security options.** LUKS root with passphrase or TPM2 auto-unlock;
+  [ADR-0005](docs/adr/0005-toml-recipe-model.md)). Validation is fail-closed:
+  unknown fields, unknown enum values and wrong-family fields are errors.
+  Version 2 is current; bootc version 1 is accepted with a deprecation warning
+  until 2026-12-30 and rejected from that date.
+- **Security options.** LUKS root with a passphrase or TPM2 auto-unlock, and
   UEFI Secure Boot with MOK enrollment via secure-install schema-1
   ([ADR-0014](docs/adr/0014-port-secure-install-schema-1-for-bootc.md)).
-- **Built-in TUI.** The bare `firn` command opens a terminal wizard
-  (single binary, Charm stack, [ADR-0007](docs/adr/0007-tui-only-frontend-single-binary.md))
-  that walks the install and emits a recipe you can reproduce headlessly.
-- **Graphical installer.** `firn-gui` is a windowed wizard, run by the
-  installer ISO's graphical boot entry or from a live desktop session, built
-  from the nested module [`gui/`](gui/)
+- **Terminal wizard.** The bare `firn` command walks the install in one binary
+  on the Charm stack
+  ([ADR-0007](docs/adr/0007-tui-only-frontend-single-binary.md)) and emits a
+  recipe you can reproduce headlessly.
+- **Graphical installer.** `firn-gui` is a windowed wizard with a keyboard
+  shortcut for every action, from the nested module [`gui/`](gui/)
   ([ADR-0021](docs/adr/0021-graphical-installer-separate-executable.md)).
-  It writes the same recipe as the TUI, runs the same pipeline in-process,
-  and has a keyboard shortcut for every action (F1 lists them).
-- **One progress protocol.** Every user-visible signal from the pipeline is a
-  typed progress event ([spec](docs/specs/progress-protocol.md)); `--json-progress`
-  streams it as NDJSON for automation.
+- **Install-time flatpaks.** Flatpaks are installed into the target at
+  install time, from the installer medium first and the network second; each
+  image publishes its core set in an OCI label
+  ([ADR-0006](docs/adr/0006-install-time-offline-first-flatpaks.md),
+  [label spec](docs/specs/core-flatpaks-label.md)).
+- **One progress protocol.** Every user-visible signal is a typed progress
+  event, and `--json-progress` streams it as NDJSON for automation
+  ([spec](docs/specs/progress-protocol.md)).
 
-## Usage
+## Install
 
-```sh
-firn                          # open the interactive wizard
-firn validate recipe.toml     # check a recipe against the schema + this machine
-firn install --confirm /dev/nvme0n1 recipe.toml   # install; confirmation must exactly match [target].disk
-firn install --dry-run recipe.toml                 # preflight only; no confirmation required
-firn install --json-progress --confirm /dev/nvme0n1 recipe.toml   # install with NDJSON progress
-```
+The snosi installer ISO runs firn: its console boot entry opens the terminal
+wizard, and its graphical boot entry opens `firn-gui`
+([frostyard/snosi](https://github.com/frostyard/snosi)).
 
-Non-dry-run headless installs are destructive and require
-`--confirm <target-disk>`, where the value exactly matches the recipe's
-`[target].disk`. A headless `--dry-run` does not modify disks and does not
-require confirmation. `--dry-run` is supported only as the command-local
-`firn install --dry-run <recipe.toml>` form: the inherited global flag is
-rejected for bare `firn` before the wizard starts and for `firn validate`
-before validation, with an error directing the reader to the supported
-recipe-backed preflight command.
-
-The graphical installer takes the same detection overrides:
+On Debian trixie with the Frostyard APT repository
+(`https://repository.frostyard.org/debian/`):
 
 ```sh
-firn-gui                      # needs root; re-runs itself through pkexec when started without it
-firn-gui --demo               # try it unprivileged: simulated disks and install, nothing written
-firn-gui --appearance dark    # light or dark; default follows the desktop
+sudo apt install frostyard-firn
 ```
 
-`firn install` takes detection overrides (`--secure-boot`, `--tpm`, and
-`--uefi`, each `auto|on|off`) that force the machine-capability probes when you
-know better than autodetection — e.g. in a VM. They also reach the wizard when
-you run `firn install` with no recipe; the bare `firn` command always
-autodetects. `--uefi` is `install`-only (`firn validate` accepts
-`--secure-boot` and `--tpm` but not `--uefi`, which it does not consume).
-See [`docs/specs/recipe-schema.md`](docs/specs/recipe-schema.md)
-for a complete recipe.
+`frostyard-firn-gui` is for installer media, not installed systems.
 
-## Building
+[Release and
+distribution](docs/design/architecture.md#operational-notes) lists the
+packages and where they go.
 
-Firn is a single Go binary with no CGO. The pipeline and domain packages use
-only the Go standard library plus host tools it shells out to; the sanctioned
-dependencies are a TOML decoder and, in the TUI layer only, the Charm stack
-([ADR-0011](docs/adr/0011-adopt-frostyard-go-conventions.md)).
+## Use
 
 ```sh
-make build     # build ./build/firn
-make check     # fmt + lint + test — the gate for "done"
-make ci        # credential-free gate mirroring CI: verify, coverage, race
-               # detector, and linux amd64/arm64 builds
-make gui-build # build ./build/firn-gui (gui/ module, Go 1.27.3, no CGO)
-make gui-check # the gui/ gate (CI's gui job): tidy, gofmt, vet, tests
-make gui-demo  # run the graphical installer in demo mode
+firn                                                  # the terminal wizard
+firn validate recipe.toml                             # check a recipe against this machine
+firn install --confirm /dev/nvme0n1 recipe.toml       # install; --confirm must equal [target].disk
+firn install --dry-run recipe.toml                    # preflight only, no disks touched
+firn install --json-progress --confirm /dev/nvme0n1 recipe.toml   # NDJSON progress
 ```
 
-`firn-gui` loads GTK 3, Pango and Cairo at run time (no WebKitGTK) and
-draws with OpenGL, or on the CPU without it. Install Pango and Cairo
-before `make gui-check`: without them mygo falls back to a stub text
-engine that draws no text, and the tests pass without real layout.
-Releases ship it as the `frostyard-firn-gui` package: the binary in
-`/usr/libexec/firn-gui/` behind a `/usr/bin/firn-gui` symlink, a desktop
-entry, and a polkit action that asks for an administrator's password each
-time. It is meant for installer media, not installed systems: snosi's
-installer ISO offers a graphical boot entry that runs it, beside the console
-entry that runs the TUI.
+The [command-line surface](docs/design/architecture.md#command-line-surface)
+lists every flag, and the
+[recipe schema](docs/specs/recipe-schema.md) describes the file.
 
-End-to-end harnesses under [`test/`](test/) install into throwaway QEMU guests
-and verify the booted disk over SSH (`test/e2e-bootc.sh`,
-`test/e2e-bootc-secure.sh`, `test/e2e-tui.sh`).
+## Develop
 
-## Layout
+Firn is one Go binary with no CGO, plus the nested `gui/` module. Everything
+below runs on the pins in [`mise.toml`](mise.toml):
 
-Firn's own contracts are the recipe schema and the progress protocol, not a Go
-API, so the pipeline lives under `internal/`:
-
-```
-cmd/firn-cli/         clix entry point (main)
-cmd/firn/             cobra command handlers (install, validate, TUI)
-internal/recipe/      TOML recipe model + fail-closed validation
-internal/steps/       bootc pipeline assembly + option splices
-internal/pipeline/    the step engine, cleanup stack, runner seam
-internal/bootcimg/    bootc install (podman/bootc)
-internal/enroll/      MOK and TPM enrollment helpers
-internal/secureboot/  UEFI Secure Boot ESP chain + contract (schema-1)
-internal/tui/         the terminal wizard
-internal/catalog/     image catalog + offered groups, shared by both wizards
-gui/                  the graphical installer (nested Go module, ADR-0021)
-  cmd/firn-gui/       its entry point: flags, pkexec self-elevation
-  internal/installer/ pages, schema-backed validation, in-process install
-internal/progress/    the progress protocol emitters
+```sh
+mise install   # Go, golangci-lint and Node, pinned and verified
+make ci        # the credential-free gate that CI runs
+make gui-check # the gui/ module's own gate
 ```
 
-## Documentation
+`make gui-check` needs Pango and Cairo installed: without them the text
+engine falls back to a stub that draws nothing and the tests pass without real
+layout. [AGENTS.md](AGENTS.md) holds the rules, and
+[the architecture](docs/design/architecture.md) shows how the parts fit.
 
-Start at [`docs/README.md`](docs/README.md). Docs are split by the question
-they answer: [`adr/`](docs/adr/) (why — immutable decisions), [`design/`](docs/design/)
-(how — living architecture), [`specs/`](docs/specs/) (what exactly — testable
-contracts), [`plans/`](docs/plans/) (when — phased roadmap). Every doc starts
-from its category's `TEMPLATE.md` and cross-links the docs it shapes.
+## Where to go next
 
-Agent instructions are canonical in [`AGENTS.md`](AGENTS.md); `CLAUDE.md`,
-`GEMINI.md`, and `.github/copilot-instructions.md` are symlinks to it, and
-`.claude/skills` symlinks to `.agents/skills/`
-([ADR-0002](docs/adr/0002-agent-portable-instruction-surface.md)) — every agent
-reads the same law.
-
-## License
-
-GPL-3.0-only. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+- [AGENTS.md](AGENTS.md): the rules for agents and contributors.
+- [docs/README.md](docs/README.md): the decisions, designs, specs and plans.
+- [SECURITY.md](SECURITY.md): the support policy, and how to report a
+  vulnerability privately.
+- [LICENSE](LICENSE): GPL-3.0-only.
+- [NOTICE](NOTICE): the projects firn derives from.

@@ -1,4 +1,4 @@
-.PHONY: all build clean fmt lint lint-version-check verify ci test install help
+.PHONY: all build clean fmt lint lint-version-check verify verify-template ci test install help
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -20,6 +20,8 @@ GOLANGCI_LINT_VERSION := $(strip $(shell sed -n 's/^golangci-lint = "\(.*\)"/\1/
 # disagree with the toolchain.
 GO_TOOLCHAIN := $(strip $(shell sed -n 's/^toolchain go\(.*\)/\1/p' go.mod))
 GOFILES := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
+# Node runs the template gate. Its pin lives in mise.toml (core ADR-0043).
+NODE_MAJOR := $(shell node -p "process.versions.node.split('.')[0]" 2>/dev/null)
 
 all: fmt build
 
@@ -72,8 +74,17 @@ lint-version-check:
 	if [ -n "$$built" ] && [ "$$(printf '%s\n%s\n' "$(GO_TOOLCHAIN)" "$$built" | sort -V | head -1)" != "$(GO_TOOLCHAIN)" ]; then \
 		echo "golangci-lint $(GOLANGCI_LINT_VERSION) was built with go$$built, older than go.mod's toolchain go$(GO_TOOLCHAIN): bump golangci-lint first (core ADR-0043)"; exit 1; fi
 
-## verify: Credential-free, non-mutating gate (what a read-only reviewer runs): tidy diff, gofmt -l, lint at the exact pin, vet, tests
+## verify-template: Template gate: agent symlinks, docs index, risk paths, corrections, vendored core copies (needs Node 22+)
+verify-template:
+	@if ! command -v node >/dev/null 2>&1; then echo "FAIL: make verify-template requires Node.js 22 or later and make; run: mise install"; exit 1; fi
+	@if [ "$(NODE_MAJOR)" = "" ] || [ "$(NODE_MAJOR)" -lt 22 ]; then echo "FAIL: make verify-template requires Node.js 22 or later and make (found: $$(node --version 2>/dev/null || echo missing)); run: mise install"; exit 1; fi
+	node scripts/check-template.mjs
+	node --test test/*.test.mjs
+
+## verify: Credential-free, non-mutating gate (what a read-only reviewer runs): template gate, tidy diff, gofmt -l, lint at the exact pin, vet, tests
 verify:
+	@echo "==> verify: template gate"
+	@$(MAKE) --no-print-directory verify-template
 	@echo "==> verify: go.mod is tidy"
 	$(GO) mod tidy -diff
 	@echo "==> verify: gofmt"
@@ -87,12 +98,13 @@ verify:
 	@echo "==> verify: tests"
 	$(GO) test ./...
 
-## check: Run fmt, lint, and test
-check: fmt lint test
+## check: Run fmt, lint, test, and the template gate
+check: fmt lint test verify-template
 
-## ci: Credential-free gate mirroring CI's jobs (core ADR-0043/ADR-0022): verify, plus coverage, the race detector, and cross-arch builds
+## ci: Credential-free gate mirroring CI's jobs (core ADR-0043/ADR-0022): verify, plus coverage, the race detector, cross-arch builds, and with BASE the append-only corrections check
 ci:
 	@$(MAKE) --no-print-directory verify
+	@if [ -n "$(BASE)" ]; then echo "==> ci: corrections append-only vs $(BASE)"; node scripts/check-corrections.mjs --base "$(BASE)"; fi
 	@echo "==> ci: coverage"
 	$(GO) test -coverprofile=coverage.out ./...
 	@echo "==> ci: race detector"

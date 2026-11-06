@@ -6,4 +6,7 @@ idiomatic_version_file_enable_tools = ["go"]
 lockfile = true
 
 [tools]
-golangci-lint = "2.13.1"
+golangci-lint = "2.15.0"
+# Node runs the template gate that `make verify` includes. The gate needs
+# Node 22 or later; this is the Node 24 LTS line.
+node = "24.22.2"

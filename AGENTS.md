@@ -8,8 +8,8 @@ It is a deeply-inspired GPL-3.0-only rewrite of fisherman (attribution in
 [docs/README.md](docs/README.md).
 
 This file (`AGENTS.md`) is the CANONICAL agent instructions — `CLAUDE.md`,
-`GEMINI.md`, and `.github/copilot-instructions.md` are symlinks to it, and
-`.claude/skills` symlinks to `.agents/skills/`
+`GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md` are
+symlinks to it, and `.claude/skills` symlinks to `.agents/skills/`
 ([ADR-0002](docs/adr/0002-agent-portable-instruction-surface.md)). Edit only
 the canonical paths; keep content tool-agnostic.
 
@@ -55,6 +55,17 @@ removed. -->
   install` when golangci-lint is absent (core ADR-0043). Run `mise install`
   once to provision the pinned golangci-lint (and Go) from
   [`mise.toml`](mise.toml)/[`mise.lock`](mise.lock) before any target.
+- `make verify` (so also `make check` and `make ci`) runs the template gate
+  first: `node scripts/check-template.mjs` (agent symlinks, every doc under
+  `docs/` indexed in `docs/README.md`, `.github/risk-paths.json`,
+  `.memory/corrections.jsonl`, 2 hash-pinned core copies) and
+  `node --test test/*.test.mjs`; it needs Node 22 or later from `mise
+  install`. `scripts/check-*.mjs`, `scripts/lib/` and
+  `test/check-template.test.mjs` are copies of bketelsen/agentic-template:
+  never edit them here. `make ci BASE=<ref>` adds the append-only check of
+  `.memory/corrections.jsonl`. A blocking review point is fixed with a guard
+  (a test that fails without the fix, or an `AGENTS.md` rule) and 1
+  corrections line (core ADR-0018).
 - The graphical installer is the nested Go module `gui/`
   (`github.com/frostyard/firn/gui`, Go 1.27.3 for mygo; ADR-0021). Root
   targets never enter it: changes under `gui/` also run `make gui-check`
