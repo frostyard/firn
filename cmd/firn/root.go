@@ -47,10 +47,13 @@ non-destructive, recipe-backed preflight.`,
 
 // rejectUnsupportedInheritedDryRun prevents clix's inherited common flag
 // from promising a safety mode that bare firn and validate do not implement.
-// The install command's own --dry-run flag shadows the inherited flag, so the
-// documented recipe-backed preflight remains accepted.
+// Install explicitly opts in through an annotation because it reads clix.DryRun
+// for recipe-backed preflight and never defines a local --dry-run flag.
 func rejectUnsupportedInheritedDryRun(cmd *cobra.Command, _ []string) error {
 	if !clix.DryRun {
+		return nil
+	}
+	if cmd.Annotations["firn:allow-inherited-dry-run"] == "true" {
 		return nil
 	}
 	return fmt.Errorf("--dry-run is not supported for %s; use 'firn install --dry-run <recipe.toml>' for non-destructive preflight", cmd.CommandPath())

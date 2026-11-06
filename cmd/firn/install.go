@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/frostyard/clix"
 	"github.com/spf13/cobra"
 
 	"github.com/frostyard/firn/internal/bootcimg"
@@ -45,7 +46,6 @@ func (e deprecationEmitter) Emit(event progress.Event) error {
 func newInstallCmd() *cobra.Command {
 	var (
 		probes       probeFlags
-		dryRun       bool
 		confirm      string
 		jsonProgress bool
 	)
@@ -54,6 +54,9 @@ func newInstallCmd() *cobra.Command {
 		Short: "Install a snosi image; with no recipe, launch the wizard",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// clix owns --dry-run (-n) on the whole command tree, so
+			// install reads clix.DryRun and never defines its own flag.
+			dryRun := clix.DryRun
 			if err := validateInstallMode(len(args) == 1, dryRun, confirm, jsonProgress); err != nil {
 				return err
 			}
@@ -119,8 +122,8 @@ func newInstallCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Annotations = map[string]string{"firn:allow-inherited-dry-run": "true"}
 	probes.register(cmd, true)
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate, assemble, and run preflight only")
 	cmd.Flags().StringVar(&confirm, "confirm", "", "typed confirmation: must equal the recipe's target disk path")
 	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit NDJSON progress events on stdout (requires recipe path)")
 	return cmd
