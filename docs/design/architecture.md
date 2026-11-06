@@ -265,7 +265,7 @@ module mode); nothing in the root module imports it, so the `firn` binary,
 its Go pin and `make check` are unchanged. `make gui-build` writes
 `build/firn-gui`; `make gui-check` is its gate (tidy diff, gofmt, vet,
 tests) until the pinned golangci-lint is built with Go 1.27.3 or newer.
-CI runs it as the `gui` job of `.github/workflows/test.yml`, with Go from
+CI runs it as the `gui` job of `.github/workflows/ci.yml`, with Go from
 `gui/go.mod` and Pango and Cairo installed, and the release workflow runs
 it after `make verify` and before GoReleaser.
 The UI is mygo native UI (`github.com/egoist/mygo`, exact pin in
@@ -386,6 +386,54 @@ pipeline in-process.
   a stub that lays out every rune as half an em and draws nothing, and the
   tests still pass. CI installs them so the tests exercise real text
   layout, and snapshots are only worth reading with them.
+
+### Command-line surface
+
+`cmd/firn/` is the cobra layer and `cmd/firn-cli/` the clix entry point. The
+5 forms below cover every documented invocation:
+
+```sh
+firn                          # open the interactive wizard
+firn validate recipe.toml     # check a recipe against the schema and this machine
+firn install --confirm /dev/nvme0n1 recipe.toml   # install; --confirm must equal [target].disk
+firn install --dry-run recipe.toml                # preflight only; no confirmation required
+firn install --json-progress --confirm /dev/nvme0n1 recipe.toml   # install, NDJSON progress
+```
+
+A non-dry-run headless install is destructive, so it requires
+`--confirm <target-disk>`, whose value must exactly equal the recipe's
+`[target].disk`; a mismatch fails before the first step. A headless
+`--dry-run` modifies no disk, so it requires no confirmation.
+
+`--dry-run` exists only in the command-local form
+`firn install --dry-run <recipe.toml>`. The inherited global flag is rejected
+for bare `firn` before the wizard starts and for `firn validate` before
+validation; the error names the supported recipe-backed preflight command.
+
+Detection overrides reach `firn install`: `--secure-boot`, `--tpm` and
+`--uefi`, each `auto|on|off`, force the machine-capability probes when the
+operator knows better than autodetection, for example in a VM. They also reach
+the wizard through `firn install` with no recipe. Bare `firn` always
+autodetects. `--uefi` is `install`-only: `firn validate` accepts
+`--secure-boot` and `--tpm` but not `--uefi`, which it does not consume.
+
+```sh
+firn-gui                      # needs root; re-runs itself through pkexec when started without it
+firn-gui --demo               # unprivileged: simulated disks and install, nothing written
+firn-gui --appearance dark    # light or dark; default follows the desktop
+```
+
+`firn-gui` takes only flags: a positional argument is refused before any
+window opens.
+
+| Flag | Effect |
+|---|---|
+| `--demo` | simulate the machine and the install; nothing is written to disk |
+| `--secure-boot`, `--tpm`, `--uefi` | each `auto\|on\|off`: the same detection overrides as `firn install` |
+| `--appearance` | `light` or `dark`; empty follows the desktop |
+| `--no-elevate` | fail instead of re-running through pkexec when not root |
+| `--version` | print the version and exit |
+| `--session-env` | a display variable forwarded through pkexec; set by `firn-gui` itself when it re-runs |
 
 ### Progress and frontends
 

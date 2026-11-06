@@ -1,0 +1,33 @@
+# Dependabot (frostyard/core ADR-0071 row B13). One entry per ecosystem with a
+# manifest: "github-actions" for the actions the workflows pin, and "gomod"
+# once for each Go module in this repository.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # gui/ is a nested Go module on its own Go pin (ADR-0021): it needs its own
+  # entry, or Dependabot never reads gui/go.mod.
+  - package-ecosystem: "gomod"
+    directory: "/gui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: "scope"

@@ -401,7 +401,7 @@ kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/00
    self-elevation, keyboard shortcuts for every action, and `--demo`.
    Headless page tests, PNG snapshots and a real-window smoke test;
    `make gui-build`, `make gui-check`, `make gui-demo`.
-3. ✅ **Gate it in CI.** The `gui` job in `.github/workflows/test.yml` sets
+3. ✅ **Gate it in CI.** The `gui` job in `.github/workflows/ci.yml` sets
    up Go from `gui/go.mod`, installs Pango and Cairo (without them mygo's
    text engine falls back to a stub that draws no text) and runs
    `make gui-check`; `make ci` is unchanged. The release workflow runs the

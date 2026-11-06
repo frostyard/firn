@@ -32,8 +32,8 @@ rules (enforced)" in AGENTS.md. -->
       (ADR ↔ design ↔ spec ↔ plan)
 - [ ] New significant decision recorded as an ADR *first*, in this PR
 - [ ] Conformance aliases (ADR-0002: `CLAUDE.md`, `GEMINI.md`,
-      `.github/copilot-instructions.md`, `.claude/skills`) untouched —
-      canonical `AGENTS.md` / `.agents/skills/` edited instead
+      `.cursorrules`, `.github/copilot-instructions.md`, `.claude/skills`)
+      untouched — canonical `AGENTS.md` / `.agents/skills/` edited instead
 - [ ] Code derived from fisherman or snosi-install keeps its provenance
       comment (`NOTICE`, ADR-0003)
 
@@ -52,6 +52,10 @@ log reads as empty to the completion check. -->
       pipeline steps are covered through the `runner` fake, not real devices
 - [ ] Wizard-page or nested-VM changes: `make e2e-tui` / `make e2e-bootc-secure`
       considered, and the result stated below
+- [ ] Workflows changed: every action is SHA-pinned with `# vX.Y.Z`,
+      `permissions: {}`, and `persist-credentials: false`
+- [ ] Blocking review point fixed: guard added (a test that fails without the
+      fix, or an `AGENTS.md` rule) and 1 `.memory/corrections.jsonl` line added
 
 ```
 <!-- gate output -->
@@ -62,9 +66,10 @@ log reads as empty to the completion check. -->
 <!-- Tick exactly ONE box and leave its label text exactly as written —
 put the justification under Rationale, not on the checkbox line. Tiers come
 from `policies/agent-governance.json`: classify highest-applicable, and when
-uncertain take the higher plausible tier. Touching a protected boundary
-(`.github/workflows/**`, `.goreleaser.yaml`, `internal/install/**`,
-`cmd/**`) is never below high. -->
+uncertain take the higher plausible tier. Touching a protected boundary of
+that policy (its `protected_boundaries[].paths`) is never below high:
+[`.github/risk-paths.json`](risk-paths.json) mirrors those boundaries, and
+its workflow adds the `risk:high` label. -->
 
 - [ ] low
 - [ ] moderate
