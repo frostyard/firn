@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/frostyard/clix"
 	"github.com/frostyard/firn/internal/pipeline"
 	"github.com/frostyard/firn/internal/progress"
 	"github.com/frostyard/firn/internal/recipe"
@@ -29,6 +30,18 @@ func commandRecipeFile(t *testing.T, family string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func runFirnTest(t *testing.T, args ...string) error {
+	t.Helper()
+	clix.DryRun = false
+	t.Cleanup(func() { clix.DryRun = false })
+
+	root := NewRootCmd()
+	root.SilenceErrors = true
+	root.SilenceUsage = true
+	root.SetArgs(args)
+	return (&clix.App{Version: "test"}).Run(root)
 }
 
 // beforeV1End pins clock before the bootc-v1 end date so v1 tests never
@@ -55,9 +68,7 @@ func TestInstallV1WarnsBeforeFirstStep(t *testing.T) {
 	stdout := os.Stdout
 	os.Stdout = f
 	t.Cleanup(func() { os.Stdout = stdout })
-	cmd := newInstallCmd()
-	cmd.SetArgs([]string{"--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", "--json-progress", commandRecipeFile(t, "bootc")})
-	if err := cmd.Execute(); err != nil {
+	if err := runFirnTest(t, "install", "--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", "--json-progress", commandRecipeFile(t, "bootc")); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {
@@ -94,9 +105,7 @@ func TestInstallWiresRegistryProbe(t *testing.T) {
 			return nil
 		}}}}
 	}
-	cmd := newInstallCmd()
-	cmd.SetArgs([]string{"--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "bootc")})
-	if err := cmd.Execute(); err != nil {
+	if err := runFirnTest(t, "install", "--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "bootc")); err != nil {
 		t.Fatal(err)
 	}
 	if !wired {
@@ -124,9 +133,7 @@ func TestInstallABRejectsBeforeAssemble(t *testing.T) {
 	stderr := os.Stderr
 	os.Stderr = f
 	t.Cleanup(func() { os.Stderr = stderr })
-	cmd := newInstallCmd()
-	cmd.SetArgs([]string{"--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "ab")})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "recipe is invalid") {
+	if err := runFirnTest(t, "install", "--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "ab")); err == nil || !strings.Contains(err.Error(), "recipe is invalid") {
 		t.Fatalf("A/B install error: %v", err)
 	}
 	if err := f.Close(); err != nil {
@@ -163,9 +170,7 @@ func TestInstallRejectsExpiredV1BeforeAssemble(t *testing.T) {
 	oldStderr := os.Stderr
 	os.Stderr = f
 	t.Cleanup(func() { os.Stderr = oldStderr })
-	cmd := newInstallCmd()
-	cmd.SetArgs([]string{"--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "bootc")})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "recipe is invalid") {
+	if err := runFirnTest(t, "install", "--secure-boot=off", "--tpm=off", "--uefi=on", "--dry-run", commandRecipeFile(t, "bootc")); err == nil || !strings.Contains(err.Error(), "recipe is invalid") {
 		t.Fatalf("expired v1 install error: %v", err)
 	}
 	if err := f.Close(); err != nil {

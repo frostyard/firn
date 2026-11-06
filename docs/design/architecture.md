@@ -405,10 +405,11 @@ A non-dry-run headless install is destructive, so it requires
 `[target].disk`; a mismatch fails before the first step. A headless
 `--dry-run` modifies no disk, so it requires no confirmation.
 
-`--dry-run` exists only in the command-local form
-`firn install --dry-run <recipe.toml>`. The inherited global flag is rejected
-for bare `firn` before the wizard starts and for `firn validate` before
-validation; the error names the supported recipe-backed preflight command.
+`--dry-run`/`-n` is a clix-owned common flag across the whole command tree.
+Firn install reads `clix.DryRun` instead of defining a local flag. The inherited
+flag is rejected for bare `firn` before the wizard starts and for
+`firn validate` before validation; the error names the supported
+recipe-backed preflight command `firn install --dry-run <recipe.toml>`.
 
 Detection overrides reach `firn install`: `--secure-boot`, `--tpm` and
 `--uefi`, each `auto|on|off`, force the machine-capability probes when the
