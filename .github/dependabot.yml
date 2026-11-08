@@ -1,6 +1,9 @@
 # Dependabot (frostyard/core ADR-0071 row B13). One entry per ecosystem with a
 # manifest: "github-actions" for the actions the workflows pin, and "gomod"
-# once for each Go module in this repository.
+# once for each Go module in this repository. Each entry has 1 group with
+# `patterns: ["*"]`, so each entry opens at most 1 version-update pull request
+# for each run (ADR-0075). The group has no `applies-to`, so security updates
+# stay 1 pull request each.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -11,6 +14,9 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: "gomod"
     directory: "/"
@@ -20,6 +26,9 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    groups:
+      gomod:
+        patterns: ["*"]
 
   # gui/ is a nested Go module on its own Go pin (ADR-0021): it needs its own
   # entry, or Dependabot never reads gui/go.mod.
@@ -31,3 +40,6 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    groups:
+      gomod-gui:
+        patterns: ["*"]
