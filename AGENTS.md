@@ -62,9 +62,15 @@ removed. -->
   `node --test test/*.test.mjs`; it needs Node 22 or later from `mise
   install`. `scripts/check-*.mjs`, `scripts/lib/` and
   `test/check-template.test.mjs` are copies of bketelsen/agentic-template:
-  never edit them here. `test/risk-paths-policy.test.mjs` holds
+  never edit them here. The rule C level check of
+  `scripts/check-template.mjs` is the one hand edit, until the template
+  takes it. `test/risk-paths-policy.test.mjs` holds
   `.github/risk-paths.json` to `policies/agent-governance.json`: change both
-  together. `make ci BASE=<ref>` adds the append-only check of
+  together. `.github/risk-paths.json` is a version 2 list (core ADR-0078):
+  each glob has 1 `level`, `default_level` is L3, and the globs that match
+  the list or the caller are L1 or L2. `.github/workflows/risk-paths.yml`
+  calls core's `pr-triage` workflow, which adds the level label and
+  `risk:high` at L1 and L2. `make ci BASE=<ref>` adds the append-only check of
   `.memory/corrections.jsonl`. A blocking review point is fixed with a guard
   (a test that fails without the fix, or an `AGENTS.md` rule) and 1
   corrections line (core ADR-0018).

@@ -1,92 +1,115 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "default_level": "L3",
   "paths": [
     {
       "glob": ".github/workflows/**",
-      "why": "workflow-and-permissions: CI, the risk-paths caller and token permissions"
+      "level": "L2",
+      "why": "workflow-and-permissions: CI, the pr-triage caller and token permissions"
     },
     {
       "glob": "policies/**",
+      "level": "L2",
       "why": "workflow-and-permissions: agent policy and risk tiers"
     },
     {
       "glob": ".github/workflows/release.yml",
+      "level": "L1",
       "why": "release-and-publication: the tag workflow that attests and publishes the packages"
     },
     {
       "glob": ".github/workflows/snapshot.yml",
+      "level": "L1",
       "why": "release-and-publication: the nightly dev snapshot workflow"
     },
     {
       "glob": ".goreleaser.yaml",
+      "level": "L1",
       "why": "release-and-publication: the packages and archives a tag builds"
     },
     {
       "glob": ".svu.yml",
+      "level": "L1",
       "why": "release-and-publication: the version tags make bump derives"
     },
     {
       "glob": "scripts/completions.sh",
+      "level": "L1",
       "why": "release-and-publication: a GoReleaser before-hook"
     },
     {
       "glob": "scripts/manpages.sh",
+      "level": "L1",
       "why": "release-and-publication: a GoReleaser before-hook"
     },
     {
       "glob": "cmd/firn-cli/release_workflow_contract_test.go",
+      "level": "L1",
       "why": "release-and-publication: pins the release workflow"
     },
     {
       "glob": "cmd/**",
+      "level": "L1",
       "why": "installation-and-update: the CLI and the typed disk confirmation"
     },
     {
       "glob": "internal/**",
+      "level": "L1",
       "why": "installation-and-update: the root pipeline: partitions and erases disks, LUKS, MOK and TPM enrollment, signature verification, accounts and SSH keys, and the wizard's typed confirmation"
     },
     {
       "glob": "gui/**",
+      "level": "L1",
       "why": "installation-and-update: the graphical installer: pkexec self-elevation, the polkit action, its in-process install and confirmation"
     },
     {
       "glob": ".github/risk-paths.json",
+      "level": "L2",
       "why": "quality-gates: the high-risk path list"
     },
     {
       "glob": "Makefile",
+      "level": "L2",
       "why": "quality-gates: the verify gate"
     },
     {
       "glob": "scripts/check-template.mjs",
+      "level": "L2",
       "why": "quality-gates: the template verification gate"
     },
     {
       "glob": "scripts/check-corrections.mjs",
+      "level": "L2",
       "why": "quality-gates: the corrections validation gate"
     },
     {
       "glob": "scripts/lib/**",
+      "level": "L2",
       "why": "quality-gates: the vendored risk-path validator and matcher"
     },
     {
       "glob": "test/*.test.mjs",
+      "level": "L2",
       "why": "quality-gates: the tests that hold the gates and this list"
     },
     {
       "glob": "mise.toml",
+      "level": "L2",
       "why": "quality-gates: the tool pins that CI installs"
     },
     {
       "glob": "mise.lock",
+      "level": "L2",
       "why": "quality-gates: the checksums of the tools that CI installs"
     },
     {
       "glob": ".golangci.yml",
+      "level": "L2",
       "why": "quality-gates: the lint gate"
     },
     {
       "glob": "codecov.yml",
+      "level": "L2",
       "why": "quality-gates: the coverage gate"
     }
   ]

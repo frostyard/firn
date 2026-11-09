@@ -69,7 +69,8 @@ from `policies/agent-governance.json`: classify highest-applicable, and when
 uncertain take the higher plausible tier. Touching a protected boundary of
 that policy (its `protected_boundaries[].paths`) is never below high:
 [`.github/risk-paths.json`](risk-paths.json) mirrors those boundaries, and
-its workflow adds the `risk:high` label. -->
+its triage workflow adds 1 level label (`level:L1` to `level:L4`) and
+`risk:high` at L1 and L2. -->
 
 - [ ] low
 - [ ] moderate
