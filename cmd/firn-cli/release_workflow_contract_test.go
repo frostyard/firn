@@ -2,8 +2,9 @@ package main
 
 // Contract tests for .github/workflows/release.yml, the workflow that turns a
 // tag into the frostyard-firn packages snosi's installer ISO installs
-// (ADR-0017). The workflow only runs on a tag push, so these tests are its
-// pull-request gate.
+// (ADR-0017), and for .github/workflows/snapshot.yml, the nightly that
+// republishes the dev tag. Neither workflow runs on a pull request, so these
+// tests are their pull-request gate.
 
 import (
 	"os"
@@ -24,29 +25,106 @@ type workflowStep struct {
 	ContinueOnError yaml.Node         `yaml:"continue-on-error"`
 }
 
+type workflowJob struct {
+	If          string            `yaml:"if"`
+	Permissions map[string]string `yaml:"permissions"`
+	Steps       []workflowStep    `yaml:"steps"`
+}
+
 type releaseWorkflow struct {
 	On map[string]struct {
 		Tags     []string `yaml:"tags"`
 		Branches []string `yaml:"branches"`
 	} `yaml:"on"`
-	Permissions map[string]string `yaml:"permissions"`
-	Jobs        map[string]struct {
-		If    string         `yaml:"if"`
-		Steps []workflowStep `yaml:"steps"`
-	} `yaml:"jobs"`
+	Permissions map[string]string      `yaml:"permissions"`
+	Jobs        map[string]workflowJob `yaml:"jobs"`
+}
+
+// snapshotWorkflow is .github/workflows/snapshot.yml: these tests read only
+// its permissions and its steps.
+type snapshotWorkflow struct {
+	Permissions map[string]string      `yaml:"permissions"`
+	Jobs        map[string]workflowJob `yaml:"jobs"`
+}
+
+// readWorkflow returns the bytes of a workflow file under .github/workflows.
+func readWorkflow(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", name))
+	if err != nil {
+		t.Fatalf("read workflow %s: %v", name, err)
+	}
+	return data
 }
 
 func loadReleaseWorkflow(t *testing.T) releaseWorkflow {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
-	if err != nil {
-		t.Fatalf("read release workflow: %v", err)
-	}
 	var workflow releaseWorkflow
-	if err := yaml.Unmarshal(data, &workflow); err != nil {
+	if err := yaml.Unmarshal(readWorkflow(t, "release.yml"), &workflow); err != nil {
 		t.Fatalf("parse release workflow: %v", err)
 	}
 	return workflow
+}
+
+func loadSnapshotWorkflow(t *testing.T) snapshotWorkflow {
+	t.Helper()
+	var workflow snapshotWorkflow
+	if err := yaml.Unmarshal(readWorkflow(t, "snapshot.yml"), &workflow); err != nil {
+		t.Fatalf("parse snapshot workflow: %v", err)
+	}
+	return workflow
+}
+
+// requireEmptyTopLevelPermissions fails unless the workflow's top-level
+// `permissions` key is present and grants nothing. yaml unmarshals
+// `permissions: {}` to an empty non-nil map and an absent key to nil, so a nil
+// map means the key is missing.
+func requireEmptyTopLevelPermissions(t *testing.T, name string, permissions map[string]string) {
+	t.Helper()
+	if permissions == nil {
+		t.Fatalf("%s has no top-level permissions key; set `permissions: {}` (core ADR-0021)", name)
+	}
+	if len(permissions) != 0 {
+		t.Fatalf("%s grants %v at the top level; grant nothing there and put each scope on the job that needs it", name, permissions)
+	}
+}
+
+// requireJobPermissions fails unless the job grants exactly want, so a new
+// scope cannot appear without widening this contract deliberately.
+func requireJobPermissions(t *testing.T, workflowName, jobName string, job workflowJob, want map[string]string) {
+	t.Helper()
+	for scope, level := range want {
+		if got := job.Permissions[scope]; got != level {
+			t.Errorf("%s job %s permissions.%s = %q, want %q", workflowName, jobName, scope, got, level)
+		}
+	}
+	for scope := range job.Permissions {
+		if _, ok := want[scope]; !ok {
+			t.Errorf("%s job %s grants permissions.%s = %q; it needs only %v", workflowName, jobName, scope, job.Permissions[scope], want)
+		}
+	}
+}
+
+// requireCheckoutWithoutPersistedCredentials fails unless every
+// actions/checkout step of every job sets `persist-credentials: false`, so
+// the checkout leaves no git credential for later steps to reuse.
+func requireCheckoutWithoutPersistedCredentials(t *testing.T, workflowName string, jobs map[string]workflowJob) {
+	t.Helper()
+	checkouts := 0
+	for jobName, job := range jobs {
+		for _, step := range job.Steps {
+			if !strings.HasPrefix(step.Uses, "actions/checkout@") {
+				continue
+			}
+			checkouts++
+			if got := step.With["persist-credentials"]; got != "false" {
+				t.Errorf("%s job %s step %q sets persist-credentials = %q, want false (core ADR-0021)", workflowName, jobName, step.Name, got)
+			}
+		}
+	}
+	if checkouts == 0 {
+		t.Errorf("%s has no actions/checkout step, so this contract checks nothing", workflowName)
+	}
 }
 
 // stepIndex returns the index of the only step in steps whose uses has the
@@ -154,24 +232,30 @@ func TestReleaseWorkflowRequestsAptPublicationForTags(t *testing.T) {
 
 // TestReleaseWorkflowAttestsBuildProvenance pins the provenance contract that
 // lets apt-publisher register firn `attested=yes`: the tag workflow grants
-// id-token: write and attestations: write and runs a SHA-pinned
-// actions/attest-build-provenance over checksums.txt and the .deb files, with
+// nothing at the top level and its single goreleaser job grants exactly
+// contents: write (GoReleaser creates the release and uploads its assets),
+// id-token: write and attestations: write (actions/attest-build-provenance),
+// and runs that SHA-pinned action over checksums.txt and the .deb files, with
 // no guard and no continue-on-error. apt-publisher verifies each .deb with
 // `gh attestation verify --source-ref refs/tags/<tag>`, so a missing
-// attestation refuses the publication.
+// attestation refuses the publication. It also pins core ADR-0021: the
+// checkout leaves no git credential for later steps to reuse.
 func TestReleaseWorkflowAttestsBuildProvenance(t *testing.T) {
 	workflow := loadReleaseWorkflow(t)
 
-	for _, scope := range []string{"contents", "id-token", "attestations"} {
-		if got := workflow.Permissions[scope]; got != "write" {
-			t.Errorf("permissions.%s = %q, want write", scope, got)
-		}
-	}
+	requireEmptyTopLevelPermissions(t, "release workflow", workflow.Permissions)
 
 	job, ok := workflow.Jobs["goreleaser"]
 	if !ok {
 		t.Fatal("release workflow is missing goreleaser job")
 	}
+	requireJobPermissions(t, "release workflow", "goreleaser", job, map[string]string{
+		"contents":     "write",
+		"id-token":     "write",
+		"attestations": "write",
+	})
+	requireCheckoutWithoutPersistedCredentials(t, "release workflow", workflow.Jobs)
+
 	step := job.Steps[stepIndex(t, job.Steps, "actions/attest-build-provenance@")]
 	if step.If != "" {
 		t.Errorf("attest step has guard %q; every tag release must be attested", step.If)
@@ -185,6 +269,27 @@ func TestReleaseWorkflowAttestsBuildProvenance(t *testing.T) {
 			t.Errorf("attest step subject-path %q lacks %s", step.With["subject-path"], want)
 		}
 	}
+}
+
+// TestSnapshotWorkflowLeastPrivilege pins core ADR-0021 for the nightly
+// publication workflow (.github/workflows/snapshot.yml): nothing is granted at
+// the top level, the single snapshot job grants exactly contents: write
+// because GoReleaser replaces the dev nightly tag and release through the
+// GitHub API from GITHUB_TOKEN, and every checkout step sets
+// persist-credentials: false because no step runs a git push.
+func TestSnapshotWorkflowLeastPrivilege(t *testing.T) {
+	workflow := loadSnapshotWorkflow(t)
+
+	requireEmptyTopLevelPermissions(t, "snapshot workflow", workflow.Permissions)
+
+	job, ok := workflow.Jobs["snapshot"]
+	if !ok {
+		t.Fatal("snapshot workflow is missing snapshot job")
+	}
+	requireJobPermissions(t, "snapshot workflow", "snapshot", job, map[string]string{
+		"contents": "write",
+	})
+	requireCheckoutWithoutPersistedCredentials(t, "snapshot workflow", workflow.Jobs)
 }
 
 // TestReleaseWorkflowPinsActionsToCommits pins core ADR-0021 for the release
