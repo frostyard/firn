@@ -9,12 +9,16 @@
 // (internal/sysconfig), the pipeline and the typed confirmation, so a pull
 // request that changed them would get no `risk:high` label.
 //
-// So the list is held to the policy in 3 ways, and each fails loudly:
+// So the list is held to the policy and to core's list spec in 4 ways, and
+// each fails loudly:
 //   a. every `why` starts with `<id>:` for a boundary id of the policy;
 //   b. every path of every protected boundary is a `glob` of the list
 //      (exact string), unless no tracked file matches that path at all;
 //   c. every tracked file under cmd/, internal/ and gui/ matches at least 1
-//      glob of the list.
+//      glob of the list;
+//   d. the list is a valid version 2 list, and its globs for the list itself
+//      and for the caller are L1 or L2 (rule C of core
+//      docs/specs/risk-paths.md).
 //
 // A new protected boundary or a new install path means the policy and the
 // list change in the same pull request. Read-only: it writes nothing.
@@ -25,11 +29,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { matchGlob, parseStrictJson } from "../scripts/lib/risk-paths.mjs";
+import { checkRequiredPaths, matchGlob, parseStrictJson, validateRiskPaths } from "../scripts/lib/risk-paths.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const POLICY = "policies/agent-governance.json";
 const LIST = ".github/risk-paths.json";
+const CALLER = ".github/workflows/risk-paths.yml";
 // The product trees whose every file must be a risk path: the installer runs
 // as root and erases disks, so no helper in them is exempt.
 const PRODUCT_TREES = ["cmd/", "internal/", "gui/"];
@@ -46,6 +51,17 @@ const tracked = execFileSync("git", ["-C", root, "ls-files"], {
 const boundaries = policy.protected_boundaries ?? [];
 const ids = boundaries.map((boundary) => boundary.id);
 const globs = list.paths.map((entry) => entry.glob);
+
+// Core's version 2 list, and rule C of its spec: the gate fails when the glob
+// of the list or of the caller is looser than L2, because a pull request that
+// loosens its own review level must not pass unread.
+test("the list is a valid version 2 list with itself and the caller at L1 or L2", () => {
+  assert.equal(list.schema_version, 2, `${LIST}: schema_version must be 2 (core docs/specs/risk-paths.md)`);
+  const validation = validateRiskPaths(list);
+  assert.deepEqual(validation.errors, [], `FAIL risk-paths: ${LIST} is not a valid list:\n${validation.errors.join("\n")}`);
+  const ruleC = checkRequiredPaths(list, [LIST, CALLER]);
+  assert.deepEqual(ruleC, [], `FAIL risk-paths: ${LIST} breaks rule C:\n${ruleC.join("\n")}`);
+});
 
 /** The 1 boundary id a `why` starts with, or null. */
 function whyBoundary(why) {
