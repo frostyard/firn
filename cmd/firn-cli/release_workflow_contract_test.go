@@ -106,8 +106,8 @@ func requireJobPermissions(t *testing.T, workflowName, jobName string, job workf
 }
 
 // requireCheckoutWithoutPersistedCredentials fails unless every
-// actions/checkout step of every job sets `persist-credentials: false`, so a
-// compromised job cannot reuse the checkout token for a git push.
+// actions/checkout step of every job sets `persist-credentials: false`, so
+// the checkout leaves no git credential for later steps to reuse.
 func requireCheckoutWithoutPersistedCredentials(t *testing.T, workflowName string, jobs map[string]workflowJob) {
 	t.Helper()
 	checkouts := 0
@@ -239,7 +239,7 @@ func TestReleaseWorkflowRequestsAptPublicationForTags(t *testing.T) {
 // no guard and no continue-on-error. apt-publisher verifies each .deb with
 // `gh attestation verify --source-ref refs/tags/<tag>`, so a missing
 // attestation refuses the publication. It also pins core ADR-0021: the
-// checkout persists no credentials, so no step can push with the token.
+// checkout leaves no git credential for later steps to reuse.
 func TestReleaseWorkflowAttestsBuildProvenance(t *testing.T) {
 	workflow := loadReleaseWorkflow(t)
 
