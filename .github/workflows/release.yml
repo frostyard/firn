@@ -7,20 +7,22 @@ on:
     tags:
       - "*"
 
-permissions:
-  contents: write
-  # packages: write
-  # issues: write
-  # id-token and attestations let actions/attest-build-provenance sign the
-  # release artifacts with GitHub's Sigstore instance (verify with
-  # `gh attestation verify <artifact> --repo frostyard/firn`).
-  id-token: write
-  attestations: write
+# The workflow starts from no permissions; each job grants only what it
+# needs (frostyard/core ADR-0021).
+permissions: {}
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      # GoReleaser creates the release and uploads its assets.
+      contents: write
+      # id-token and attestations let actions/attest-build-provenance sign the
+      # release artifacts with GitHub's Sigstore instance (verify with
+      # `gh attestation verify <artifact> --repo frostyard/firn`).
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
