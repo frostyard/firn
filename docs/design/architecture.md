@@ -143,10 +143,16 @@ pipeline movement at different presentation fidelity.
 Before anything destructive: UEFI check (refuse BIOS machines with a
 clear diagnostic, ADR-0004), required-tool checks derived from the
 assembled step list (each step declares the binaries it needs, so the
-check list cannot drift from the code), disk refusal rules — the union of
-both installers' rules: mounted anywhere, RAID/LVM member, the installer's
-own boot medium, undersized. Unsupported recipes fail validation before
-assembly or disk writes.
+check list cannot drift from the code), disk refusal rules ported from both
+installers (`disk.RefusalReason`): mounted anywhere, RAID/LVM member, the
+running system's own disk, the installer's own boot medium. Preflight has no
+minimum-size refusal. The removed A/B path derived its minimum from the
+published disk artifact's own size, never from a hand-copied table, and that
+check left with the path
+([ADR-0015](../adr/0015-bootc-only-installer-scope.md),
+[ADR-0016](../adr/0016-bootc-only-recipe-contract.md)). A bootc image
+publishes no installed-size minimum to derive one from. Unsupported recipes
+fail validation before assembly or disk writes.
 For bootc recipes that set `image.cosign_pub_key`, preflight selects the
 same embedded-or-remote source the install will consume, resolves it to an
 immutable digest, verifies that digest with cosign, and carries the pinned
