@@ -73,10 +73,15 @@ lint-version-check:
 	@test -n "$(GOLANGCI_LINT_VERSION)" || { echo "mise.toml pins no golangci-lint"; exit 1; }
 	@installed="$$(golangci-lint version --short 2>/dev/null)" || { echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required (not installed; run: mise install)"; exit 1; }; \
 	if [ "$$installed" != "$(GOLANGCI_LINT_VERSION)" ]; then echo "expected golangci-lint $(GOLANGCI_LINT_VERSION), found $$installed (run: mise install)"; exit 1; fi; \
-	built="$$(golangci-lint version 2>/dev/null | sed -n 's/.*built with go\([0-9.]*\).*/\1/p')"; \
+	full="$$(golangci-lint version 2>/dev/null)" || { echo "golangci-lint version failed (run: mise install)"; exit 1; }; \
+	built="$$(printf '%s\n' "$$full" | sed -n 's/.*built with go\([0-9.]*\).*/\1/p')"; \
 	built_minor="$$(printf '%s\n' "$$built" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"; \
 	go_minor="$$(printf '%s\n' "$(GO_VERSION)" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"; \
-	if [ -n "$$built_minor" ] && [ -n "$$go_minor" ] && [ "$$(printf '%s\n%s\n' "$$go_minor" "$$built_minor" | sort -V | head -1)" != "$$go_minor" ]; then \
+	if [ -z "$$built_minor" ]; then \
+		echo "golangci-lint $(GOLANGCI_LINT_VERSION) reports no Go build version; cannot check it against go.mod's go$(GO_VERSION)"; exit 1; fi; \
+	if [ -z "$$go_minor" ]; then \
+		echo "go.mod's go line ($(GO_VERSION)) is not a Go version"; exit 1; fi; \
+	if [ "$$(printf '%s\n%s\n' "$$go_minor" "$$built_minor" | sort -V | head -1)" != "$$go_minor" ]; then \
 		echo "golangci-lint $(GOLANGCI_LINT_VERSION) was built with go$$built, older than go.mod's Go minor go$$go_minor: bump golangci-lint first (core ADR-0043)"; exit 1; fi
 
 ## verify-template: Template gate: agent symlinks, docs index, risk paths, corrections, vendored core copies (needs Node 22+)
