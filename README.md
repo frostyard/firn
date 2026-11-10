@@ -14,7 +14,7 @@ the code it draws from ([`NOTICE`](NOTICE),
 
 **Status:** pre-release. It ships on the snosi installer ISO.
 
-**Documentation:** [docs/README.md](docs/README.md)
+**Documentation:** [frostyard.github.io/firn](https://frostyard.github.io/firn/)
 
 ## What it does
 
@@ -99,6 +99,7 @@ layout. [AGENTS.md](AGENTS.md) holds the rules, and
 
 ## Where to go next
 
+- [User documentation](https://frostyard.github.io/firn/): installation guides and reference.
 - [AGENTS.md](AGENTS.md): the rules for agents and contributors.
 - [docs/README.md](docs/README.md): the decisions, designs, specs and plans.
 - [SECURITY.md](SECURITY.md): the support policy, and how to report a

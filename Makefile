@@ -1,4 +1,4 @@
-.PHONY: all build clean fmt lint lint-version-check verify verify-template ci test install help
+.PHONY: all build clean fmt lint lint-version-check verify verify-template ci test install help site site-serve
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -140,6 +140,24 @@ gui-check:
 ## gui-demo: Run the graphical installer in demo mode (no root, nothing written to disk)
 gui-demo: gui-build
 	./build/firn-gui --demo
+
+# The documentation site (site/), built with pinned ProperDocs and MaterialX
+# (core ADR-0070, frostyard-docs-site skill). `make ci` does not build the
+# site, so a change that does not touch site/ needs no Python toolchain.
+SITE_VENV := build/site-venv
+
+$(SITE_VENV)/bin/properdocs: site/requirements.txt
+	python3 -m venv $(SITE_VENV)
+	$(SITE_VENV)/bin/pip install -q --require-hashes -r site/requirements.txt
+	touch $@
+
+## site: Build the documentation site (strict)
+site: $(SITE_VENV)/bin/properdocs
+	$(SITE_VENV)/bin/properdocs build --strict -f site/properdocs.yml
+
+## site-serve: Preview the documentation site locally
+site-serve: $(SITE_VENV)/bin/properdocs
+	$(SITE_VENV)/bin/properdocs serve -f site/properdocs.yml
 
 ## help: Show this help message
 help:
