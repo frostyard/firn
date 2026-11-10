@@ -405,12 +405,13 @@ kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/00
    up Go from `gui/go.mod`, installs Pango and Cairo (without them mygo's
    text engine falls back to a stub that draws no text) and runs
    `make gui-check`; `make ci` is unchanged. The release workflow runs the
-   same gate after `make verify`, before GoReleaser. golangci-lint joins the
-   target, and so both jobs, once the mise.toml pin is built with Go 1.27.3
-   or newer.
+   same gate after `make verify`, before GoReleaser. Since 2026-11-10
+   ([#128](https://github.com/frostyard/firn/issues/128)), when the root
+   module moved to Go 1.27.3, the target also runs the pinned golangci-lint,
+   and so both jobs.
 4. ✅ **Package it.** GoReleaser builds `firn-gui` from `gui/` (linux
    amd64/arm64, no cgo, `GOTOOLCHAIN=auto` so the workflows' root-module Go
-   fetches 1.27.3) into a `firn-gui_*` archive and a `frostyard-firn-gui`
+   fetches `gui/go.mod`'s Go when it is newer) into a `firn-gui_*` archive and a `frostyard-firn-gui`
    package (deb, rpm, apk): `/usr/libexec/firn-gui/firn-gui` behind a
    `/usr/bin/firn-gui` symlink, a desktop entry and the polkit action
    `org.frostyard.firn.gui` (administrator password every time, active

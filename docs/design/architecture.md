@@ -267,10 +267,10 @@ tag-movement race stays.
 second frontend, `firn-gui`, built from the nested module in `gui/`
 (`go 1.27.3`, `replace github.com/frostyard/firn => ../`). It imports
 firn's `internal/` packages directly (Go's internal rule is path-based in
-module mode); nothing in the root module imports it, so the `firn` binary,
-its Go pin and `make check` are unchanged. `make gui-build` writes
-`build/firn-gui`; `make gui-check` is its gate (tidy diff, gofmt, vet,
-tests) until the pinned golangci-lint is built with Go 1.27.3 or newer.
+module mode); nothing in the root module imports it, so the `firn` binary
+and `make check` are unchanged. Both modules pin go 1.27.3, each in its own
+go.mod. `make gui-build` writes `build/firn-gui`; `make gui-check` is its
+gate (tidy diff, gofmt, the pinned golangci-lint, vet, tests).
 CI runs it as the `gui` job of `.github/workflows/ci.yml`, with Go from
 `gui/go.mod` and Pango and Cairo installed, and the release workflow runs
 it after `make verify` and before GoReleaser.
@@ -280,9 +280,10 @@ loaded with `dlopen`, no cgo, no webview.
 
 Releases build it with GoReleaser (build id `firn-gui`, `dir: gui`, linux
 amd64/arm64, `CGO_ENABLED=0`). The workflows set up the root module's Go
-and `actions/setup-go` exports `GOTOOLCHAIN=local`, so the build sets
-`GOTOOLCHAIN=auto` and that Go fetches 1.27.3. It ships as a `firn-gui_*`
-archive and the `frostyard-firn-gui` package (deb, rpm, apk):
+and `actions/setup-go` exports `GOTOOLCHAIN=local`. The build sets
+`GOTOOLCHAIN=auto`, so `gui/go.mod` can require a newer Go than the root
+module; while both pin 1.27.3, nothing is fetched. It ships as a
+`firn-gui_*` archive and the `frostyard-firn-gui` package (deb, rpm, apk):
 
 - `/usr/libexec/firn-gui/firn-gui`, alone in its directory, and a
   `/usr/bin/firn-gui` symlink to it: at startup mygo deletes every

@@ -38,7 +38,7 @@ jobs:
       # Node, checksum-verified, the same way a developer's `mise install`
       # and a Snowcat worker's target preparation do, so the three cannot
       # drift. Go still comes from actions/setup-go above (go.mod's
-      # toolchain line); Node runs the template gate, which needs Node 22 or
+      # go line); Node runs the template gate, which needs Node 22 or
       # later.
       - name: Install pinned tools
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
@@ -71,12 +71,22 @@ jobs:
 
       # gui/ is a nested module on its own Go pin (go 1.27.3 for mygo,
       # ADR-0021). setup-go exports GOTOOLCHAIN=local, so this job installs
-      # gui/go.mod's version instead of the root module's go1.26.10.
+      # gui/go.mod's version (today the same 1.27.3 as the root module;
+      # gui/ keeps its own pin).
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: gui/go.mod
           cache-dependency-path: gui/go.sum
+
+      # This installs the locked golangci-lint that `make gui-check` runs,
+      # from mise.toml and mise.lock (core ADR-0043).
+      - name: Install pinned tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          install: true
+          install_args: golangci-lint
+          cache: true
 
       # mygo's text engine loads Pango and Cairo with dlopen. Without them it
       # falls back to a stub that lays out every rune as half an em and draws
@@ -88,9 +98,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangocairo-1.0-0 libcairo2
 
-      # make gui-check is gui/'s gate: tidy diff, gofmt, vet, tests. The
-      # pinned golangci-lint cannot read go1.27.3 export data yet, so it is
-      # not part of this job; `make ci` above stays the root module's gate.
+      # make gui-check is gui/'s gate: tidy diff, gofmt, golangci-lint, vet,
+      # tests. `make ci` above stays the root module's gate.
       - name: Run gui/ gate
         run: make gui-check
 

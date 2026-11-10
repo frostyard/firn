@@ -77,11 +77,10 @@ removed. -->
 - The graphical installer is the nested Go module `gui/`
   (`github.com/frostyard/firn/gui`, Go 1.27.3 for mygo; ADR-0021). Root
   targets never enter it: changes under `gui/` also run `make gui-check`
-  (tidy diff, gofmt, vet, tests), which CI's `gui` job runs with Go from
-  `gui/go.mod`. Install Pango and Cairo first: without them mygo's text
-  engine falls back to a stub that draws no text and the tests pass
-  without real layout. The pinned golangci-lint cannot lint it until a
-  release is built with Go 1.27.3 or newer. Its field validation calls
+  (tidy diff, gofmt, the pinned golangci-lint, vet, tests), which CI's `gui`
+  job runs with Go from `gui/go.mod`. Install Pango and Cairo first: without
+  them mygo's text engine falls back to a stub that draws no text and the
+  tests pass without real layout. Its field validation calls
   `recipe.Validate` on an assembled recipe
   (`gui/internal/installer/validate.go`) — never copy
   schema patterns into it. Changing a page: re-render with
