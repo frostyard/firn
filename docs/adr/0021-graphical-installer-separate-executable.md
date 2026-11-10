@@ -5,6 +5,7 @@
   ([frostyard/snosi#1155](https://github.com/frostyard/snosi/pull/1155)): the installer ISO is no longer
   unaffected, since its boot menu adds a graphical entry that runs `firn-gui`
   full screen beside the console entry that keeps the TUI kiosk.
+  Amended (2026-11-10, [frostyard/firn#128](https://github.com/frostyard/firn/issues/128)): the root module moved to Go 1.27.3, and golangci-lint 2.15.0, built with go1.27.0, typechecks go1.27.3 code, so the export-data limit in Context does not hold for it and `make gui-check` runs the pinned golangci-lint.
 - **Date:** 2026-10-25
 
 ## Context

@@ -14,11 +14,13 @@ GOFMT := gofmt
 # in CI (jdx/mise-action), verified against mise.lock. Bump it there in a
 # dedicated commit; never edit this line.
 GOLANGCI_LINT_VERSION := $(strip $(shell sed -n 's/^golangci-lint = "\(.*\)"/\1/p' mise.toml))
-# The Go release this module is built with, from go.mod's toolchain line —
-# the only Go pin (mise reads the same line). golangci-lint must be built
-# with a Go at least this new, or its embedded gofmt and typechecker
-# disagree with the toolchain.
-GO_TOOLCHAIN := $(strip $(shell sed -n 's/^toolchain go\(.*\)/\1/p' go.mod))
+# The Go release this module is built with, from go.mod's `go` line — the
+# only Go pin (mise reads the same line). golangci-lint must be built with
+# the same Go minor or newer. The patch level is not compared, because a
+# patch release does not change gofmt output or the language version the
+# type checker accepts (frostyard/core frostyard-go-repo skill "Fleet
+# toolchain", core ADR-0043).
+GO_VERSION := $(strip $(shell sed -n 's/^go \([0-9.]*\)$$/\1/p' go.mod))
 GOFILES := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 # Node runs the template gate. Its pin lives in mise.toml (core ADR-0043).
 NODE_MAJOR := $(shell node -p "process.versions.node.split('.')[0]" 2>/dev/null)
@@ -65,14 +67,22 @@ test-cover:
 tidy:
 	$(GO) mod tidy
 
-## lint-version-check: Fail unless the installed golangci-lint is the mise.toml pin and was built with a Go no older than go.mod's toolchain
+## lint-version-check: Fail unless the installed golangci-lint is the mise.toml pin and was built with a Go minor no older than go.mod's
 lint-version-check:
+	@test -n "$(GO_VERSION)" || { echo "go.mod has no go line"; exit 1; }
 	@test -n "$(GOLANGCI_LINT_VERSION)" || { echo "mise.toml pins no golangci-lint"; exit 1; }
 	@installed="$$(golangci-lint version --short 2>/dev/null)" || { echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required (not installed; run: mise install)"; exit 1; }; \
 	if [ "$$installed" != "$(GOLANGCI_LINT_VERSION)" ]; then echo "expected golangci-lint $(GOLANGCI_LINT_VERSION), found $$installed (run: mise install)"; exit 1; fi; \
-	built="$$(golangci-lint version 2>/dev/null | sed -n 's/.*built with go\([0-9.]*\).*/\1/p')"; \
-	if [ -n "$$built" ] && [ "$$(printf '%s\n%s\n' "$(GO_TOOLCHAIN)" "$$built" | sort -V | head -1)" != "$(GO_TOOLCHAIN)" ]; then \
-		echo "golangci-lint $(GOLANGCI_LINT_VERSION) was built with go$$built, older than go.mod's toolchain go$(GO_TOOLCHAIN): bump golangci-lint first (core ADR-0043)"; exit 1; fi
+	full="$$(golangci-lint version 2>/dev/null)" || { echo "golangci-lint version failed (run: mise install)"; exit 1; }; \
+	built="$$(printf '%s\n' "$$full" | sed -n 's/.*built with go\([0-9.]*\).*/\1/p')"; \
+	built_minor="$$(printf '%s\n' "$$built" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"; \
+	go_minor="$$(printf '%s\n' "$(GO_VERSION)" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"; \
+	if [ -z "$$built_minor" ]; then \
+		echo "golangci-lint $(GOLANGCI_LINT_VERSION) reports no Go build version; cannot check it against go.mod's go$(GO_VERSION)"; exit 1; fi; \
+	if [ -z "$$go_minor" ]; then \
+		echo "go.mod's go line ($(GO_VERSION)) is not a Go version"; exit 1; fi; \
+	if [ "$$(printf '%s\n%s\n' "$$go_minor" "$$built_minor" | sort -V | head -1)" != "$$go_minor" ]; then \
+		echo "golangci-lint $(GOLANGCI_LINT_VERSION) was built with go$$built, older than go.mod's Go minor go$$go_minor: bump golangci-lint first (core ADR-0043)"; exit 1; fi
 
 ## verify-template: Template gate: agent symlinks, docs index, risk paths, corrections, vendored core copies (needs Node 22+)
 verify-template:
@@ -90,7 +100,7 @@ verify:
 	@echo "==> verify: gofmt"
 	@unformatted="$$($(GOFMT) -l $(GOFILES))"; \
 	if [ -n "$$unformatted" ]; then echo "$$unformatted"; echo "gofmt: files need formatting (run make fmt)"; exit 1; fi
-	@echo "==> verify: golangci-lint $(GOLANGCI_LINT_VERSION) (built with go >= $(GO_TOOLCHAIN))"
+	@echo "==> verify: golangci-lint $(GOLANGCI_LINT_VERSION) (built with Go minor >= go.mod's $(GO_VERSION))"
 	@$(MAKE) --no-print-directory lint-version-check
 	@$(MAKE) --no-print-directory lint
 	@echo "==> verify: go vet"
@@ -118,10 +128,10 @@ ci:
 
 # ---------------------------------------------------------------------------
 # The graphical installer is a nested Go module (gui/, ADR-0021) on its own
-# Go pin (1.27.3, which mygo needs). The root targets above never enter it;
-# changes under gui/ also run `make gui-check`. golangci-lint joins that gate
-# once the mise.toml pin is built with Go 1.27.3 or newer: older builds
-# cannot read that toolchain's export data.
+# Go pin (1.27.3, which mygo needs), the same as the root module now. The
+# root targets above never enter it; changes under gui/ also run
+# `make gui-check`, which lints it with the pinned golangci-lint and the root
+# .golangci.yml.
 
 .PHONY: gui-build gui-check gui-demo
 
@@ -129,11 +139,13 @@ ci:
 gui-build:
 	cd gui && $(GO) build $(LDFLAGS) -o ../build/firn-gui ./cmd/firn-gui
 
-## gui-check: gui/ gate: tidy diff, gofmt, vet, tests (needs Pango and Cairo installed)
+## gui-check: gui/ gate: tidy diff, gofmt, lint, vet, tests (needs Pango and Cairo installed)
 gui-check:
 	cd gui && $(GO) mod tidy -diff
 	@unformatted="$$($(GOFMT) -l gui)"; \
 	if [ -n "$$unformatted" ]; then echo "$$unformatted"; echo "gofmt: files need formatting (run make fmt)"; exit 1; fi
+	@$(MAKE) --no-print-directory lint-version-check
+	cd gui && golangci-lint run ./...
 	cd gui && $(GO) vet ./...
 	cd gui && $(GO) test ./...
 
