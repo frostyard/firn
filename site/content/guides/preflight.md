@@ -21,7 +21,7 @@ Use a root shell in the intended live environment. The recipe must first pass sc
 | `preflight-image` | A usable image source. With `cosign_pub_key`, resolve and verify an immutable digest before disk writes. Read core Flatpaks metadata when requested. |
 | `preflight-disk` | A resolvable whole disk that passes disk refusal checks. By-id paths resolve to their canonical disk device. |
 
-The disk checks refuse the disk backing the running system, mounted filesystems anywhere below the disk, RAID members, LVM physical volumes and media with `SNOSI_INSTALLER_` or `FIRN_INSTALLER_` labels. A partition is not a valid whole-disk target.
+The disk checks refuse the disk backing the running system, mounted filesystems anywhere below the disk, RAID members, LVM physical volumes and media with `SNOSI_INSTALLER_` or `FIRN_INSTALLER_` labels. A partition is not a valid whole-disk target. Preflight does not check the disk's size.
 
 firn prefers a valid local containers-storage image over the registry. A cached source can allow offline installation. For registry sources, signed recipes install the verified digest. Unsigned recipes also pin a reported valid digest, but that is not signature verification. See the [trust model](../concepts/trust.md).
 
