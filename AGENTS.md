@@ -119,6 +119,11 @@ removed. -->
 - Progress events are the only user-visible output of pipeline code; new
   event types and stable codes change `docs/specs/progress-protocol.md`
   in the same commit (`internal/progress`).
+- User docs live in `site/content/` (ProperDocs + MaterialX, core ADR-0070);
+  `make site` builds them strict. Update the affected site page in the same PR
+  as a user-visible behavior change. Regenerate `site/requirements.txt` with
+  `uv pip compile --universal --generate-hashes site/requirements.in -o site/requirements.txt`;
+  never hand-edit it.
 - Files copied or substantially derived from fisherman keep a provenance
   comment at the top identifying their origin (see `NOTICE`).
 

@@ -460,6 +460,12 @@ uses the same engine preflight as headless installation.
 
 ## Operational notes
 
+- Documentation site: user guides live in `site/content/`, with ProperDocs +
+  MaterialX under [core ADR-0070](https://github.com/frostyard/core/blob/main/docs/adr/0070-build-tool-docs-sites-with-materialx-on-github-pages.md).
+  `make site` builds strict; [site.yml](../../.github/workflows/site.yml)
+  deploys them to [frostyard.github.io/firn](https://frostyard.github.io/firn/).
+  Maintainer contracts stay in this `docs/` tree.
+
 - Firn runs as root from live media; every destructive action sits behind
   preflight plus (interactively) typed disk confirmation matching the
   exact configured target disk path — `snosi-install`'s rule, adopted

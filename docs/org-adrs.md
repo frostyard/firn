@@ -32,7 +32,7 @@ it lives in this repository.
 
 ## When they apply
 
-- [ADR-0070 — Build tool docs sites with ProperDocs and MaterialX on GitHub Pages](https://github.com/frostyard/core/blob/main/docs/adr/0070-build-tool-docs-sites-with-materialx-on-github-pages.md) — firn is a user-facing tool, so it owes a `site/` docs site. It has none yet: the follow-up is [frostyard/firn#127](https://github.com/frostyard/firn/issues/127).
+- [ADR-0070 — Build tool docs sites with ProperDocs and MaterialX on GitHub Pages](https://github.com/frostyard/core/blob/main/docs/adr/0070-build-tool-docs-sites-with-materialx-on-github-pages.md) — firn has a user documentation site in `site/`, configured in [properdocs.yml](../site/properdocs.yml), built and deployed by [site.yml](../.github/workflows/site.yml), at [frostyard.github.io/firn](https://frostyard.github.io/firn/).
 
 A Go repository uses the Go minor and the golangci-lint version in core's
 `frostyard-go-repo` skill, section

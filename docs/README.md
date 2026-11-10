@@ -1,5 +1,7 @@
 # Documentation
 
+For installation guides and user reference, see the [firn documentation site](https://frostyard.github.io/firn/).
+
 Docs are split by the question they answer:
 
 | Directory | Question | Contents |
