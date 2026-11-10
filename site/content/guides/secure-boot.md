@@ -39,7 +39,7 @@ Create the password file securely before validation. It must be an existing regu
 
 ## Complete the next boot
 
-After a successful install with enrollment staged, boot the target disk. MokManager starts. Select **Enroll MOK**, then **Continue** and **Yes**, then type the one-time password and reboot.
+After a successful install with enrollment staged, boot the target disk. Shim offers MOK management for a few seconds: press a key before the timeout, or the boot continues without enrollment. Select **Enroll MOK**, then **Continue** and **Yes**, then type the one-time password and reboot.
 
 This human step is required. A headless install can stage the request but cannot complete it unattended. Do not treat successful staging or a passed dry-run as proof of completed enrollment.
 
