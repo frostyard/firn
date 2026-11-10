@@ -35,7 +35,7 @@ sudo apt install frostyard-firn
 
 This installs the `firn` command. Installing the package alone does not supply an installer environment or make it safe to overwrite a running system. Use live media and let [preflight](../guides/preflight.md) check the tools required by your recipe.
 
-`frostyard-firn-gui` is for installer media, not installed systems. Do not add it to an installed desktop image. See the [distribution notes](https://github.com/frostyard/firn/blob/main/docs/design/architecture.md#operational-notes) for the package boundary.
+`frostyard-firn-gui` is for installer media, not installed systems. Do not add it to an installed desktop image. See the [graphical installer design](https://github.com/frostyard/firn/blob/main/docs/design/architecture.md#graphical-installer-gui) for the package boundary.
 
 For a local build, use [build from source](../contributing/build.md).
 

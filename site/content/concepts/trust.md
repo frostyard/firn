@@ -14,7 +14,7 @@ A valid embedded containers-storage image is preferred over the registry. The bu
 
 Without `cosign_pub_key`, firn relies on host container policy and cached-image provenance. Registry installs still pin a valid reported digest from preflight, but **pinning is not verification**. It identifies what was installed, not who built it.
 
-If an unsigned source reports no valid digest, the tag remains the source and can resolve again during the pull. Non-registry source references are not independently cosign-verified through this field. See the [recipe contract](https://github.com/frostyard/firn/blob/main/docs/specs/recipe-schema.md#image).
+If an unsigned source reports no valid digest, the tag remains the source and can resolve again during the pull. With `cosign_pub_key`, a non-registry reference fails preflight: cosign verification needs a registry reference. See the [recipe contract](https://github.com/frostyard/firn/blob/main/docs/specs/recipe-schema.md#image).
 
 The pinned installation digest does not fix future updates to that build. Updates use `target_ref`, or `ref` when `target_ref` is empty.
 

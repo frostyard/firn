@@ -40,8 +40,8 @@ ZFS is unsupported. See [disk layouts](../guides/disks-and-encryption.md).
 | --- | --- |
 | `encryption` | Required: `"none"`, `"luks-passphrase"`, `"tpm2-luks"` or `"tpm2-luks-passphrase"`. |
 | `passphrase` / `passphrase_file` | Exactly 1 when the mode includes `passphrase`; neither for other modes. Prefer a private file. |
-| `mok` | Required when Secure Boot is active: `"enroll"` or `"skip"`. |
-| `mok_password_file` | Required for `mok = "enroll"`; contains the one-time MokManager password. |
+| `mok` | Required when Secure Boot is active: `"enroll"` or `"skip"`. Must not be set when Secure Boot is inactive. |
+| `mok_password_file` | Required for `mok = "enroll"`; contains the one-time MokManager password. Must not be set when Secure Boot is inactive. |
 
 TPM modes require a detected TPM. Enrollment needs a person to complete MokManager at first boot. See [encryption](../guides/disks-and-encryption.md) and [Secure Boot](../guides/secure-boot.md).
 

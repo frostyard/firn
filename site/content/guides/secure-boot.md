@@ -4,7 +4,7 @@ description: Prepare the secure boot chain, stage MOK enrollment and complete th
 
 # Secure Boot
 
-UEFI is required for every install, but Secure Boot is optional. When Secure Boot is active, firn requires an explicit MOK choice in the recipe. The wizards show that choice automatically.
+UEFI is required for every install, but Secure Boot is optional. When Secure Boot is active, firn requires an explicit MOK choice in the recipe. When Secure Boot is inactive, `mok` and `mok_password_file` must not be set: validation rejects them. The wizards show the choice only when it applies.
 
 Secure Boot controls trust in the boot chain. It is separate from [cosign image verification](../concepts/trust.md) and [LUKS disk encryption](disks-and-encryption.md).
 
@@ -35,11 +35,11 @@ mok_password_file = "/run/firn/my-mok-password"
 
 Create the password file securely before validation. It must be an existing regular file that is not world-readable; use mode 0600. Use `bootloader = "systemd"` in `[target]`, or omit the field for that default.
 
-`mok = "skip"` does not enroll a key. Use it only when you manage the boot trust yourself. Skipping enrollment does not guarantee that firmware will accept a chain it does not already trust.
+`mok = "skip"` does not enroll a key. With `skip`, firn stages neither the shim → MOK-signed systemd-boot chain nor a MOK enrollment request. Use it only when you manage the boot trust yourself. Skipping enrollment does not guarantee that firmware will accept a chain it does not already trust.
 
 ## Complete the next boot
 
-After a successful install with enrollment staged, boot the target disk. MokManager asks for the one-time password. Choose **Enroll MOK** and complete its enrollment prompts.
+After a successful install with enrollment staged, boot the target disk. MokManager starts. Select **Enroll MOK**, then **Continue** and **Yes**, then type the one-time password and reboot.
 
 This human step is required. A headless install can stage the request but cannot complete it unattended. Do not treat successful staging or a passed dry-run as proof of completed enrollment.
 

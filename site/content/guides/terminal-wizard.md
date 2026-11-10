@@ -30,7 +30,7 @@ See [disks and encryption](disks-and-encryption.md) for layouts and refusal rule
 
 Choose encryption explicitly. The initial selection is `none`. Passphrase modes ask for the passphrase twice. TPM2 modes are unavailable when no TPM is detected.
 
-When Secure Boot is active, choose MOK enrollment or skip. Enrollment starts selected and asks for a one-time MokManager password twice. Skip is for operators who manage the boot trust themselves, not a way to make an untrusted boot chain work. Read [Secure Boot](secure-boot.md) before choosing.
+When Secure Boot is active, choose MOK enrollment or skip. Enrollment starts selected and asks for a one-time MokManager password twice. Skip stages no shim chain and no enrollment request. It is for operators who manage the boot trust themselves, not a way to make an untrusted boot chain work. Read [Secure Boot](secure-boot.md) before choosing.
 
 ## Configure the system and account
 
