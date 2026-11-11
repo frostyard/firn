@@ -35,7 +35,7 @@ The root targets do not enter the nested GUI module. Root/KVM end-to-end harness
 
 ## Build the graphical installer
 
-The GUI needs Go 1.27.3 for mygo. With `GOTOOLCHAIN=auto`, an older Go can fetch the required toolchain. Install GTK 3, Pango and Cairo for the GUI runtime; tests need Pango and Cairo for real text layout. Without them, a fallback stub can let tests pass without drawing text.
+The GUI needs Go 1.27.4 (the pin in `gui/go.mod`); mygo needs Go 1.27.3 or later. With `GOTOOLCHAIN=auto`, an older Go can fetch the required toolchain. Install GTK 3, Pango and Cairo for the GUI runtime; tests need Pango and Cairo for real text layout. Without them, a fallback stub can let tests pass without drawing text.
 
 ```sh
 make gui-build

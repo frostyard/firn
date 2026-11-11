@@ -69,10 +69,10 @@ jobs:
         with:
           persist-credentials: false
 
-      # gui/ is a nested module on its own Go pin (go 1.27.3 for mygo,
-      # ADR-0021). setup-go exports GOTOOLCHAIN=local, so this job installs
-      # gui/go.mod's version (today the same 1.27.3 as the root module;
-      # gui/ keeps its own pin).
+      # gui/ is a nested module on its own Go pin (go 1.27.4; mygo needs
+      # Go 1.27.3 or later, ADR-0021). setup-go exports GOTOOLCHAIN=local, so
+      # this job installs gui/go.mod's version (today the same 1.27.4 as the
+      # root module; gui/ keeps its own pin).
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

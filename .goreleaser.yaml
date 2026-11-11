@@ -64,10 +64,11 @@ builds:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser
 
   # The graphical installer is the nested module in gui/ (ADR-0021), which
-  # needs Go 1.27.3 for mygo. The workflows set up the root module's Go and
-  # actions/setup-go exports GOTOOLCHAIN=local, so this build sets
-  # GOTOOLCHAIN=auto to let that go fetch gui/go.mod's toolchain. mygo loads
-  # GTK, Pango and Cairo with dlopen, so it cross-builds without cgo.
+  # needs the Go of gui/go.mod (1.27.4; mygo needs Go 1.27.3 or later). The
+  # workflows set up the root module's Go and actions/setup-go exports
+  # GOTOOLCHAIN=local, so this build sets GOTOOLCHAIN=auto to let that go
+  # fetch gui/go.mod's toolchain. mygo loads GTK, Pango and Cairo with
+  # dlopen, so it cross-builds without cgo.
   - id: "firn-gui"
     binary: firn-gui
     dir: gui
