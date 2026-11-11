@@ -1,9 +1,9 @@
 module github.com/frostyard/firn/gui
 
 // The graphical installer is a nested module (ADR-0021): mygo needs Go
-// 1.27.3, while the root module keeps its own toolchain pin. The replace
-// makes firn's internal packages importable from this tree.
-go 1.27.3
+// 1.27.3 or later, while the root module keeps its own toolchain pin. The
+// replace makes firn's internal packages importable from this tree.
+go 1.27.4
 
 require (
 	github.com/egoist/mygo v0.7.4

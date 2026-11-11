@@ -265,10 +265,10 @@ tag-movement race stays.
 
 [ADR-0021](../adr/0021-graphical-installer-separate-executable.md) adds a
 second frontend, `firn-gui`, built from the nested module in `gui/`
-(`go 1.27.3`, `replace github.com/frostyard/firn => ../`). It imports
+(`go 1.27.4`, `replace github.com/frostyard/firn => ../`). It imports
 firn's `internal/` packages directly (Go's internal rule is path-based in
 module mode); nothing in the root module imports it, so the `firn` binary
-and `make check` are unchanged. Both modules pin go 1.27.3, each in its own
+and `make check` are unchanged. Both modules pin go 1.27.4, each in its own
 go.mod. `make gui-build` writes `build/firn-gui`; `make gui-check` is its
 gate (tidy diff, gofmt, the pinned golangci-lint, vet, tests).
 CI runs it as the `gui` job of `.github/workflows/ci.yml`, with Go from
@@ -282,7 +282,7 @@ Releases build it with GoReleaser (build id `firn-gui`, `dir: gui`, linux
 amd64/arm64, `CGO_ENABLED=0`). The workflows set up the root module's Go
 and `actions/setup-go` exports `GOTOOLCHAIN=local`. The build sets
 `GOTOOLCHAIN=auto`, so `gui/go.mod` can require a newer Go than the root
-module; while both pin 1.27.3, nothing is fetched. It ships as a
+module; while both pin 1.27.4, nothing is fetched. It ships as a
 `firn-gui_*` archive and the `frostyard-firn-gui` package (deb, rpm, apk):
 
 - `/usr/libexec/firn-gui/firn-gui`, alone in its directory, and a

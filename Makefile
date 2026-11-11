@@ -128,8 +128,8 @@ ci:
 
 # ---------------------------------------------------------------------------
 # The graphical installer is a nested Go module (gui/, ADR-0021) on its own
-# Go pin (1.27.3, which mygo needs), the same as the root module now. The
-# root targets above never enter it; changes under gui/ also run
+# Go pin (1.27.4; mygo needs 1.27.3 or later), the same as the root module
+# now. The root targets above never enter it; changes under gui/ also run
 # `make gui-check`, which lints it with the pinned golangci-lint and the root
 # .golangci.yml.
 
