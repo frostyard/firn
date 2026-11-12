@@ -83,7 +83,13 @@ removed. -->
   stub that draws no text and the tests pass without real layout. Its
   field validation calls `recipe.Validate` on an assembled recipe
   (`gui/internal/installer/validate.go`) — never copy
-  schema patterns into it. Changing a page: re-render with
+  schema patterns into it. Its look is frostui's Frostyard theme
+  (ADR-0022): build pages from the kit's components, colors, text styles
+  and metrics (`frostui.Card`, `ColorsOf`, `ToneFill`, `Heading`,
+  `RadiusChip`, ...) rather than colors and sizes of their own, add a
+  helper to `gui/internal/installer/style.go` only for what the kit lacks,
+  and add a new icon to `firnIcons` (`icons.go`). Changing a page:
+  re-render with
   `FIRN_GUI_SNAPSHOTS=<dir> go test ./internal/installer -run TestSnapshots`
   (from `gui/`) and look at both appearances.
 - Layout follows the frostyard Go conventions with documented
@@ -108,7 +114,8 @@ removed. -->
 - Pipeline and domain packages (`internal/*` except the TUI) use only the
   Go stdlib plus shelling out to host tools; the sanctioned exceptions are
   the TOML decoder (ADR-0005), in the TUI layer only, the Charm stack
-  (ADR-0007), and, in the `gui/` module only, mygo (ADR-0021). Do not add
+  (ADR-0007), and, in the `gui/` module only, mygo (ADR-0021) and frostui
+  (ADR-0022). Do not add
   other dependencies without an ADR. The image catalog and offered user
   groups live in `internal/catalog`, shared by both frontends.
 - Recipe validation is fail-closed: unknown fields, unknown enum values,

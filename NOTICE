@@ -20,3 +20,12 @@ Firn also ports logic from the snosi native installer
 frostyard project.
 
 Rationale and attribution policy: docs/adr/0003-rewrite-fisherman-as-firn.md
+
+The graphical installer, firn-gui (the gui/ module), is built with
+frostui (frostyard/frostui, MIT) and carries what frostui embeds:
+the Inter typeface (https://rsms.me/inter/), copyright 2016 The Inter
+Project Authors, under the SIL Open Font License, Version 1.1
+(https://openfontlicense.org), and icons of Lucide (https://lucide.dev),
+under the ISC license, with those Lucide derived from Feather also under
+the MIT license. frostui's NOTICE, fonts/OFL.txt and icons/LICENSE hold
+the full texts. Rationale: docs/adr/0022-draw-the-graphical-installer-with-frostui.md
