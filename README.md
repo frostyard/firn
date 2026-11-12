@@ -16,6 +16,8 @@ the code it draws from ([`NOTICE`](NOTICE),
 
 **Documentation:** [frostyard.github.io/firn](https://frostyard.github.io/firn/)
 
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/firn-gui-storage-dark.png"><img alt="firn-gui's Storage step in demo mode: the steps on the left, the chosen disk and filesystem, and Back and Continue" src="docs/images/firn-gui-storage-light.png"></picture>
+
 ## What it does
 
 - **Bootc-only installer.** `family = "bootc"` installs an OCI image straight
@@ -38,7 +40,10 @@ the code it draws from ([`NOTICE`](NOTICE),
   recipe you can reproduce headlessly.
 - **Graphical installer.** `firn-gui` is a windowed wizard with a keyboard
   shortcut for every action, from the nested module [`gui/`](gui/)
-  ([ADR-0021](docs/adr/0021-graphical-installer-separate-executable.md)).
+  ([ADR-0021](docs/adr/0021-graphical-installer-separate-executable.md)),
+  drawn in frostyard's light and dark look with
+  [frostui](https://github.com/frostyard/frostui)
+  ([ADR-0022](docs/adr/0022-draw-the-graphical-installer-with-frostui.md)).
 - **Install-time flatpaks.** Flatpaks are installed into the target at
   install time, from the installer medium first and the network second; each
   image publishes its core set in an OCI label
@@ -47,6 +52,8 @@ the code it draws from ([`NOTICE`](NOTICE),
 - **One progress protocol.** Every user-visible signal is a typed progress
   event, and `--json-progress` streams it as NDJSON for automation
   ([spec](docs/specs/progress-protocol.md)).
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/firn-gui-installing-dark.png"><img alt="firn-gui installing Snow in demo mode: overall progress, the pipeline's steps and its activity log" src="docs/images/firn-gui-installing-light.png"></picture>
 
 ## Install
 
