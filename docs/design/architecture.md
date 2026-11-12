@@ -7,6 +7,7 @@ Living document. Rationale:
 [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
 [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
 [ADR-0021 (Accepted)](../adr/0021-graphical-installer-separate-executable.md),
+[ADR-0022 (Accepted)](../adr/0022-draw-the-graphical-installer-with-frostui.md),
 [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
 [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
 [ADR-0010](../adr/0010-single-installer-iso-in-snosi.md) (media
@@ -98,7 +99,7 @@ headless reproduction command until the installer environment reboots.
 | Layer | Packages (indicative) | Dependency rule |
 |---|---|---|
 | Frontend | `internal/tui` | Charm stack allowed (ADR-0007) |
-| Frontend (GUI) | `gui/internal/installer`, `gui/cmd/firn-gui` (nested module `github.com/frostyard/firn/gui`) | mygo allowed, in `gui/` only (ADR-0021) |
+| Frontend (GUI) | `gui/internal/installer`, `gui/cmd/firn-gui` (nested module `github.com/frostyard/firn/gui`) | mygo and frostui allowed, in `gui/` only (ADR-0021, ADR-0022) |
 | Shared frontend data | `internal/catalog` | stdlib + `internal/recipe` |
 | Pipeline | `internal/pipeline`, `internal/steps/*` | stdlib + host tools only |
 | Domain | `internal/recipe`, `internal/disk`, `internal/luks`, `internal/enroll`, `internal/sysconfig`, `internal/flatpak`, `internal/progress`, `internal/runner` | stdlib + host tools only (TOML decoder excepted, ADR-0005) |
@@ -276,7 +277,11 @@ CI runs it as the `gui` job of `.github/workflows/ci.yml`, with Go from
 it after `make verify` and before GoReleaser.
 The UI is mygo native UI (`github.com/egoist/mygo`, exact pin in
 `gui/go.mod`): drawn in Go with OpenGL or the CPU, GTK 3, Pango and Cairo
-loaded with `dlopen`, no cgo, no webview.
+loaded with `dlopen`, no cgo, no webview. It is drawn in frostyard's
+Frostyard look through frostui (`github.com/frostyard/frostui`, exact pin
+in `gui/go.mod`;
+[ADR-0022](../adr/0022-draw-the-graphical-installer-with-frostui.md)); see
+[Look](#gui-look) below.
 
 Releases build it with GoReleaser (build id `firn-gui`, `dir: gui`, linux
 amd64/arm64, `CGO_ENABLED=0`). The workflows set up the root module's Go
@@ -385,10 +390,32 @@ pipeline in-process.
   Ctrl+/ lists the shortcuts, Ctrl+Shift+L switches appearance, Ctrl+Q
   quits (asking first mid-wizard, refused mid-install). Cards are radio
   groups, so the arrow keys choose images, disks and encryption modes.
+- <a id="gui-look"></a>**Look.** Each frame, `app.applyTheme` sets
+  `frostui.FrostyardTheme` for the appearance (`--appearance`,
+  Ctrl+Shift+L, else the desktop's) with the desktop's high contrast and
+  text size but not its accent, and `frostui.Adapt` registers the kit's
+  Inter. The window is a rail of steps on the kit's chrome (the current
+  step is the kit's selected row: selected fill, accent rule, selected
+  text), a header with the step as a `frostui.Label` and the page title as
+  `frostui.Title`, the page, and a footer of actions on the chrome. Pages
+  use the kit's components (`Card`, `IconTile`, `IconPill`, `Pill`,
+  `Shortcut`, `LabeledButton`, `IconButton`, `Hero` on Welcome,
+  `KeyValues` on Review, `Loading`, `Problem`, `ShortcutsBody` in the help
+  dialog); `style.go` builds what the kit lacks from its colors and
+  metrics: choice cards, titled notes (`callout`), case-keeping tags,
+  the gradient forward button, the destructive button, the dialog panel
+  and the strength meter. MyGo's own alert dialogs (quit, stop, close
+  refused) take the theme's colors. The installer's icons (`firnIcons`,
+  `icons.go`) are handed to `frostui.NewIcons` as embedded icons, so they
+  win over the desktop's icon theme, the names the kit's components draw
+  included (`TestIconsAreTheInstallers`); `TestFrostyardLook` holds the
+  theme, font and accent for each appearance source.
 - **Tests.** `ui.NewTester` drives pages headless (`app_test.go` walks the
   wizard by keyboard and installs through the demo backend);
   `FIRN_GUI_SNAPSHOTS=<dir>` renders every page in both appearances to
   PNG; `FIRN_GUI_WINDOW_TEST=<png>` opens the real window and captures it.
+  The README's screenshots in `docs/images/` are copies of its
+  `03-storage` and `09-installing` frames in each appearance.
   mygo's text engine loads Pango and Cairo; without them it falls back to
   a stub that lays out every rune as half an em and draws nothing, and the
   tests still pass. CI installs them so the tests exercise real text
@@ -522,7 +549,8 @@ uses the same engine preflight as headless installation.
   [ADR-0006](../adr/0006-install-time-offline-first-flatpaks.md),
   [ADR-0007](../adr/0007-tui-only-frontend-single-binary.md),
   [ADR-0012](../adr/0012-bootc-install-from-ram-installer.md),
-  [ADR-0021](../adr/0021-graphical-installer-separate-executable.md)
+  [ADR-0021](../adr/0021-graphical-installer-separate-executable.md),
+  [ADR-0022](../adr/0022-draw-the-graphical-installer-with-frostui.md)
 - Scope and contract: [ADR-0015 (Accepted)](../adr/0015-bootc-only-installer-scope.md),
   [ADR-0016 (Accepted)](../adr/0016-bootc-only-recipe-contract.md),
   [ADR-0018](../adr/0018-image-published-core-flatpaks-label.md),

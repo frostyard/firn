@@ -87,7 +87,7 @@ func TestHelpAndAppearanceShortcuts(t *testing.T) {
 	tt.Key(0, ui.KeyEscape)
 	tt.Key(ui.Ctrl|ui.Shift, ui.KeyL)
 	tt.Frame()
-	if a.themeMode != 2 || !a.p.dark {
+	if a.themeMode != 2 || !a.t.Dark {
 		t.Fatalf("Ctrl+Shift+L did not switch to dark (mode %d)", a.themeMode)
 	}
 }
