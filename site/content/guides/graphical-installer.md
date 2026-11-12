@@ -28,7 +28,7 @@ To choose an appearance explicitly:
 firn-gui --demo --appearance dark
 ```
 
-`--appearance` accepts `light` or `dark`; the default follows the desktop.
+`--appearance` accepts `light` or `dark`; the default follows the desktop. Either way the window is drawn in frostyard's look, set in Inter. It follows the desktop's text size and high-contrast setting, but not its accent color.
 
 ## Walk through the pages
 

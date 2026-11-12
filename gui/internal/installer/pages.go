@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/frostyard/frostui"
 
 	"github.com/frostyard/firn/internal/catalog"
 	"github.com/frostyard/firn/internal/disk"
@@ -18,72 +19,70 @@ import (
 // --- welcome ---
 
 func (a *app) welcomePage(c *ui.Context) {
-	p := a.p
 	if c.Shortcut(0, ui.KeyEnter) {
 		a.next()
 	}
 	ui.Scroll(c).Grow(1).Children(func() {
-		ui.Column(c).Padding(64, 56, 40).Gap(28).MaxWidth(860).Children(func() {
-			ui.Column(c).Gap(12).Children(func() {
-				ui.Text(c, "SNOSI INSTALLER").FontSize(12).FontWeight(700).LetterSpacing(1.6).TextColor(p.accent)
-				ui.Text(c, "Install snosi on this computer").FontSize(38).FontWeight(800).LetterSpacing(-0.6)
-				ui.Text(c, "Answer a few questions, review every choice, and only then does anything touch your disk. Defaults are filled in for you; change whatever you like.").
-					FontSize(16).LineHeight(1.45).TextColor(p.muted).MaxWidth(640)
-			})
+		ui.Column(c).Padding(48, 56, 40).Gap(frostui.SpaceXL).MaxWidth(860).AlignItems(ui.Stretch).Children(func() {
+			frostui.Hero(c, frostui.HeroIcon{Logo: logo}, "Install snosi on this computer",
+				"Answer a few questions, review every choice, and only then does anything touch your disk. Defaults are filled in for you; change whatever you like.")
 
-			card(c, p).Children(func() {
-				cardHeader(c, p, iconChip, "This computer", "What the installer detected")
-				ui.Row(c).Gap(8).Wrap().Children(func() {
+			frostui.Card(c).Children(func() {
+				cardHeader(c, iconChip, "This computer", "What the installer detected")
+				ui.Row(c).Gap(frostui.SpaceS).Wrap().Children(func() {
 					m := a.machine
-					statusChip(c, p, iconChip, map[bool]string{true: "UEFI firmware", false: "No UEFI firmware"}[m.uefi], m.uefi)
-					statusChip(c, p, iconShield, map[bool]string{true: "Secure Boot on", false: "Secure Boot off"}[m.env.SecureBoot], m.env.SecureBoot)
-					statusChip(c, p, iconKey, map[bool]string{true: "TPM 2.0 present", false: "No TPM 2.0"}[m.env.TPM], m.env.TPM)
+					capability := func(icon, yes, no string, ok bool) {
+						text, tone := no, frostui.Neutral
+						if ok {
+							text, tone = yes, frostui.Success
+						}
+						frostui.IconPill(c, icon, text, tone)
+					}
+					capability(iconChip, "UEFI firmware", "No UEFI firmware", m.uefi)
+					capability(iconShield, "Secure Boot on", "Secure Boot off", m.env.SecureBoot)
+					capability(iconKey, "TPM 2.0 present", "No TPM 2.0", m.env.TPM)
 				})
 				if !a.machine.uefi {
-					callout(c, p, calloutDanger, "This computer cannot run snosi", a.errs[fieldUEFI].msg)
+					callout(c, frostui.Danger, "This computer cannot run snosi", a.errs[fieldUEFI].msg)
 				}
 				for _, n := range a.notices {
-					callout(c, p, calloutWarning, "Image list", n)
+					callout(c, frostui.Warning, "Image list", n)
 				}
 			})
 
-			ui.Grid(c).Columns(3).Gap(14).Children(func() {
+			ui.Grid(c).Columns(3).Gap(frostui.SpaceM).Children(func() {
 				steps := []struct {
-					ic          *ui.SVG
-					title, body string
+					icon, title, body string
 				}{
 					{iconList, "Choose", "Pick an image, a disk, security and your account."},
 					{iconEye, "Review", "See every choice and the exact recipe firn will run."},
 					{iconDownload, "Install", "Confirm the disk by name; firn does the rest."},
 				}
 				for i, s := range steps {
-					ui.Column(c).Gap(10).Padding(18).Radius(14).Background(p.card).Border(1, p.cardBorder).Children(func() {
-						ui.Row(c).Gap(10).Children(func() {
-							iconTile(c, p, s.ic, p.accent, p.accentSoft, 32)
-							ui.Text(c, fmt.Sprintf("%d", i+1)).FontSize(13).FontWeight(700).TextColor(p.faint)
+					frostui.Card(c.Key(i)).Gap(10).Children(func() {
+						ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+							frostui.IconTile(c, s.icon, frostui.Accent, 32)
+							frostui.Label(c, fmt.Sprintf("%d", i+1))
 						})
-						ui.Text(c, s.title).FontSize(15).FontWeight(600)
-						ui.Text(c, s.body).FontSize(13).TextColor(p.muted)
+						frostui.Heading(c, s.title)
+						frostui.Muted(c, s.body)
 					})
 				}
 			})
 
-			ui.Row(c).Gap(16).Children(func() {
-				start := ui.PrimaryButton(c, "").Label("Get started").Padding(12, 22).Disabled(!a.machine.uefi).Children(func() {
-					ui.Text(c, "Get started").FontSize(15).FontWeight(600).SingleLine()
-					ui.Icon(c, iconArrowRight).FontSize(16)
-				})
+			ui.Row(c).Gap(frostui.SpaceL).AlignItems(ui.Center).Children(func() {
+				start := gradientButton(c, "Get started", iconArrowRight).Padding(10, 20).Disabled(!a.machine.uefi)
 				if start.Clicked() {
 					a.next()
 				}
-				ui.Row(c).Gap(6).Children(func() {
-					ui.Text(c, "or press").FontSize(13).TextColor(p.faint)
-					keys(c, p, "Enter")
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					frostui.Caption(c, "or press")
+					frostui.Shortcut(c, "Enter")
 				})
 				ui.Spacer(c)
-				ui.Row(c).Gap(6).Children(func() {
-					keys(c, p, "F1")
-					ui.Text(c, "keyboard shortcuts").FontSize(13).TextColor(p.faint)
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					frostui.Shortcut(c, "F1")
+					frostui.Caption(c, "keyboard shortcuts")
 				})
 			})
 		})
@@ -93,7 +92,6 @@ func (a *app) welcomePage(c *ui.Context) {
 // --- system image ---
 
 func (a *app) imagePage(c *ui.Context) {
-	p := a.p
 	sel := 0
 	for i, e := range a.catalog {
 		if e.Name == a.c.entry.Name && e.Ref == a.c.entry.Ref {
@@ -102,32 +100,32 @@ func (a *app) imagePage(c *ui.Context) {
 	}
 	ui.RadioGroup(c, func() {
 		for i, e := range a.catalog {
-			choiceCard(c.Key(e.Name), p, &sel, i, imageIcon(e), displayName(e.Name), e.Description, func() {
-				ui.Row(c).Gap(6).Padding(4, 0, 0).Children(func() {
-					chip(c, e.Ref, p.muted, p.card).Border(1, p.cardBorder).Font("monospace")
+			choiceCard(c.Key(e.Name), &sel, i, imageIcon(e), displayName(e.Name), e.Description, func() {
+				ui.Row(c).Gap(6).Padding(4, 0, 0).AlignItems(ui.Center).Children(func() {
+					tag(c, e.Ref, frostui.Neutral, true)
 					if e.CosignPubKey != "" {
-						chip(c, "signed", p.success, p.successSoft)
+						frostui.Pill(c, "signed", frostui.Success)
 					}
 				})
 			})
 		}
-	}).Gap(12).Label("System image")
+	}).Gap(10).Label("System image")
 	if sel != indexOf(a.catalog, a.c.entry) {
 		a.c.setEntry(a.catalog[sel])
 	}
 	if msg := a.errText("image.ref"); msg != "" {
-		callout(c, p, calloutDanger, "This image cannot be installed", msg)
+		callout(c, frostui.Danger, "This image cannot be installed", msg)
 	}
 	if msg := a.errText("image.cosign_pub_key"); msg != "" {
-		callout(c, p, calloutDanger, "The image's signing key is missing", msg)
+		callout(c, frostui.Danger, "The image's signing key is missing", msg)
 	}
 
-	card(c, p).Children(func() {
-		ui.Row(c).Gap(12).Children(func() {
-			iconTile(c, p, iconSparkle, p.muted, p.subtle, 36)
-			ui.Column(c).Gap(2).Grow(1).Children(func() {
-				ui.Text(c, "Advanced options").FontSize(15).FontWeight(600)
-				ui.Text(c, "Update source and bootloader. Most people can leave these alone.").FontSize(13).TextColor(p.muted)
+	frostui.Card(c).Children(func() {
+		ui.Row(c).Gap(frostui.SpaceM).AlignItems(ui.Center).Children(func() {
+			frostui.IconTile(c, iconSparkle, frostui.Neutral, 36).Shrink(0)
+			ui.Column(c).Gap(2).Grow(1).Shrink(1).Children(func() {
+				frostui.Heading(c, "Advanced options")
+				frostui.Muted(c, "Update source and bootloader. Most people can leave these alone.")
 			})
 			ui.Switch(c, &a.c.advanced).Label("Advanced options")
 		})
@@ -161,7 +159,7 @@ func indexOf(entries []catalog.Entry, e catalog.Entry) int {
 	return -1
 }
 
-func imageIcon(e catalog.Entry) *ui.SVG {
+func imageIcon(e catalog.Entry) string {
 	d := strings.ToLower(e.Description)
 	switch {
 	case strings.Contains(d, "server") || strings.Contains(d, "headless"):
@@ -184,64 +182,57 @@ func displayName(name string) string {
 // --- storage ---
 
 func (a *app) storagePage(c *ui.Context) {
-	p := a.p
-	card(c, p).Children(func() {
-		ui.Row(c).Gap(12).Children(func() {
-			iconTile(c, p, iconDrive, p.accent, p.accentSoft, 36)
-			ui.Column(c).Gap(2).Grow(1).Children(func() {
-				ui.Text(c, "Disk").FontSize(15).FontWeight(600)
-				ui.Text(c, "The whole disk is used. Partitions are created for you.").FontSize(13).TextColor(p.muted)
+	frostui.Card(c).Children(func() {
+		ui.Row(c).Gap(frostui.SpaceM).AlignItems(ui.Center).Children(func() {
+			frostui.IconTile(c, iconDrive, frostui.Accent, 36).Shrink(0)
+			ui.Column(c).Gap(2).Grow(1).Shrink(1).Children(func() {
+				frostui.Heading(c, "Disk")
+				frostui.Muted(c, "The whole disk is used. Partitions are created for you.")
 			})
-			rescan := ui.Button(c, "").Label("Rescan").Tooltip("Rescan disks (Ctrl+R)").Disabled(a.disksLoading).Children(func() {
-				ui.Icon(c, iconRefresh).FontSize(14)
-				ui.Text(c, "Rescan").SingleLine()
-			})
+			rescan := frostui.LabeledButton(c, iconRefresh, "Rescan", false).Tooltip("Rescan disks (Ctrl+R)").Disabled(a.disksLoading)
 			if rescan.Clicked() {
 				a.rescan()
 			}
 		})
 		switch {
 		case a.disksLoading && len(a.disks) == 0:
-			ui.Row(c).Gap(10).Padding(12, 0).Children(func() {
-				ui.Spinner(c).Label("Looking for disks")
-				ui.Text(c, "Looking for disks…").TextColor(p.muted)
-			})
+			frostui.Loading(c, "Looking for disks…")
 		case a.disksErr != "":
-			callout(c, p, calloutDanger, "Could not list disks", a.disksErr)
+			callout(c, frostui.Danger, "Could not list disks", a.disksErr)
 		case len(a.disks) == 0:
-			callout(c, p, calloutInfo, "No disks found", "Connect a disk, then rescan.")
+			callout(c, frostui.Accent, "No disks found", "Connect a disk, then rescan.")
 		default:
 			ui.RadioGroup(c, func() {
 				for _, d := range a.disks {
 					a.diskCard(c, d)
 				}
-			}).Gap(10).Label("Target disk")
+			}).Gap(frostui.SpaceS).Label("Target disk")
 		}
 		if a.c.disk != "" {
 			a.diskNotice = "" // the user chose again
 		}
 		if a.diskNotice != "" {
-			callout(c, p, calloutWarning, "Your disk choice was cleared", a.diskNotice)
+			callout(c, frostui.Warning, "Your disk choice was cleared", a.diskNotice)
 		}
 		if msg := a.errText(fieldDisk); msg != "" {
-			ui.Text(c, msg).FontSize(13).TextColor(p.danger)
+			frostui.Problem(c, msg)
 		}
 	})
 
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconFile, "Filesystem", "How the system partition is formatted.")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconFile, "Filesystem", "How the system partition is formatted.")
 		ui.RadioGroup(c, func() {
-			ui.Grid(c).Columns(3).Gap(10).Children(func() {
+			ui.Grid(c).Columns(3).Gap(frostui.SpaceS).Children(func() {
 				a.fsCard(c, "btrfs", "Btrfs", "Checksums and snapshots. Recommended.")
 				a.fsCard(c, "xfs", "XFS", "Fast and proven, great with large files.")
 				a.fsCard(c, "ext4", "ext4", "The classic Linux filesystem.")
 			})
 		}).Label("Filesystem")
 		if a.c.filesystem == "btrfs" {
-			ui.Row(c).Gap(12).Padding(4, 2, 0).Children(func() {
-				ui.Column(c).Gap(2).Grow(1).Children(func() {
-					ui.Text(c, "Create subvolumes").FontWeight(600)
-					ui.Text(c, "Top-level @, @home and @snapshots, for snapshot tools such as Snapper.").FontSize(13).TextColor(p.muted)
+			ui.Row(c).Gap(frostui.SpaceM).Padding(4, 2, 0).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Gap(2).Grow(1).Shrink(1).Children(func() {
+					frostui.Strong(c, "Create subvolumes")
+					frostui.Muted(c, "Top-level @, @home and @snapshots, for snapshot tools such as Snapper.")
 				})
 				ui.Switch(c, &a.c.btrfsSubvolumes).Label("Create subvolumes")
 			})
@@ -249,7 +240,7 @@ func (a *app) storagePage(c *ui.Context) {
 	})
 
 	if d, ok := a.chosenDisk(); ok {
-		callout(c, p, calloutWarning, "Everything on this disk will be erased",
+		callout(c, frostui.Warning, "Everything on this disk will be erased",
 			fmt.Sprintf("%s (%s, %s) is wiped when you install. Make sure anything you need from it is backed up.", d.title(), d.Path, humanBytes(d.Size)))
 	}
 }
@@ -278,35 +269,35 @@ func (a *app) chosenDisk() (diskInfo, bool) {
 }
 
 func (a *app) diskCard(c *ui.Context, d diskInfo) {
-	p := a.p
-	ic := iconDrive
+	t := a.t
+	icon := iconDrive
 	if d.Transport == "usb" {
-		ic = iconUSB
+		icon = iconUSB
 	}
 	parts := []string{d.Path, humanBytes(d.Size)}
 	if d.Transport != "" {
 		parts = append(parts, strings.ToUpper(d.Transport))
 	}
 	body := strings.Join(parts, "  ·  ")
-	card := choiceCard(c.Key(d.Path), p, &a.c.disk, d.Path, ic, d.title(), body, func() {
+	card := choiceCard(c.Key(d.Path), &a.c.disk, d.Path, icon, d.title(), body, func() {
 		if ids := diskIdentity(d); ids != "" {
-			ui.Text(c, ids).Font("monospace").FontSize(11.5).TextColor(p.faint)
+			frostui.Mono(c, ids).FontSize(frostui.TextSize(c, 11.5)).TextColor(t.TextMuted)
 		}
 		labels := disk.Labels(d.Device)
 		if len(labels) == 0 && d.refused == "" {
-			ui.Text(c, "No labeled partitions").FontSize(12).TextColor(p.faint)
+			frostui.Caption(c, "No labeled partitions")
 		}
 		if len(labels) > 0 {
 			ui.Row(c).Gap(6).Wrap().Padding(2, 0, 0).Children(func() {
 				for _, l := range labels {
-					chip(c, l, p.muted, p.card).Border(1, p.cardBorder)
+					tag(c, l, frostui.Neutral, false)
 				}
 			})
 		}
 		if d.refused != "" {
-			ui.Row(c).Gap(6).Padding(2, 0, 0).Children(func() {
-				ui.Icon(c, iconWarning).FontSize(13).TextColor(p.warning)
-				ui.Text(c, "Can't use: "+d.refused).FontSize(12.5).TextColor(p.warning)
+			ui.Row(c).Gap(6).Padding(2, 0, 0).AlignItems(ui.Center).Children(func() {
+				frostui.Icon(c, iconWarning).FontSize(frostui.TextSize(c, 13)).TextColor(t.Warning)
+				frostui.Toned(c, "Can't use: "+d.refused, frostui.Warning)
 			})
 		}
 	})
@@ -316,82 +307,86 @@ func (a *app) diskCard(c *ui.Context, d diskInfo) {
 }
 
 func (a *app) fsCard(c *ui.Context, value, title, body string) {
-	p := a.p
+	t := a.t
+	k := frostui.ColorsOf(t)
 	chosen := a.c.filesystem == value
-	b := ui.RadioBase(c.Key(value), &a.c.filesystem, value).Padding(14).Gap(8).Radius(12).Column().AlignItems(ui.Stretch).
-		Background(p.card).Border(1, p.cardBorder).Label(title).Cursor(ui.CursorPointer)
-	if b.Hovered() && !chosen {
-		b.Background(p.inset)
-	}
-	if chosen {
-		b.Background(p.accentSoft).Border(2, p.accent).Padding(13)
+	b := ui.RadioBase(c.Key(value), &a.c.filesystem, value).Padding(12, 14).Gap(6).Radius(frostui.RadiusCard).Column().AlignItems(ui.Stretch).
+		Background(k.Panel).Border(1, t.Border).Label(title).Cursor(ui.CursorPointer)
+	switch {
+	case chosen:
+		b.Background(k.SelectedFill.Over(k.Panel)).Border(1, t.Accent)
+	case b.Hovered():
+		b.Border(1, frostui.ToneLine(t, frostui.Accent))
 	}
 	b.Children(func() {
-		ui.Row(c).Gap(8).Children(func() {
-			ui.Text(c, title).FontSize(15).FontWeight(600).Grow(1)
-			radioMark(c, p, chosen)
+		ui.Row(c).Gap(frostui.SpaceS).AlignItems(ui.Center).Children(func() {
+			name := frostui.Heading(c, title).Grow(1)
+			if chosen {
+				name.TextColor(k.SelectedText)
+			}
+			radioMark(c, chosen)
 		})
-		ui.Text(c, body).FontSize(12.5).TextColor(p.muted)
+		frostui.Muted(c, body)
 	})
 }
 
 // --- security ---
 
 func (a *app) securityPage(c *ui.Context) {
-	p := a.p
+	t := a.t
 	m := a.machine
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconLock, "Disk encryption", "Choose explicitly; the installer starts at no encryption.")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconLock, "Disk encryption", "Choose explicitly; the installer starts at no encryption.")
 		noTPM := "Needs a TPM 2.0 chip, and none was found."
 		ui.RadioGroup(c, func() {
-			choiceCard(c.Key("none"), p, &a.c.encryption, "none", iconUnlock, "No encryption",
+			choiceCard(c.Key("none"), &a.c.encryption, "none", iconUnlock, "No encryption",
 				"Simplest. Anyone with physical access to the disk can read it.", nil)
-			choiceCard(c.Key("luks"), p, &a.c.encryption, "luks-passphrase", iconLock, "Passphrase",
+			choiceCard(c.Key("luks"), &a.c.encryption, "luks-passphrase", iconLock, "Passphrase",
 				"LUKS2 encryption. Type the passphrase each time the computer starts.", nil)
-			tpm := choiceCard(c.Key("tpm"), p, &a.c.encryption, "tpm2-luks", iconChip, "Automatic unlock with the TPM",
+			tpm := choiceCard(c.Key("tpm"), &a.c.encryption, "tpm2-luks", iconChip, "Automatic unlock with the TPM",
 				"This computer's TPM unlocks the disk at boot. You get a recovery key to store safely.", func() {
 					if !m.env.TPM {
-						ui.Text(c, noTPM).FontSize(12.5).TextColor(p.warning)
+						frostui.Toned(c, noTPM, frostui.Warning)
 					}
 				})
-			both := choiceCard(c.Key("tpm-pass"), p, &a.c.encryption, "tpm2-luks-passphrase", iconShield, "TPM with a passphrase fallback",
+			both := choiceCard(c.Key("tpm-pass"), &a.c.encryption, "tpm2-luks-passphrase", iconShield, "TPM with a passphrase fallback",
 				"The TPM unlocks automatically; the passphrase opens the disk if it cannot.", func() {
 					if !m.env.TPM {
-						ui.Text(c, noTPM).FontSize(12.5).TextColor(p.warning)
+						frostui.Toned(c, noTPM, frostui.Warning)
 					}
 				})
 			if !m.env.TPM {
 				tpm.Disabled(true).Opacity(0.6)
 				both.Disabled(true).Opacity(0.6)
 			}
-		}).Gap(10).Label("Disk encryption")
+		}).Gap(frostui.SpaceS).Label("Disk encryption")
 		if msg := a.errText("security.encryption"); msg != "" {
-			ui.Text(c, msg).FontSize(13).TextColor(p.danger)
+			frostui.Problem(c, msg)
 		}
 		if needsPassphrase(a.c.encryption) {
-			ui.Divider(c).Margin(4, 0)
+			frostui.RowDivider(c).Margin(4, 0)
 			a.secretPair(c, "Encryption passphrase", &a.c.passphrase, &a.c.passphraseConfirm,
 				fieldPassphrase, fieldPassphraseConfirm, "You will type this at every boot (or when the TPM cannot unlock). It cannot be recovered if lost.")
 		}
 	})
 
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconShield, "Secure Boot", "")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconShield, "Secure Boot", "")
 		if !m.env.SecureBoot {
-			ui.Text(c, "Secure Boot is off on this computer, so no key needs enrolling. You can turn Secure Boot on later from the firmware settings.").
-				FontSize(13.5).TextColor(p.muted)
+			frostui.Body(c, "Secure Boot is off on this computer, so no key needs enrolling. You can turn Secure Boot on later from the firmware settings.").
+				TextColor(t.TextMuted)
 			return
 		}
-		ui.Text(c, "Secure Boot is on. snosi's bootloader is signed with snosi's Machine Owner Key (MOK), which the firmware must trust.").
-			FontSize(13.5).TextColor(p.muted)
+		frostui.Body(c, "Secure Boot is on. snosi's bootloader is signed with snosi's Machine Owner Key (MOK), which the firmware must trust.").
+			TextColor(t.TextMuted)
 		ui.RadioGroup(c, func() {
-			choiceCard(c.Key("enroll"), p, &a.c.mok, "enroll", iconKey, "Enroll snosi's key",
+			choiceCard(c.Key("enroll"), &a.c.mok, "enroll", iconKey, "Enroll snosi's key",
 				"At the next boot, MokManager asks for a one-time password to trust the key. Recommended.", nil)
-			choiceCard(c.Key("skip"), p, &a.c.mok, "skip", iconSparkle, "Skip enrollment",
+			choiceCard(c.Key("skip"), &a.c.mok, "skip", iconSparkle, "Skip enrollment",
 				"For people who manage Secure Boot keys themselves.", nil)
-		}).Gap(10).Label("MOK enrollment")
+		}).Gap(frostui.SpaceS).Label("MOK enrollment")
 		if a.c.mok == "enroll" {
-			ui.Divider(c).Margin(4, 0)
+			frostui.RowDivider(c).Margin(4, 0)
 			a.secretPair(c, "One-time MOK password", &a.c.mokPassword, &a.c.mokConfirm,
 				fieldMokPassword, fieldMokConfirm, "Choose something simple: you type it once in MokManager at the next boot, with a US keyboard layout.")
 		}
@@ -401,7 +396,6 @@ func (a *app) securityPage(c *ui.Context) {
 // secretPair asks for a secret twice, with a show/hide toggle and a
 // strength meter.
 func (a *app) secretPair(c *ui.Context, label string, secret, confirm *string, field, confirmField, help string) {
-	p := a.p
 	ui.Grid(c).Columns(2).GapX(14).GapY(4).Children(func() {
 		ui.Field(c, label, func() {
 			in := ui.TextInput(c, secret).Label(label)
@@ -416,17 +410,14 @@ func (a *app) secretPair(c *ui.Context, label string, secret, confirm *string, f
 			}
 		}).Error(a.errText(confirmField))
 	})
-	strengthMeter(c, p, *secret)
-	ui.Row(c).Gap(10).Children(func() {
-		ui.Text(c, help).FontSize(12.5).TextColor(p.muted).Grow(1).Shrink(1)
+	strengthMeter(c, *secret)
+	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+		frostui.Muted(c, help).Grow(1).Shrink(1)
 		eye, word := iconEye, "Show"
 		if a.showSecret {
 			eye, word = iconEyeOff, "Hide"
 		}
-		if ui.Button(c, "").Label(word + " passwords").Children(func() {
-			ui.Icon(c, eye).FontSize(14)
-			ui.Text(c, word).SingleLine()
-		}).Clicked() {
+		if frostui.LabeledButton(c, eye, word, false).Label(word + " passwords").Clicked() {
 			a.showSecret = !a.showSecret
 		}
 	})
@@ -435,9 +426,8 @@ func (a *app) secretPair(c *ui.Context, label string, secret, confirm *string, f
 // --- region ---
 
 func (a *app) regionPage(c *ui.Context) {
-	p := a.p
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconMonitor, "Computer name", "")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconMonitor, "Computer name", "")
 		hostname := a.c.hostname
 		ui.Field(c, "Hostname", func() {
 			ui.TextInput(c, &a.c.hostname).Placeholder("snow")
@@ -447,8 +437,8 @@ func (a *app) regionPage(c *ui.Context) {
 		}
 	})
 
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconGlobe, "Language and region", "Leave a field empty to keep the image's default.")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconGlobe, "Language and region", "Leave a field empty to keep the image's default.")
 		ui.Field(c, "Language and formats", func() {
 			ui.Autocomplete(c, &a.c.locale, a.lists.locales).Placeholder("Image default")
 		}).Description("A glibc locale such as en_US.UTF-8.").Error(a.errText("system.locale"))
@@ -460,7 +450,7 @@ func (a *app) regionPage(c *ui.Context) {
 		}).Description(a.keyboardDescription()).Error(a.errText("system.keyboard"))
 	})
 
-	card(c, p).Children(func() {
+	frostui.Card(c).Children(func() {
 		ui.Collapsible(c, "Remote access for root (SSH)", &a.advancedSSH, func() {
 			ui.Field(c, "Authorized SSH keys", func() {
 				ui.TextArea(c, &a.c.rootSSHKey).Lines(3, 6).Font("monospace").Placeholder("ssh-ed25519 AAAA… you@laptop")
@@ -500,18 +490,17 @@ func (a *app) keyboardDescription() string {
 // --- account ---
 
 func (a *app) accountPage(c *ui.Context) {
-	p := a.p
-	card(c, p).Children(func() {
-		ui.Row(c).Gap(12).Children(func() {
-			iconTile(c, p, iconUser, p.accent, p.accentSoft, 36)
-			ui.Column(c).Gap(2).Grow(1).Children(func() {
-				ui.Text(c, "User account").FontSize(15).FontWeight(600)
-				ui.Text(c, "Recommended. You can add more accounts after installing.").FontSize(13).TextColor(p.muted)
+	frostui.Card(c).Children(func() {
+		ui.Row(c).Gap(frostui.SpaceM).AlignItems(ui.Center).Children(func() {
+			frostui.IconTile(c, iconUser, frostui.Accent, 36).Shrink(0)
+			ui.Column(c).Gap(2).Grow(1).Shrink(1).Children(func() {
+				frostui.Heading(c, "User account")
+				frostui.Muted(c, "Recommended. You can add more accounts after installing.")
 			})
 			ui.Switch(c, &a.c.createUser).Label("Create a user account")
 		})
 		if !a.c.createUser {
-			callout(c, p, calloutWarning, "No user account", "Only root can sign in, and only over SSH with a key added on the Region step.")
+			callout(c, frostui.Warning, "No user account", "Only root can sign in, and only over SSH with a key added on the Region step.")
 			return
 		}
 		ui.Grid(c).Columns(2).GapX(14).GapY(12).Children(func() {
@@ -530,7 +519,7 @@ func (a *app) accountPage(c *ui.Context) {
 				a.c.usernameAuto = false
 			}
 		})
-		ui.Divider(c).Margin(2, 0)
+		frostui.RowDivider(c).Margin(2, 0)
 		a.secretPair(c, "Password", &a.c.password, &a.c.passwordConfirm, fieldPassword, fieldPasswordConfirm,
 			"Used to sign in and for administrator tasks with sudo.")
 	})
@@ -538,15 +527,15 @@ func (a *app) accountPage(c *ui.Context) {
 	if !a.c.createUser {
 		return
 	}
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconShield, "Groups", "Preselected for "+displayName(a.c.entry.Name)+". Groups the image lacks are skipped at install.")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconShield, "Groups", "Preselected for "+displayName(a.c.entry.Name)+". Groups the image lacks are skipped at install.")
 		ui.Grid(c).Columns(2).GapX(16).GapY(10).Children(func() {
 			for i := range a.c.groups {
 				g := &a.c.groups[i]
-				ui.Row(c.Key(g.Name)).Gap(8).Children(func() {
+				ui.Row(c.Key(g.Name)).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Checkbox(c, &g.on, g.Name)
 					if g.Description != "" {
-						ui.Text(c, "— "+g.Description).FontSize(12.5).TextColor(p.muted).SingleLine().Shrink(1)
+						frostui.Muted(c, "— "+g.Description).SingleLine().Shrink(1)
 					}
 				})
 			}
@@ -556,7 +545,7 @@ func (a *app) accountPage(c *ui.Context) {
 		}).Description("Comma- or space-separated.").Error(a.errText("system.user.groups"))
 	})
 
-	card(c, p).Children(func() {
+	frostui.Card(c).Children(func() {
 		who := a.c.username
 		if who == "" {
 			who = "this user"
@@ -572,20 +561,16 @@ func (a *app) accountPage(c *ui.Context) {
 // --- apps ---
 
 func (a *app) appsPage(c *ui.Context) {
-	p := a.p
 	name := displayName(a.c.entry.Name)
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconPackage, name+"'s core apps", "The everyday apps this image is designed around, as Flatpaks.")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconPackage, name+"'s core apps", "The everyday apps this image is designed around, as Flatpaks.")
 		if a.preview.ref != a.c.entry.Ref {
-			ui.Row(c).Gap(10).Padding(8, 0).Children(func() {
-				ui.Spinner(c).Label("Reading the app list")
-				ui.Text(c, "Reading "+name+"'s app list…").TextColor(p.muted)
-			})
+			frostui.Loading(c, "Reading "+name+"'s app list…")
 			return
 		}
 		toggle := func(title string) {
-			ui.Row(c).Gap(12).Children(func() {
-				ui.Text(c, title).FontWeight(600).Grow(1)
+			ui.Row(c).Gap(frostui.SpaceM).AlignItems(ui.Center).Children(func() {
+				frostui.Strong(c, title).Grow(1)
 				ui.Switch(c, &a.c.coreFlatpaks).Label(title)
 			})
 		}
@@ -594,32 +579,32 @@ func (a *app) appsPage(c *ui.Context) {
 			toggle(fmt.Sprintf("Install %d core apps", len(a.preview.apps)))
 			ui.Row(c).Gap(6).Wrap().Opacity(map[bool]float32{true: 1, false: 0.5}[a.c.coreFlatpaks]).Children(func() {
 				for _, app := range a.preview.apps {
-					chip(c, app.Name, p.text, p.subtle)
+					tag(c, app.Name, frostui.Neutral, false)
 				}
 			})
 		case corePreviewNone:
-			callout(c, p, calloutInfo, "No core app set", name+" publishes no core apps.")
+			callout(c, frostui.Accent, "No core app set", name+" publishes no core apps.")
 		case corePreviewInvalid:
-			callout(c, p, calloutWarning, "Core app set unavailable", "This image's app list is malformed, so it cannot be installed. "+a.preview.detail)
+			callout(c, frostui.Warning, "Core app set unavailable", "This image's app list is malformed, so it cannot be installed. "+a.preview.detail)
 		default:
 			toggle("Install the core apps")
 			detail := "The list could not be read right now; if this stays on, it is read again during the install."
 			if a.preview.detail != "" {
 				detail += " (" + a.preview.detail + ")"
 			}
-			ui.Text(c, detail).FontSize(13).TextColor(p.muted)
+			frostui.Muted(c, detail)
 		}
 	})
 
-	card(c, p).Children(func() {
-		cardHeader(c, p, iconDownload, "More apps", "Any Flatpak from Flathub, by application ID.")
+	frostui.Card(c).Children(func() {
+		cardHeader(c, iconDownload, "More apps", "Any Flatpak from Flathub, by application ID.")
 		ui.Field(c, "Application IDs", func() {
 			ui.TextArea(c, &a.c.flatpaksRaw).Lines(3, 8).Font("monospace").Placeholder("org.mozilla.firefox\nio.github.celluloid_player.Celluloid")
 		}).Description("Separate IDs with spaces, commas or new lines.").Error(a.errText("system.flatpaks"))
 		if ids := splitList(a.c.flatpaksRaw); len(ids) > 0 {
 			ui.Row(c).Gap(6).Wrap().Children(func() {
 				for _, id := range ids {
-					chip(c, id, p.accent, p.accentSoft)
+					tag(c, id, frostui.Accent, true)
 				}
 			})
 		}
@@ -629,63 +614,62 @@ func (a *app) appsPage(c *ui.Context) {
 // --- review ---
 
 func (a *app) reviewPage(c *ui.Context) {
-	p := a.p
 	if a.installErr != "" {
-		callout(c, p, calloutDanger, "Could not start the install", a.installErr)
+		callout(c, frostui.Danger, "Could not start the install", a.installErr)
 	}
 	if errs := a.errs.onPage(pageReview); len(errs) > 0 {
 		var msgs []string
 		for field, e := range errs {
 			msgs = append(msgs, field+": "+e.msg)
 		}
-		callout(c, p, calloutDanger, "The recipe has problems (a wizard bug — please report it)", strings.Join(msgs, "\n"))
+		callout(c, frostui.Danger, "The recipe has problems (a wizard bug — please report it)", strings.Join(msgs, "\n"))
 	}
 	if d, ok := a.chosenDisk(); ok {
-		callout(c, p, calloutDanger, "Installing erases "+d.title(),
+		callout(c, frostui.Danger, "Installing erases "+d.title(),
 			fmt.Sprintf("All data on %s (%s) will be destroyed. You will confirm by typing the disk's path.", d.Path, humanBytes(d.Size)))
 	}
 
-	ui.Grid(c).Columns(2).Gap(14).Children(func() {
+	ui.Grid(c).Columns(2).Gap(frostui.SpaceM).Children(func() {
 		e := a.c.entry
-		a.summary(c, pageImage, [][2]string{
-			{"Image", displayName(e.Name)},
-			{"Source", e.Ref},
-			{"Updates from", a.updateRef()},
-			{"Bootloader", a.bootloaderName()},
+		a.summary(c, pageImage, []frostui.KeyValue{
+			{Key: "Image", Value: displayName(e.Name)},
+			{Key: "Source", Value: e.Ref, Mono: true},
+			{Key: "Updates from", Value: a.updateRef(), Mono: a.updateRef() != sameAsSource},
+			{Key: "Bootloader", Value: a.bootloaderName()},
 		})
-		storage := [][2]string{{"Disk", a.c.disk}}
+		storage := []frostui.KeyValue{{Key: "Disk", Value: a.c.disk, Mono: true}}
 		if d, ok := a.chosenDisk(); ok {
-			storage = [][2]string{{"Disk", d.title()}, {"Device", d.Path + " · " + humanBytes(d.Size)}}
+			storage = []frostui.KeyValue{{Key: "Disk", Value: d.title()}, {Key: "Device", Value: d.Path + " · " + humanBytes(d.Size)}}
 			if ids := diskIdentity(d); ids != "" {
-				storage = append(storage, [2]string{"Identity", ids})
+				storage = append(storage, frostui.KeyValue{Key: "Identity", Value: ids, Mono: true})
 			}
 		}
 		fs := a.c.filesystem
 		if fs == "btrfs" && a.c.btrfsSubvolumes {
 			fs += " with subvolumes"
 		}
-		a.summary(c, pageStorage, append(storage, [2]string{"Filesystem", fs}))
-		sec := [][2]string{{"Encryption", encryptionName(a.c.encryption)}}
+		a.summary(c, pageStorage, append(storage, frostui.KeyValue{Key: "Filesystem", Value: fs}))
+		sec := []frostui.KeyValue{{Key: "Encryption", Value: encryptionName(a.c.encryption)}}
 		if a.machine.env.SecureBoot {
-			sec = append(sec, [2]string{"Secure Boot key", map[string]string{"enroll": "Enroll at next boot", "skip": "Not enrolled"}[a.c.mok]})
+			sec = append(sec, frostui.KeyValue{Key: "Secure Boot key", Value: map[string]string{"enroll": "Enroll at next boot", "skip": "Not enrolled"}[a.c.mok]})
 		} else {
-			sec = append(sec, [2]string{"Secure Boot", "Off"})
+			sec = append(sec, frostui.KeyValue{Key: "Secure Boot", Value: "Off"})
 		}
 		a.summary(c, pageSecurity, sec)
-		a.summary(c, pageRegion, [][2]string{
-			{"Hostname", a.c.hostname},
-			{"Language", orDefault(a.c.locale)},
-			{"Time zone", orDefault(a.c.timezone)},
-			{"Keyboard", orDefault(a.c.keyboard)},
-			{"Root SSH", keyCount(a.c.rootSSHKey)},
+		a.summary(c, pageRegion, []frostui.KeyValue{
+			{Key: "Hostname", Value: a.c.hostname},
+			{Key: "Language", Value: orDefault(a.c.locale)},
+			{Key: "Time zone", Value: orDefault(a.c.timezone)},
+			{Key: "Keyboard", Value: orDefault(a.c.keyboard)},
+			{Key: "Root SSH", Value: keyCount(a.c.rootSSHKey)},
 		})
-		acct := [][2]string{{"User", "None"}}
+		acct := []frostui.KeyValue{{Key: "User", Value: "None"}}
 		if a.c.createUser {
 			who := a.c.username
 			if a.c.fullname != "" {
 				who = a.c.fullname + " (" + a.c.username + ")"
 			}
-			acct = [][2]string{{"User", who}, {"Groups", strings.Join(a.c.selectedGroups(), ", ")}, {"SSH", keyCount(a.c.userSSHKey)}}
+			acct = []frostui.KeyValue{{Key: "User", Value: who}, {Key: "Groups", Value: strings.Join(a.c.selectedGroups(), ", ")}, {Key: "SSH", Value: keyCount(a.c.userSSHKey)}}
 		}
 		a.summary(c, pageAccount, acct)
 		core := "Off"
@@ -701,49 +685,44 @@ func (a *app) reviewPage(c *ui.Context) {
 		if ids := splitList(a.c.flatpaksRaw); len(ids) > 0 {
 			extra = strings.Join(ids, ", ")
 		}
-		a.summary(c, pageApps, [][2]string{{"Core apps", core}, {"More apps", extra}})
+		a.summary(c, pageApps, []frostui.KeyValue{{Key: "Core apps", Value: core}, {Key: "More apps", Value: extra}})
 	})
 
 	if a.reviewed != nil {
-		card(c, p).Children(func() {
+		frostui.Card(c).Children(func() {
 			ui.Collapsible(c, "Show the recipe", &a.recipeOpen, func() {
-				ui.Text(c, "This exact TOML is saved and installed. Secrets are referenced as private files under "+a.session+", never written inline.").
-					FontSize(13).TextColor(p.muted)
-				codeBlock(c, p, strings.TrimRight(string(a.reviewed), "\n"))
+				frostui.Muted(c, "This exact TOML is saved and installed. Secrets are referenced as private files under "+a.session+", never written inline.")
+				codeBlock(c, strings.TrimRight(string(a.reviewed), "\n"))
 			})
 		})
 	}
 }
 
 // summary is one review card: a page's answers with a way back to it.
-func (a *app) summary(c *ui.Context, pg page, rows [][2]string) {
-	p := a.p
-	ui.Column(c.Key(pg)).Padding(18).Gap(12).Radius(14).Background(p.card).Border(1, p.cardBorder).Shadow(0, 1, 2, 0, p.shadow).Children(func() {
-		ui.Row(c).Gap(10).Children(func() {
-			iconTile(c, p, pageMeta[pg].icon, p.accent, p.accentSoft, 30)
-			ui.Text(c, pageMeta[pg].nav).FontSize(15).FontWeight(600).Grow(1)
-			edit := ui.Button(c, "").Label("Edit "+pageMeta[pg].nav).Tooltip(fmt.Sprintf("Edit (Alt+%d)", int(pg)+1)).Padding(4, 10).Children(func() {
-				ui.Icon(c, iconPencil).FontSize(13)
-				ui.Text(c, "Edit").FontSize(13).SingleLine()
-			})
+func (a *app) summary(c *ui.Context, pg page, rows []frostui.KeyValue) {
+	frostui.Card(c.Key(pg)).Children(func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			frostui.IconTile(c, pageMeta[pg].icon, frostui.Accent, 28).Shrink(0)
+			frostui.Heading(c, pageMeta[pg].nav).Grow(1)
+			edit := frostui.LabeledButton(c, iconPencil, "Edit", false).Label("Edit " + pageMeta[pg].nav).
+				Tooltip(fmt.Sprintf("Edit (Alt+%d)", int(pg)+1))
 			if edit.Clicked() {
 				a.jump(pg)
 			}
 		})
-		ui.Grid(c).ColumnTracks(ui.FitContent(), ui.Fr(1)).GapX(14).GapY(6).Children(func() {
-			for _, r := range rows {
-				ui.Text(c, r[0]).FontSize(13).TextColor(p.muted).SingleLine()
-				ui.Text(c, r[1]).FontSize(13).FontWeight(500).Selectable()
-			}
-		})
+		frostui.KeyValues(c, rows, frostui.KeyValuesStyle{KeyWidth: 104})
 	})
 }
+
+// sameAsSource is what the review says when updates come from the image's
+// own reference.
+const sameAsSource = "Same as source"
 
 func (a *app) updateRef() string {
 	if a.c.advanced && strings.TrimSpace(a.c.targetRef) != "" {
 		return strings.TrimSpace(a.c.targetRef)
 	}
-	return "Same as source"
+	return sameAsSource
 }
 
 func (a *app) bootloaderName() string {

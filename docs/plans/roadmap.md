@@ -440,16 +440,23 @@ kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/00
    needed to boot from about 3.6 to 4.5 GiB. Shipped 2026-10-26 with firn
    v0.10.0: snosi's `main` build promoted `snosi-installer_20261026191155`
    (815 MiB) after its smoke test and the 38-check boot-entry test passed.
-8. **Kiosk polish (firn).** Found while building step 7, none blocking: a
+8. ✅ **The Frostyard look.**
+   [ADR-0022](../adr/0022-draw-the-graphical-installer-with-frostui.md)
+   draws the wizard with frostui v0.5.0 (mygo v0.9.0): the Frostyard and
+   Frostyard light themes in Inter, the kit's components, and the
+   installer's own icons ahead of the desktop's
+   ([design: look](../design/architecture.md#gui-look)). The README shows
+   it in both appearances.
+9. **Kiosk polish (firn).** Found while building step 7, none blocking: a
    `--kiosk` mode for `firn-gui` (no Close or Ctrl+Q; after the install,
    offer the console installer or power off); a lock so two frontends
    cannot install at once (the graphical and serial installers share
    `/run/firn/target` and the `firn-root` mapper name); and a hard error
    when Pango is missing instead of a window with no text.
-9. **Prove it on hardware.** Install Snow with `firn-gui` from the
-   installer ISO's graphical entry on a real machine: unencrypted, `tpm2-luks` (recovery key
-   shown) and Secure Boot with MOK enrollment, plus the `pkexec` re-exec
-   and a GoReleaser snapshot release of the `GOTOOLCHAIN=auto` build.
+10. **Prove it on hardware.** Install Snow with `firn-gui` from the
+    installer ISO's graphical entry on a real machine: unencrypted, `tpm2-luks` (recovery key
+    shown) and Secure Boot with MOK enrollment, plus the `pkexec` re-exec
+    and a GoReleaser snapshot release of the `GOTOOLCHAIN=auto` build.
 
 - **Done when:** the installer ISO's graphical entry, with a
   `frostyard-firn-gui` package from a tagged release, installs Snow on real

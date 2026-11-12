@@ -16,6 +16,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/frostyard/frostui"
 
 	"github.com/frostyard/firn/internal/catalog"
 	"github.com/frostyard/firn/internal/platform"
@@ -58,8 +59,7 @@ const (
 
 // pageMeta is how a page presents itself in the sidebar and header.
 var pageMeta = [pageCount]struct {
-	nav, title, subtitle string
-	icon                 *ui.SVG
+	nav, title, subtitle, icon string
 }{
 	pageWelcome:  {"Welcome", "Welcome", "", iconHome},
 	pageImage:    {"System", "Choose your system", "Pick the snosi image to install. Each is a signed bootc image that updates itself atomically.", iconMonitor},
@@ -144,7 +144,8 @@ type app struct {
 	// application, asking OnBeforeQuit. Tests replace both.
 	quit    func()
 	quitApp func()
-	p       palette
+	// t is the frame's theme, Frostyard or Frostyard light.
+	t *ui.Theme
 }
 
 // Run probes the machine, opens the installer window and returns when it
@@ -265,6 +266,7 @@ func newApp(o Options) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
+	useIcons()
 	entries, warn := catalog.Load()
 	a := &app{
 		machine: m,
@@ -732,21 +734,20 @@ func (a *app) dark(c *ui.Context) bool {
 }
 
 func (a *app) view(c *ui.Context) {
-	a.p = newPalette(a.dark(c))
-	c.SetTheme(a.p.theme(*c.Theme()))
+	a.t = a.applyTheme(c)
 	a.errs = a.validate()
 	a.shortcuts(c)
 
-	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(a.t.Background).Children(func() {
 		a.sidebar(c)
-		ui.Column(c).Grow(1).Shrink(1).Background(a.p.window).Children(func() {
+		ui.Column(c).Grow(1).Shrink(1).Background(a.t.Background).Children(func() {
 			if a.page == pageWelcome {
 				a.welcomePage(c)
 				return
 			}
 			a.header(c)
 			ui.Scroll(c.Key(a.page)).Grow(1).Children(func() {
-				ui.Column(c).Padding(8, 40, 32).Gap(18).MaxWidth(880).Children(func() {
+				ui.Column(c).Padding(4, 40, 32).Gap(frostui.SpaceL).MaxWidth(880).AlignItems(ui.Stretch).Children(func() {
 					a.pageBody(c)
 				})
 			})
@@ -777,75 +778,74 @@ func (a *app) pageBody(c *ui.Context) {
 	}
 }
 
-// sidebar shows the brand, the steps and the window's tools.
+// sidebar is the window's rail, on the kit's chrome: the brand, the steps
+// and the window's tools.
 func (a *app) sidebar(c *ui.Context) {
-	p := a.p
-	ui.Column(c).Width(264).Shrink(0).Padding(28, 18, 18).Gap(4).
-		LinearGradient(ui.LinearGradient{From: p.sideTop, To: p.sideBottom, Angle: 160, Oklab: true}).
-		TextColor(p.sideText).Children(func() {
-		ui.Row(c).Gap(12).Padding(0, 8, 24).Children(func() {
-			ui.Row(c).Size(42, 42).Radius(12).Center().
-				LinearGradient(ui.LinearGradient{From: ui.Hex("#7cc4ff"), To: ui.Hex("#3b6ff5"), Angle: 135, Oklab: true}).
-				Shadow(0, 6, 16, -4, ui.RGBA(40, 120, 255, 0.55)).Children(func() {
-				ui.Icon(c, iconSnowflake).FontSize(24).TextColor(ui.Hex("#ffffff"))
+	t := a.t
+	k := frostui.ColorsOf(t)
+	ui.Column(c).Width(frostui.RailWidth).Shrink(0).Padding(frostui.SpaceL, frostui.SpaceS).Gap(2).AlignItems(ui.Stretch).
+		Background(k.Chrome).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Children(func() {
+		ui.Row(c).Gap(10).Padding(frostui.SpaceXS, 10, frostui.SpaceXL).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(36, 36).Radius(4).Center().Shrink(0).
+				LinearGradient(ui.LinearGradient{From: k.GradientFrom, To: k.GradientTo, Angle: 135}).Children(func() {
+				ui.Icon(c, logo).FontSize(22).TextColor(k.OnGradient)
 			})
-			ui.Column(c).Gap(1).Children(func() {
-				ui.Text(c, "snosi").FontSize(19).FontWeight(700).LetterSpacing(0.2)
-				ui.Text(c, "Installer").FontSize(12.5).TextColor(p.sideMuted)
+			ui.Column(c).Children(func() {
+				size := frostui.TextSize(c, 17)
+				ui.Text(c, "snosi").FontSize(size).FontWeight(720).LetterSpacing(-0.04 * size).SingleLine()
+				frostui.Caption(c, "Installer").SingleLine()
 			})
 		})
+		frostui.Label(c, "Steps").Padding(frostui.SpaceXS, 10, 6).Role(ui.RoleHeading)
 		for pg := pageWelcome; pg < pageCount; pg++ {
 			a.stepItem(c, pg)
 		}
 		ui.Spacer(c)
 		if a.machine.demo {
-			ui.Row(c).Gap(8).Padding(10, 12).Radius(10).Background(ui.RGBA(255, 196, 0, 0.16)).Children(func() {
-				ui.Icon(c, iconSparkle).FontSize(15).TextColor(ui.Hex("#ffd166"))
+			ui.Row(c).Gap(10).Padding(10, 12).Radius(frostui.RadiusChip).AlignItems(ui.Start).
+				Background(frostui.ToneFill(t, frostui.Warning)).Border(1, frostui.ToneLine(t, frostui.Warning)).Children(func() {
+				frostui.Icon(c, iconSparkle).TextColor(t.Warning).Shrink(0)
 				ui.Column(c).Gap(1).Shrink(1).Children(func() {
-					ui.Text(c, "Demo mode").FontSize(12.5).FontWeight(600).TextColor(ui.Hex("#ffd166"))
-					ui.Text(c, "Nothing is written to disk.").FontSize(11.5).TextColor(p.sideMuted)
+					frostui.Strong(c, "Demo mode").TextColor(t.Warning)
+					frostui.Caption(c, "Nothing is written to disk.")
 				})
 			})
 		}
-		ui.Row(c).Gap(6).Padding(10, 0, 0).Children(func() {
-			a.sideTool(c, iconKeyboard, "Keyboard shortcuts (F1)", func() { a.showHelp = true })
+		ui.Row(c).Gap(frostui.SpaceXS).Padding(10, 2, 0).AlignItems(ui.Center).Children(func() {
+			if frostui.IconButton(c, iconKeyboard, "Keyboard shortcuts (F1)").Clicked() {
+				a.showHelp = true
+			}
 			themeIcon, themeTip := iconMoon, "Dark appearance (Ctrl+Shift+L)"
-			if a.p.dark {
+			if t.Dark {
 				themeIcon, themeTip = iconSun, "Light appearance (Ctrl+Shift+L)"
 			}
-			a.sideTool(c, themeIcon, themeTip, a.toggleTheme)
+			if frostui.IconButton(c, themeIcon, themeTip).Clicked() {
+				a.toggleTheme()
+			}
 			ui.Spacer(c)
 			v := a.machine.version
 			if v == "" {
 				v = "dev"
 			}
-			ui.Text(c, "firn "+v).FontSize(11.5).TextColor(p.sideMuted).SingleLine()
+			frostui.Caption(c, "firn "+v).SingleLine()
 		})
 	})
 }
 
-func (a *app) sideTool(c *ui.Context, ic *ui.SVG, tip string, fn func()) {
-	b := ui.ButtonBase(c).Size(34, 34).Radius(9).Center().Label(tip).Tooltip(tip).Cursor(ui.CursorPointer)
-	if b.Hovered() {
-		b.Background(a.p.sideActive)
-	}
-	b.Children(func() { ui.Icon(c, ic).FontSize(17).TextColor(a.p.sideText) })
-	if b.Clicked() {
-		fn()
-	}
-}
-
 func (a *app) toggleTheme() {
-	if a.p.dark {
+	if a.t != nil && a.t.Dark {
 		a.themeMode = 1
 	} else {
 		a.themeMode = 2
 	}
 }
 
-// stepItem is one step of the sidebar: done, current, or ahead.
+// stepItem is one step of the rail: done, current, or ahead. The current
+// step is the kit's selected row: the selected fill, an accent rule on its
+// leading edge and the selected text.
 func (a *app) stepItem(c *ui.Context, pg page) {
-	p := a.p
+	t := a.t
+	k := frostui.ColorsOf(t)
 	current := pg == a.page
 	done := (pg < a.page && a.pageValid(pg)) || (pg == pageInstall && a.inst.phase == phaseDone)
 	reachable := a.canReach(pg) && !current
@@ -855,41 +855,34 @@ func (a *app) stepItem(c *ui.Context, pg page) {
 	if reachable {
 		row = ui.ButtonBase(c.Key(pg)).Label(pageMeta[pg].nav).
 			Tooltip(fmt.Sprintf("Go to %s (Alt+%d)", pageMeta[pg].nav, int(pg)+1)).Cursor(ui.CursorPointer)
-		if row.Hovered() {
-			row.Background(ui.RGBA(255, 255, 255, 0.07))
-		}
 	} else {
 		row = ui.Row(c.Key(pg))
 	}
-	row.Gap(12).Padding(8, 10).Radius(10).Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
-	if current {
-		row.Background(p.sideActive)
+	// Every row has the rule's width, so the current one does not shift.
+	row.Gap(10).Padding(7, 10).Radius(0).AlignItems(ui.Center).BorderWidth(0, 0, 0, 1).BorderColor(ui.Transparent).
+		Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+	hovered := reachable && row.Hovered()
+	color := t.Text
+	switch {
+	case current:
+		row.Background(k.SelectedFill).BorderColor(t.Accent)
+		color = k.SelectedText
+	case hovered:
+		color = k.HoverText
+	case !done:
+		color = t.TextMuted
 	}
 	row.Children(func() {
-		dot := ui.Row(c).Size(26, 26).Radius(13).Center().Shrink(0)
-		switch {
-		case done:
-			dot.Background(ui.Hex("#3fcf8e")).Children(func() {
-				ui.Icon(c, iconCheck).FontSize(15).TextColor(ui.Hex("#06301c"))
-			})
-		case current:
-			dot.Background(ui.Hex("#ffffff")).Children(func() {
-				ui.Icon(c, pageMeta[pg].icon).FontSize(14).TextColor(p.sideTop)
-			})
-		default:
-			dot.Border(1.5, p.sideLine).Children(func() {
-				ui.Icon(c, pageMeta[pg].icon).FontSize(13).TextColor(p.sideMuted)
-			})
-		}
-		label := ui.Text(c, pageMeta[pg].nav).FontSize(14).Grow(1).SingleLine()
-		switch {
-		case current:
+		frostui.Icon(c, pageMeta[pg].icon).TextColor(color).Shrink(0)
+		label := ui.Text(c, pageMeta[pg].nav).FontSize(frostui.TextSize(c, 13.5)).TextColor(color).Grow(1).SingleLine()
+		if current {
 			label.FontWeight(600)
-		case !done:
-			label.TextColor(p.sideMuted)
 		}
-		if reachable && row.Hovered() {
-			ui.Text(c, fmt.Sprintf("Alt+%d", int(pg)+1)).FontSize(11).TextColor(p.sideMuted)
+		switch {
+		case hovered:
+			frostui.Shortcut(c, "Alt", fmt.Sprint(int(pg)+1))
+		case done:
+			frostui.Icon(c, iconCheck).TextColor(t.Success).Label("Done")
 		}
 	})
 	if reachable && row.Clicked() {
@@ -898,37 +891,37 @@ func (a *app) stepItem(c *ui.Context, pg page) {
 }
 
 func (a *app) header(c *ui.Context) {
-	p := a.p
 	meta := pageMeta[a.page]
-	ui.Column(c).Padding(32, 40, 18).Gap(6).MaxWidth(880).Children(func() {
+	ui.Column(c).Padding(28, 40, 18).Gap(6).MaxWidth(880).Children(func() {
 		if a.page < pageInstall {
-			ui.Text(c, fmt.Sprintf("STEP %d OF %d", int(a.page), int(pageReview))).
-				FontSize(11.5).FontWeight(700).LetterSpacing(1.2).TextColor(p.accent)
+			frostui.Label(c, fmt.Sprintf("Step %d of %d", int(a.page), int(pageReview)))
 		}
 		title, subtitle := meta.title, meta.subtitle
 		if a.page == pageInstall {
 			title, subtitle = a.installHeadline()
 		}
-		ui.Text(c, title).FontSize(27).FontWeight(700).LetterSpacing(-0.3)
+		frostui.Title(c, title).Role(ui.RoleHeading)
 		if subtitle != "" {
-			ui.Text(c, subtitle).FontSize(14.5).TextColor(p.muted)
+			frostui.Muted(c, subtitle).FontSize(frostui.TextSize(c, 13.5))
 		}
 	})
 }
 
-// footer holds the page's actions and the keyboard hints for them.
+// footer holds the page's actions and the keyboard hints for them, on the
+// kit's chrome.
 func (a *app) footer(c *ui.Context) {
-	p := a.p
-	ui.Row(c).Padding(14, 40).Gap(10).Background(p.card).BorderWidth(1, 0, 0, 0).BorderColor(p.cardBorder).Children(func() {
+	t := a.t
+	ui.Row(c).Padding(12, 40).Gap(10).AlignItems(ui.Center).Background(frostui.ColorsOf(t).Chrome).
+		BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 		if a.page == pageInstall {
 			a.installFooter(c)
 			return
 		}
-		ui.Row(c).Gap(14).Grow(1).Shrink(1).Children(func() {
+		ui.Row(c).Gap(14).Grow(1).Shrink(1).AlignItems(ui.Center).Children(func() {
 			hint := func(label string, combo ...string) {
-				ui.Row(c).Gap(6).Children(func() {
-					keys(c, p, combo...)
-					ui.Text(c, label).FontSize(12).TextColor(p.faint).SingleLine()
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					frostui.Shortcut(c, combo...)
+					frostui.Caption(c, label).SingleLine()
 				})
 			}
 			hint("Back", "Alt", "←")
@@ -936,26 +929,16 @@ func (a *app) footer(c *ui.Context) {
 			hint("Shortcuts", "F1")
 		})
 		if msg := a.blockedHint(); msg != "" {
-			ui.Text(c, msg).FontSize(13).TextColor(p.danger).SingleLine()
+			frostui.Toned(c, msg, frostui.Danger).SingleLine()
 		}
-		if ui.Button(c, "").Label("Back").Children(func() {
-			ui.Icon(c, iconArrowLeft).FontSize(15)
-			ui.Text(c, "Back").SingleLine()
-		}).Padding(9, 16).Clicked() {
+		if frostui.LabeledButton(c, iconArrowLeft, "Back", false).Clicked() {
 			a.back()
 		}
-		label, ic := "Continue", iconArrowRight
+		var next ui.Element
 		if a.page == pageReview {
-			label, ic = "Install…", iconDownload
-		}
-		next := ui.PrimaryButton(c, "").Label(label).Padding(9, 18).Children(func() {
-			ui.Text(c, label).SingleLine().FontWeight(600)
-			ui.Icon(c, ic).FontSize(15)
-		})
-		if a.page == pageReview {
-			next.Background(p.danger).Tooltip("Erase the disk and install (Ctrl+Enter)")
+			next = dangerButton(c, "Install…", iconDownload).Tooltip("Erase the disk and install (Ctrl+Enter)")
 		} else {
-			next.Tooltip("Continue (Alt+→ or Ctrl+Enter)")
+			next = gradientButton(c, "Continue", iconArrowRight).Tooltip("Continue (Alt+→ or Ctrl+Enter)")
 		}
 		if next.Clicked() {
 			a.next()
@@ -1011,43 +994,34 @@ func (a *app) shortcuts(c *ui.Context) {
 }
 
 // shortcutList is every shortcut, for the help overlay.
-var shortcutList = []struct {
-	combo []string
-	what  string
-}{
-	{[]string{"Alt", "→"}, "Continue to the next step"},
-	{[]string{"Ctrl", "Enter"}, "Continue, or install from the review"},
-	{[]string{"Alt", "←"}, "Go back a step"},
-	{[]string{"Alt", "1…8"}, "Jump to a step you have reached"},
-	{[]string{"Tab"}, "Move to the next control (Shift+Tab: previous)"},
-	{[]string{"↑", "↓"}, "Choose among cards and options"},
-	{[]string{"Space"}, "Select a card, toggle a switch or check box"},
-	{[]string{"Ctrl", "R"}, "Rescan disks (Storage step; also F5)"},
-	{[]string{"Ctrl", "Shift", "L"}, "Switch between light and dark"},
-	{[]string{"F1"}, "Show this list (also Ctrl+/)"},
-	{[]string{"Esc"}, "Close a dialog, this one included"},
-	{[]string{"Ctrl", "Q"}, "Quit the installer"},
+var shortcutList = []frostui.ShortcutEntry{
+	{Group: "Steps", Title: "Continue to the next step", Keys: []string{"Alt", "→"}},
+	{Group: "Steps", Title: "Continue, or install from the review", Keys: []string{"Ctrl", "Enter"}},
+	{Group: "Steps", Title: "Go back a step", Keys: []string{"Alt", "←"}},
+	{Group: "Steps", Title: "Jump to a step you have reached", Keys: []string{"Alt", "1…8"}},
+	{Group: "On a page", Title: "Move to the next control (Shift+Tab: previous)", Keys: []string{"Tab"}},
+	{Group: "On a page", Title: "Choose among cards and options", Keys: []string{"↑", "↓"}},
+	{Group: "On a page", Title: "Select a card, toggle a switch or check box", Keys: []string{"Space"}},
+	{Group: "On a page", Title: "Rescan disks (Storage step; also F5)", Keys: []string{"Ctrl", "R"}},
+	{Group: "Window", Title: "Switch between light and dark", Keys: []string{"Ctrl", "Shift", "L"}},
+	{Group: "Window", Title: "Show this list (also Ctrl+/)", Keys: []string{"F1"}},
+	{Group: "Window", Title: "Close a dialog, this one included", Keys: []string{"Esc"}},
+	{Group: "Window", Title: "Quit the installer", Keys: []string{"Ctrl", "Q"}},
 }
 
 func (a *app) dialogs(c *ui.Context) {
-	p := a.p
+	// Laid out as the kit's frostui.Info, whose open state is its own: the
+	// installer keeps showHelp, which F1 and the rail's button set.
 	ui.Modal(c, &a.showHelp, func() {
-		ui.Column(c).Width(460).Gap(14).Children(func() {
-			ui.Row(c).Gap(10).Children(func() {
-				ui.Icon(c, iconKeyboard).FontSize(20).TextColor(p.accent)
-				ui.Text(c, "Keyboard shortcuts").FontSize(17).FontWeight(700)
-			})
-			ui.Grid(c).ColumnTracks(ui.FitContent(), ui.Fr(1)).GapX(18).GapY(10).AlignItems(ui.Center).Children(func() {
-				for _, s := range shortcutList {
-					keys(c, p, s.combo...)
-					ui.Text(c, s.what).FontSize(13.5)
-				}
-			})
-			ui.Row(c).Justify(ui.End).Children(func() {
-				if ui.PrimaryButton(c, "Done").Clicked() {
+		ui.Column(c).Width(520).Gap(frostui.SpaceM).AlignItems(ui.Stretch).Role(ui.RoleDialog).Label("Keyboard shortcuts").Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				frostui.Icon(c, iconKeyboard).TextColor(a.t.Accent)
+				ui.Text(c, "Keyboard shortcuts").FontSize(frostui.TextSize(c, 18)).Bold().Grow(1)
+				if frostui.IconButton(c, iconClose, "Close").Clicked() {
 					a.showHelp = false
 				}
 			})
+			frostui.ShortcutsBody(shortcutList)(c)
 		})
 	})
 

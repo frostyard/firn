@@ -1,256 +1,190 @@
 package installer
 
-import "github.com/egoist/mygo/ui"
+import (
+	"github.com/egoist/mygo/ui"
+	"github.com/frostyard/frostui"
+)
 
-// palette is the installer's look in one appearance. The window follows the
-// desktop's light or dark appearance unless the user picks one; the sidebar
-// is the same deep blue in both.
-type palette struct {
-	dark bool
+// The installer draws frostyard's look with frostui (ADR-0022): the kit's
+// Frostyard and Frostyard light themes, set in Inter, and its cards, pills,
+// keys and buttons. What a wizard needs and the kit has no component for
+// (choice cards, titled notes, the strength meter) is built here from the
+// kit's colors and metrics, so it changes when the kit's look does.
 
-	window, card, cardBorder, subtle, inset ui.Color
-	text, muted, faint                      ui.Color
-
-	accent, accentSoft, accentText ui.Color
-	success, successSoft           ui.Color
-	warning, warningSoft           ui.Color
-	danger, dangerSoft             ui.Color
-
-	sideTop, sideBottom, sideText, sideMuted, sideActive, sideLine ui.Color
-	shadow                                                         ui.Color
-}
-
-func newPalette(dark bool) palette {
-	p := palette{
-		dark:       dark,
-		sideTop:    ui.Hex("#0b1d3a"),
-		sideBottom: ui.Hex("#143b6b"),
-		sideText:   ui.Hex("#f2f7ff"),
-		sideMuted:  ui.RGBA(214, 228, 250, 0.62),
-		sideActive: ui.RGBA(255, 255, 255, 0.13),
-		sideLine:   ui.RGBA(255, 255, 255, 0.16),
-	}
-	if dark {
-		p.window = ui.Hex("#0d1321")
-		p.card = ui.Hex("#141c2e")
-		p.cardBorder = ui.Hex("#24304a")
-		p.subtle = ui.Hex("#1b253b")
-		p.inset = ui.Hex("#0f1626")
-		p.text = ui.Hex("#e7eef9")
-		p.muted = ui.Hex("#9aabc4")
-		p.faint = ui.Hex("#6a7c97")
-		p.accent = ui.Hex("#5b9bff")
-		p.accentSoft = ui.RGBA(91, 155, 255, 0.14)
-		p.accentText = ui.Hex("#06142b")
-		p.success = ui.Hex("#3fcf8e")
-		p.successSoft = ui.RGBA(63, 207, 142, 0.14)
-		p.warning = ui.Hex("#f5b14c")
-		p.warningSoft = ui.RGBA(245, 177, 76, 0.13)
-		p.danger = ui.Hex("#ff6b6b")
-		p.dangerSoft = ui.RGBA(255, 107, 107, 0.14)
-		p.shadow = ui.RGBA(0, 0, 0, 0.35)
-	} else {
-		p.window = ui.Hex("#f4f7fb")
-		p.card = ui.Hex("#ffffff")
-		p.cardBorder = ui.Hex("#dfe6f0")
-		p.subtle = ui.Hex("#eef3f9")
-		p.inset = ui.Hex("#f6f8fc")
-		p.text = ui.Hex("#0f1b2d")
-		p.muted = ui.Hex("#56677f")
-		p.faint = ui.Hex("#8796ab")
-		p.accent = ui.Hex("#2563eb")
-		p.accentSoft = ui.RGBA(37, 99, 235, 0.08)
-		p.accentText = ui.Hex("#ffffff")
-		p.success = ui.Hex("#15924f")
-		p.successSoft = ui.RGBA(21, 146, 79, 0.09)
-		p.warning = ui.Hex("#b4630a")
-		p.warningSoft = ui.RGBA(217, 119, 6, 0.10)
-		p.danger = ui.Hex("#d22b2b")
-		p.dangerSoft = ui.RGBA(210, 43, 43, 0.08)
-		p.shadow = ui.RGBA(15, 27, 45, 0.07)
-	}
-	return p
-}
-
-// theme adapts the frame's theme so the built-in widgets match the palette.
-func (p palette) theme(base ui.Theme) *ui.Theme {
-	t := base
-	t.Dark = p.dark
-	t.Background = p.window
-	t.Text = p.text
-	t.TextMuted = p.muted
-	t.Border = p.cardBorder
-	t.Accent = p.accent
-	t.AccentText = p.accentText
-	t.Danger = p.danger
-	t.Warning = p.warning
-	t.Success = p.success
-	t.Radius = 8
-	if p.dark {
-		t.Surface = ui.Hex("#1c2740")
-		t.SurfaceHover = ui.Hex("#233050")
-		t.SurfacePressed = ui.Hex("#2a395c")
-		t.AccentHover = ui.Hex("#76acff")
-		t.AccentPressed = ui.Hex("#4a86ea")
-		t.Focus = ui.RGBA(91, 155, 255, 0.55)
-	} else {
-		t.Surface = ui.Hex("#eef2f8")
-		t.SurfaceHover = ui.Hex("#e5ebf4")
-		t.SurfacePressed = ui.Hex("#dbe3ef")
-		t.AccentHover = ui.Hex("#1d4fd8")
-		t.AccentPressed = ui.Hex("#1a46c0")
-		t.Focus = ui.RGBA(37, 99, 235, 0.45)
-	}
-	return &t
-}
-
-// card is a raised panel grouping one part of a page.
-func card(c *ui.Context, p palette) ui.Element {
-	return ui.Column(c).Padding(20).Gap(14).Radius(14).Background(p.card).
-		Border(1, p.cardBorder).Shadow(0, 1, 2, 0, p.shadow).Shadow(0, 8, 24, -12, p.shadow)
+// applyTheme sets the frame's theme, Frostyard or Frostyard light, as the
+// user or the desktop chose, with the desktop's high contrast and text size
+// but not its accent, and returns it. frostui.Adapt keeps the theme and
+// registers Inter on its first call.
+func (a *app) applyTheme(c *ui.Context) *ui.Theme {
+	prefs := c.Preferences()
+	prefs.Accent = ui.Color{}
+	c.SetTheme(frostui.FrostyardTheme(a.dark(c)).WithPreferences(prefs))
+	return frostui.Adapt(c)
 }
 
 // cardHeader titles a card with an icon tile.
-func cardHeader(c *ui.Context, p palette, ic *ui.SVG, title, subtitle string) {
-	ui.Row(c).Gap(12).Children(func() {
-		iconTile(c, p, ic, p.accent, p.accentSoft, 36)
-		ui.Column(c).Gap(2).Grow(1).Children(func() {
-			ui.Text(c, title).FontSize(15).FontWeight(600)
+func cardHeader(c *ui.Context, icon, title, subtitle string) {
+	ui.Row(c).Gap(frostui.SpaceM).AlignItems(ui.Center).Children(func() {
+		frostui.IconTile(c, icon, frostui.Accent, 36).Shrink(0)
+		ui.Column(c).Gap(2).Grow(1).Shrink(1).Children(func() {
+			frostui.Heading(c, title)
 			if subtitle != "" {
-				ui.Text(c, subtitle).FontSize(13).TextColor(p.muted)
+				frostui.Muted(c, subtitle)
 			}
 		})
 	})
 }
 
-// iconTile is an icon centered on a tinted rounded square.
-func iconTile(c *ui.Context, p palette, ic *ui.SVG, fg, bg ui.Color, size float32) ui.Element {
-	return ui.Row(c).Size(size, size).Radius(size / 3.2).Background(bg).Center().Shrink(0).Children(func() {
-		ui.Icon(c, ic).FontSize(size * 0.52).TextColor(fg)
-	})
-}
-
 // choiceCard is a selectable card on a radio base: the arrows move among the
-// cards of its radio group, and Space or a click chooses one.
-func choiceCard[T comparable](c *ui.Context, p palette, selected *T, value T, ic *ui.SVG, title, body string, extra func()) ui.Element {
+// cards of its radio group, and Space or a click chooses one. The chosen
+// card takes the selected fill inside an accent hairline.
+func choiceCard[T comparable](c *ui.Context, selected *T, value T, icon, title, body string, extra func()) ui.Element {
+	t := c.Theme()
+	k := frostui.ColorsOf(t)
 	chosen := *selected == value
-	card := ui.RadioBase(c, selected, value).Padding(16).Gap(14).Radius(12).AlignItems(ui.Start).
-		Background(p.card).Border(1, p.cardBorder).Label(title).Cursor(ui.CursorPointer).
+	card := ui.RadioBase(c, selected, value).Padding(14, 16).Gap(14).Radius(frostui.RadiusCard).AlignItems(ui.Start).
+		Background(k.Panel).Border(1, t.Border).Label(title).Cursor(ui.CursorPointer).
 		Transition(ui.ElementTransition{Colors: true, Duration: 140_000_000})
-	if card.Hovered() && !chosen {
-		card.Background(p.inset).Border(1, p.cardBorder.Mix(p.accent, 0.35))
+	switch {
+	case chosen:
+		card.Background(k.SelectedFill.Over(k.Panel)).Border(1, t.Accent)
+	case card.Hovered():
+		card.Border(1, frostui.ToneLine(t, frostui.Accent))
 	}
+	tone := frostui.Neutral
 	if chosen {
-		card.Background(p.accentSoft).Border(2, p.accent).Padding(15)
-	}
-	fg, bg := p.muted, p.subtle
-	if chosen {
-		fg, bg = p.accentText, p.accent
+		tone = frostui.Accent
 	}
 	card.Children(func() {
-		iconTile(c, p, ic, fg, bg, 40)
+		frostui.IconTile(c, icon, tone, 36).Shrink(0)
 		ui.Column(c).Gap(4).Grow(1).Shrink(1).Children(func() {
-			ui.Text(c, title).FontSize(15).FontWeight(600)
+			title := frostui.Heading(c, title)
+			if chosen {
+				title.TextColor(k.SelectedText)
+			}
 			if body != "" {
-				ui.Text(c, body).FontSize(13).TextColor(p.muted)
+				frostui.Muted(c, body)
 			}
 			if extra != nil {
 				extra()
 			}
 		})
-		radioMark(c, p, chosen)
+		radioMark(c, chosen)
 	})
 	return card
 }
 
-// radioMark is the round check mark at a choice card's end.
-func radioMark(c *ui.Context, p palette, on bool) {
-	mark := ui.Row(c).Size(22, 22).Radius(11).Center().Shrink(0)
+// radioMark is the round mark at a choice card's end.
+func radioMark(c *ui.Context, on bool) {
+	t := c.Theme()
+	mark := ui.Row(c).Size(20, 20).Radius(10).Center().Shrink(0)
 	if on {
-		mark.Background(p.accent).Children(func() {
-			ui.Icon(c, iconCheck).FontSize(14).TextColor(p.accentText)
+		mark.Background(t.Accent).Children(func() {
+			frostui.Icon(c, iconCheck).FontSize(13).TextColor(t.AccentText)
 		})
 	} else {
-		mark.Border(2, p.cardBorder)
+		mark.Border(1.5, frostui.ToneLine(t, frostui.Neutral))
 	}
 }
 
-type calloutKind int
-
-const (
-	calloutInfo calloutKind = iota
-	calloutWarning
-	calloutDanger
-	calloutSuccess
-)
-
-// callout is a tinted note with an icon.
-func callout(c *ui.Context, p palette, kind calloutKind, title, body string) ui.Element {
-	fg, bg, ic := p.accent, p.accentSoft, iconInfo
-	switch kind {
-	case calloutWarning:
-		fg, bg, ic = p.warning, p.warningSoft, iconWarning
-	case calloutDanger:
-		fg, bg, ic = p.danger, p.dangerSoft, iconError
-	case calloutSuccess:
-		fg, bg, ic = p.success, p.successSoft, iconSuccess
+// toneIcon is the icon a note in tone leads with.
+func toneIcon(tone frostui.Tone) string {
+	switch tone {
+	case frostui.Warning:
+		return iconWarning
+	case frostui.Danger:
+		return iconError
+	case frostui.Success:
+		return iconSuccess
 	}
-	return ui.Row(c).Gap(12).Padding(12, 14).Radius(10).Background(bg).AlignItems(ui.Start).Children(func() {
-		ui.Icon(c, ic).FontSize(18).TextColor(fg).Shrink(0)
+	return iconInfo
+}
+
+// callout is a note in a tone: the kit's banner, with a title over its text.
+func callout(c *ui.Context, tone frostui.Tone, title, body string) ui.Element {
+	t := c.Theme()
+	color := frostui.ToneColor(t, tone)
+	return ui.Row(c).Gap(frostui.SpaceM).Padding(frostui.SpaceM, frostui.SpaceL).Radius(frostui.RadiusChip).
+		Background(frostui.ToneFill(t, tone)).Border(1, frostui.ToneLine(t, tone)).AlignItems(ui.Start).Children(func() {
+		frostui.Icon(c, toneIcon(tone)).FontSize(frostui.TextSize(c, 17)).TextColor(color).Shrink(0)
 		ui.Column(c).Gap(2).Grow(1).Shrink(1).Children(func() {
 			if title != "" {
-				ui.Text(c, title).FontWeight(600).TextColor(fg)
+				frostui.Strong(c, title).TextColor(color)
 			}
 			if body != "" {
-				ui.Text(c, body).FontSize(13).TextColor(p.text)
+				frostui.Body(c, body).FontSize(frostui.TextSize(c, 13))
 			}
 		})
 	})
 }
 
-// chip is a small pill of text.
-func chip(c *ui.Context, text string, fg, bg ui.Color) ui.Element {
-	return ui.Text(c, text).FontSize(12).FontWeight(500).TextColor(fg).
-		Padding(3, 9).Radius(999).Background(bg).SingleLine()
-}
-
-// statusChip is a pill with a leading icon, for machine capabilities.
-func statusChip(c *ui.Context, p palette, ic *ui.SVG, text string, ok bool) ui.Element {
-	fg, bg := p.muted, p.subtle
-	if ok {
-		fg, bg = p.success, p.successSoft
+// tag is a small outlined name that keeps its case, as an image reference,
+// a partition label or a Flatpak ID: frostui.Pill sets its text in capitals,
+// which suits a status but would misquote a name.
+func tag(c *ui.Context, text string, tone frostui.Tone, mono bool) ui.Element {
+	t := c.Theme()
+	color := frostui.ColorsOf(t).TagText
+	if tone != frostui.Neutral {
+		color = frostui.ToneColor(t, tone)
 	}
-	return ui.Row(c).Gap(6).Padding(6, 12).Radius(999).Background(bg).Children(func() {
-		ui.Icon(c, ic).FontSize(14).TextColor(fg)
-		ui.Text(c, text).FontSize(13).FontWeight(500).TextColor(fg).SingleLine()
-	})
+	el := ui.Text(c, text).FontSize(frostui.TextSize(c, 12)).TextColor(color).SingleLine().
+		Padding(2, 7).Radius(frostui.RadiusChip).Border(1, frostui.ToneLine(t, tone))
+	if mono {
+		el.Font("monospace")
+	}
+	return el
 }
 
-// keycap draws one key of a shortcut.
-func keycap(c *ui.Context, p palette, key string) ui.Element {
-	return ui.Text(c, key).Font("monospace").FontSize(12).TextColor(p.text).SingleLine().
-		Padding(2, 7).Radius(5).Background(p.subtle).Border(1, p.cardBorder).
-		Shadow(0, 1, 0, 0, p.cardBorder)
+// gradientButton is the kit's primary button, on the brand gradient, with
+// its icon after the label: a step forward. frostui.LabeledButton puts the
+// icon first.
+func gradientButton(c *ui.Context, label, icon string) ui.Element {
+	k := frostui.ColorsOf(c.Theme())
+	return ui.PrimaryButton(c, "").Label(label).
+		LinearGradient(ui.LinearGradient{From: k.GradientFrom, To: k.GradientTo, Angle: 135}).TextColor(k.OnGradient).
+		Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, label).SingleLine().FontWeight(600)
+				frostui.Icon(c, icon)
+			})
+		})
 }
 
-// keys draws a shortcut such as "Alt+→" as keycaps.
-func keys(c *ui.Context, p palette, combo ...string) {
-	ui.Row(c).Gap(4).Children(func() {
-		for i, k := range combo {
-			if i > 0 {
-				ui.Text(c, "+").FontSize(11).TextColor(p.faint)
-			}
-			keycap(c, p, k)
-		}
-	})
+// dangerButton is a primary button for an action that erases a disk, drawn
+// as the kit draws a destructive confirmation: the danger tone's face,
+// outline and text.
+func dangerButton(c *ui.Context, label, icon string) ui.Element {
+	t := c.Theme()
+	return ui.PrimaryButton(c, "").Label(label).
+		Background(frostui.ToneFill(t, frostui.Danger)).TextColor(t.Danger).Border(1, frostui.ToneLine(t, frostui.Danger)).
+		Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				if icon != "" {
+					frostui.Icon(c, icon)
+				}
+				ui.Text(c, label).SingleLine().FontWeight(600)
+			})
+		})
+}
+
+// dialogPanel draws a dialog's backdrop and panel as the kit draws what
+// floats over the window: the panel face inside a strong hairline, square
+// and without a shadow.
+func dialogPanel(c *ui.Context, backdrop, panel ui.Element, width float32, label string) {
+	t := c.Theme()
+	k := frostui.ColorsOf(t)
+	backdrop.Background(ui.RGBA(2, 8, 15, 0.6))
+	panel.Width(width).Padding(24).Gap(frostui.SpaceL).Radius(frostui.RadiusCard).Background(k.Panel).
+		Border(1, k.LineStrong).Role(ui.RoleAlertDialog).Label(label)
 }
 
 // codeBlock shows monospace text that can be selected and copied. Long
 // lines scroll sideways rather than wrap, so what is shown is byte-exact.
-func codeBlock(c *ui.Context, p palette, text string) ui.Element {
-	return ui.Column(c).Radius(10).Background(p.inset).Border(1, p.cardBorder).Clip().Children(func() {
-		ui.ScrollHorizontal(c).Padding(14, 16).Selectable().Children(func() {
-			ui.Text(c, text).Font("monospace").FontSize(12.5).LineHeight(1.5).NoWrap()
+func codeBlock(c *ui.Context, text string) ui.Element {
+	t := c.Theme()
+	return ui.Column(c).Radius(frostui.RadiusChip).Background(frostui.ColorsOf(t).Code).Border(1, t.Border).Clip().Children(func() {
+		ui.ScrollHorizontal(c).Padding(12, 14).Selectable().Children(func() {
+			ui.Text(c, text).Font("monospace").FontSize(frostui.TextSize(c, 12.5)).LineHeight(1.5).NoWrap()
 		})
 	})
 }
@@ -294,22 +228,34 @@ func strength(pw string) int {
 }
 
 // strengthMeter shows strength as four segments and a word.
-func strengthMeter(c *ui.Context, p palette, pw string) {
+func strengthMeter(c *ui.Context, pw string) {
 	s := strength(pw)
 	if s == 0 {
 		return
 	}
+	t := c.Theme()
 	labels := []string{"", "Weak", "Fair", "Good", "Strong"}
-	colors := []ui.Color{p.faint, p.danger, p.warning, p.accent, p.success}
-	ui.Row(c).Gap(8).Children(func() {
-		ui.Row(c).Gap(4).Grow(1).Children(func() {
+	tones := []frostui.Tone{frostui.Neutral, frostui.Danger, frostui.Warning, frostui.Accent, frostui.Success}
+	color := frostui.ToneColor(t, tones[s])
+	ui.Row(c).Gap(frostui.SpaceS).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Gap(frostui.SpaceXS).Grow(1).Children(func() {
 			for i := 1; i <= 4; i++ {
-				seg := ui.Box(c).Height(4).Grow(1).Radius(2).Background(p.subtle)
+				seg := ui.Box(c).Height(4).Grow(1).Radius(frostui.RadiusChip).Background(frostui.ToneFill(t, frostui.Neutral))
 				if i <= s {
-					seg.Background(colors[s])
+					seg.Background(color)
 				}
 			}
 		})
-		ui.Text(c, labels[s]).FontSize(12).FontWeight(600).TextColor(colors[s]).Width(48).TextAlign(ui.End)
+		ui.Text(c, labels[s]).FontSize(frostui.TextSize(c, 12)).FontWeight(600).TextColor(color).Width(52).TextAlign(ui.End)
 	})
+}
+
+// ghostButton is a secondary button as the kit draws one: a hairline and no
+// face, its text in the hover color while the pointer is over it.
+func ghostButton(c *ui.Context, label string) ui.Element {
+	b := ui.Button(c, label).Background(ui.Transparent)
+	if b.Hovered() {
+		b.TextColor(frostui.ColorsOf(c.Theme()).HoverText)
+	}
+	return b
 }
