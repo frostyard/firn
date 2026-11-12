@@ -8,7 +8,7 @@ go 1.27.4
 require (
 	github.com/egoist/mygo v0.9.0
 	github.com/frostyard/firn v0.0.0-00010101000000-000000000000
-	github.com/frostyard/frostui v0.5.0
+	github.com/frostyard/frostui v0.5.1
 )
 
 require (
