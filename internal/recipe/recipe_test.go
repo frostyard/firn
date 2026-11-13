@@ -104,10 +104,9 @@ func TestUnknownFieldsRejectedAtParse(t *testing.T) {
 func replace(src, old, new string) string { return strings.Replace(src, old, new, 1) }
 
 func TestValidateRejections(t *testing.T) {
-	worldReadable := filepath.Join(t.TempDir(), "leaky")
-	if err := os.WriteFile(worldReadable, []byte("secret"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// writeSecretMode sets the mode with chmod: under a umask such as 0077,
+	// WriteFile alone gives 0600 and the world-readable case passes validation.
+	worldReadable := writeSecretMode(t, "leaky", 0o644)
 	cosignKey := filepath.Join(t.TempDir(), "cosign.pub")
 	if err := os.WriteFile(cosignKey, []byte("public key"), 0o644); err != nil {
 		t.Fatal(err)

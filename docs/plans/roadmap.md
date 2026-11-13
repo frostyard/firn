@@ -449,9 +449,11 @@ kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/00
    it in both appearances.
 9. **Kiosk polish (firn).** Found while building step 7, none blocking: a
    `--kiosk` mode for `firn-gui` (no Close or Ctrl+Q; after the install,
-   offer the console installer or power off); a lock so two frontends
+   offer the console installer or power off); ✅ a lock so two frontends
    cannot install at once (the graphical and serial installers share
-   `/run/firn/target` and the `firn-root` mapper name); and a hard error
+   `/run/firn/target` and the `firn-root` mapper name; shipped in firn
+   v0.11.0, [#125](https://github.com/frostyard/firn/pull/125):
+   `/run/firn/install.lock`, progress code `install_in_progress`); and a hard error
    when Pango is missing instead of a window with no text.
 10. **Prove it on hardware.** Install Snow with `firn-gui` from the
     installer ISO's graphical entry on a real machine: unencrypted, `tpm2-luks` (recovery key
