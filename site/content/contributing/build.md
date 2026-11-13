@@ -24,7 +24,7 @@ make build
 | --- | --- |
 | `make verify` | Non-mutating, credential-free gate: template checks, module tidy diff, formatting check, pinned lint, vet and tests. |
 | `make check` | Formatting, lint, tests and the template gate; formatting can update source files. |
-| `make ci` | Verify plus coverage, the race detector and cross-architecture CLI builds. With `BASE=<ref>`, also checks the corrections inbox is append-only. |
+| `make ci` | Verify plus coverage, the race detector and cross-architecture CLI builds. With `BASE=<ref>`, also checks the corrections records against the base (no record removed or renamed). |
 
 ```sh
 make verify

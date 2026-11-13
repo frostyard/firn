@@ -58,7 +58,7 @@ removed. -->
 - `make verify` (so also `make check` and `make ci`) runs the template gate
   first: `node scripts/check-template.mjs` (agent symlinks, every doc under
   `docs/` indexed in `docs/README.md`, `.github/risk-paths.json`,
-  `.memory/corrections.jsonl`, 2 hash-pinned core copies) and
+  `.memory/corrections/`, 2 hash-pinned core copies) and
   `node --test test/*.test.mjs`; it needs Node 22 or later from `mise
   install`. `scripts/check-*.mjs`, `scripts/lib/` and
   `test/check-template.test.mjs` are copies of bketelsen/agentic-template:
@@ -70,10 +70,13 @@ removed. -->
   each glob has 1 `level`, `default_level` is L3, and the globs that match
   the list or the caller are L1 or L2. `.github/workflows/risk-paths.yml`
   calls core's `pr-triage` workflow, which adds the level label and
-  `risk:high` at L1 and L2. `make ci BASE=<ref>` adds the append-only check of
-  `.memory/corrections.jsonl`. A blocking review point is fixed with a guard
-  (a test that fails without the fix, or an `AGENTS.md` rule) and 1
-  corrections line (core ADR-0018).
+  `risk:high` at L1 and L2. `make ci BASE=<ref>` adds the corrections records
+  check of `.memory/corrections/` against the base: no record removed or
+  renamed, only an empty `promoted_to` filled, and the old corrections file
+  does not come back. A blocking review point is fixed with a guard
+  (a test that fails without the fix, or an `AGENTS.md` rule) and 1 record
+  file under `.memory/corrections/` (name `<date>-pr-<N>-<words>.json`; core
+  ADR-0018, ADR-0081).
 - The graphical installer is the nested Go module `gui/`
   (`github.com/frostyard/firn/gui`, Go 1.27.4; mygo needs 1.27.3 or
   later; ADR-0021). Root targets never enter it: changes under `gui/` also

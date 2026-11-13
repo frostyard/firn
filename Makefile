@@ -111,10 +111,10 @@ verify:
 ## check: Run fmt, lint, test, and the template gate
 check: fmt lint test verify-template
 
-## ci: Credential-free gate mirroring CI's jobs (core ADR-0043/ADR-0022): verify, plus coverage, the race detector, cross-arch builds, and with BASE the append-only corrections check
+## ci: Credential-free gate mirroring CI's jobs (core ADR-0043/ADR-0022): verify, plus coverage, the race detector, cross-arch builds, and with BASE the corrections records check
 ci:
 	@$(MAKE) --no-print-directory verify
-	@if [ -n "$(BASE)" ]; then echo "==> ci: corrections append-only vs $(BASE)"; node scripts/check-corrections.mjs --base "$(BASE)"; fi
+	@if [ -n "$(BASE)" ]; then echo "==> ci: corrections records vs $(BASE)"; node scripts/check-corrections.mjs --base "$(BASE)"; fi
 	@echo "==> ci: coverage"
 	$(GO) test -coverprofile=coverage.out ./...
 	@echo "==> ci: race detector"
