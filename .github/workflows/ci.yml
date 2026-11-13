@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Full history: the append-only corrections check diffs BASE,
+          # Full history: the corrections records check diffs BASE,
           # the pull request's base commit, against the head.
           fetch-depth: 0
 
@@ -51,8 +51,10 @@ jobs:
       # (the template gate, then tidy diff, gofmt, lint, vet, tests) plus
       # coverage, the race detector, and cross-arch builds, replacing the
       # lint/verify/race/build jobs this workflow ran individually before.
-      # BASE, the pull request's base commit, also turns on the append-only
-      # check of .memory/corrections.jsonl (core ADR-0018).
+      # BASE, the pull request's base commit, also turns on the corrections
+      # records check: no record under .memory/corrections/ removed or renamed,
+      # only an empty promoted_to filled, and the old corrections file does not
+      # come back (core ADR-0018, ADR-0081).
       - name: Run canonical gate
         run: make ci BASE="$BASE"
         env:

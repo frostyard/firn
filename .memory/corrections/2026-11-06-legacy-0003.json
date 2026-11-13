@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "README",
+  "correction": "A README rewrite dropped the firn-gui detection overrides and claimed a complete flag list; move every fact before the drop and name every registered flag.",
+  "evidence": "frostyard/firn#130, cross-review (openai/gpt-6.1-sol) of head 4a2bab2, finding 3",
+  "promoted_to": "AGENTS.md"
+}

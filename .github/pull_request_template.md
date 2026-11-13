@@ -55,7 +55,7 @@ log reads as empty to the completion check. -->
 - [ ] Workflows changed: every action is SHA-pinned with `# vX.Y.Z`,
       `permissions: {}`, and `persist-credentials: false`
 - [ ] Blocking review point fixed: guard added (a test that fails without the
-      fix, or an `AGENTS.md` rule) and 1 `.memory/corrections.jsonl` line added
+      fix, or an `AGENTS.md` rule) and 1 file added under `.memory/corrections/`
 
 ```
 <!-- gate output -->

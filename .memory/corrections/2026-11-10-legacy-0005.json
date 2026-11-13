@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-10",
+  "scope": "lint-gate",
+  "correction": "lint-version-check passed when golangci-lint printed no Go build version or its version command failed; the gate must fail closed when it cannot read the build version.",
+  "evidence": "frostyard/firn#145, cross-review (openai/gpt-6.1-sol) of head 1f7dfc8, finding 1",
+  "promoted_to": "test/lint-version-check.test.mjs"
+}

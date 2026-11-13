@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "cli-flags",
+  "correction": "clix v0.5.0 reserves --json, --verbose/-v, --dry-run/-n and --silent/-s across the whole command tree, so a subcommand must read clix.DryRun and never define these flags.",
+  "evidence": "frostyard/firn#132, CI Repository gate and Unit Tests failed in cmd/firn/dry_run_scope_test.go",
+  "promoted_to": "cmd/firn/dry_run_scope_test.go"
+}
