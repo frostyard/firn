@@ -1,5 +1,5 @@
 // Package disk enumerates block devices and applies firn's disk
-// refusal rules — the union of both parent installers' guards.
+// refusal rules.
 //
 // Disk identity fields and the refusal rules are ported from snosi-install's
 // list_installable_disks() and disk_refusal_reason() (frostyard/snosi,

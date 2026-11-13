@@ -23,7 +23,7 @@ Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
 
 [ADR-0016](../adr/0016-bootc-only-recipe-contract.md) provides the accepted
 v2 recipe boundary implemented below. [ADR-0015](../adr/0015-bootc-only-installer-scope.md)
-remains Proposed; code scope is not a sole-path or production authorization.
+(Accepted) sets the bootc-only installer scope.
 [Roadmap Phase 9](../plans/roadmap.md#phase-9-proposed-post-cutoff-bootc-only-transition-bounded-cross-repo-not-started)
 tracks the remaining published-ISO hardware qualification and separate
 authorization.
