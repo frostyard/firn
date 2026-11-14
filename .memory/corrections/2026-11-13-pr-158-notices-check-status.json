@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "third-party-notices",
+  "correction": "A gate script's --check needs a test of its exit status for current, stale and missing files, not only of its message: without one, the gate can report a stale file and still pass.",
+  "evidence": "frostyard/firn#158, cross-review (openai/gpt-6.1-sol) of head 5d2c713, finding 1",
+  "promoted_to": "test/third-party-notices.test.mjs"
+}

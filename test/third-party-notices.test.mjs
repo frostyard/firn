@@ -4,10 +4,11 @@
 // every Go module compiled into firn and firn-gui, so the generator must find
 // every license file, never take a file from outside a module, fail on a
 // package it cannot attribute, and give the same bytes for the same inputs.
-// These tests use temporary directories and never run `go`.
+// These tests use temporary directories and never run the real `go`: the
+// command-level test puts a stub `go` first on PATH.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,6 +16,7 @@ import {
   collectLicenseFiles,
   findLicenseFiles,
   isLicenseFileName,
+  main,
   normalizeText,
   parseGoList,
   renderNotices,
@@ -161,4 +163,60 @@ test("staleMessage passes a current file and names a stale or missing one", (t) 
   assert.equal(staleMessage(join(dir, "NOTICES"), "NOTICES", "current\n"), null);
   assert.equal(staleMessage(join(dir, "NOTICES"), "NOTICES", "changed\n"), "NOTICES is stale or missing: run make notices");
   assert.equal(staleMessage(join(dir, "MISSING"), "MISSING", "x\n"), "MISSING is stale or missing: run make notices");
+});
+
+// The gate is the exit status, not the message: `make verify` and `make
+// gui-check` pass when `--check` returns 0, so a check that reports a stale
+// file and still returns 0 lets the stale file through (frostyard/firn#158).
+// This runs main against a temporary repository with a stub `go` on PATH.
+test("main writes the notices file, and --check returns 0 when current and 1 when stale or missing", (t) => {
+  const tree = tempTree(t, {
+    "repo/go.mod": "module example.com/repo\n",
+    "mod/LICENSE": "fake module license",
+    "mod/pkg/p.go": "package pkg",
+    "goroot/LICENSE": "fake Go license",
+  });
+  const repo = join(tree, "repo");
+  const bin = join(tree, "bin");
+  mkdirSync(bin);
+  const line = [`example.com/mod/pkg`, join(tree, "mod", "pkg"), "example.com/mod", join(tree, "mod"), "false", ""].join("\t");
+  const stub = [
+    "#!/bin/sh",
+    'if [ "$1" = "list" ]; then',
+    `  printf '%s\\n' '${line}'`,
+    "  exit 0",
+    "fi",
+    'if [ "$1" = "env" ] && [ "$2" = "GOROOT" ]; then',
+    `  printf '%s\\n' '${join(tree, "goroot")}'`,
+    "  exit 0",
+    "fi",
+    'echo "stub go: unexpected arguments: $*" >&2',
+    "exit 2",
+    "",
+  ].join("\n");
+  writeFileSync(join(bin, "go"), stub);
+  chmodSync(join(bin, "go"), 0o755);
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${bin}:${savedPath}`;
+  t.after(() => {
+    process.env.PATH = savedPath;
+  });
+
+  const notices = join(repo, "THIRD_PARTY_NOTICES");
+  assert.equal(main(["firn"], repo), 0, "writing the notices file must return 0");
+  const written = readFileSync(notices, "utf8");
+  assert.match(written, /example\.com\/mod\/LICENSE\n=+\n\nfake module license\n/);
+  assert.match(written, /Go standard library\/LICENSE\n=+\n\nfake Go license\n/);
+
+  assert.equal(main(["--check", "firn"], repo), 0, "--check must return 0 on a current file");
+
+  const stale = Buffer.from(written);
+  stale[0] = stale[0] === 0x54 ? 0x74 : 0x54;
+  writeFileSync(notices, stale);
+  assert.equal(main(["--check", "firn"], repo), 1, "--check must return 1 on a stale file");
+  assert.deepEqual(readFileSync(notices), stale, "--check must not rewrite a stale file");
+
+  rmSync(notices);
+  assert.equal(main(["--check", "firn"], repo), 1, "--check must return 1 on a missing file");
+  assert.equal(existsSync(notices), false, "--check must not create a missing file");
 });
