@@ -1,4 +1,4 @@
-.PHONY: all build clean fmt lint lint-version-check verify verify-template ci test install help site site-serve
+.PHONY: all build clean fmt lint lint-version-check verify verify-template ci test install help site site-serve notices
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -67,6 +67,11 @@ test-cover:
 tidy:
 	$(GO) mod tidy
 
+## notices: Regenerate THIRD_PARTY_NOTICES and gui/THIRD_PARTY_NOTICES after a Go dependency change (ADR-0023)
+notices:
+	node scripts/third-party-notices.mjs firn
+	node scripts/third-party-notices.mjs firn-gui
+
 ## lint-version-check: Fail unless the installed golangci-lint is the mise.toml pin and was built with a Go minor no older than go.mod's
 lint-version-check:
 	@test -n "$(GO_VERSION)" || { echo "go.mod has no go line"; exit 1; }
@@ -91,12 +96,14 @@ verify-template:
 	node scripts/check-template.mjs
 	node --test test/*.test.mjs
 
-## verify: Credential-free, non-mutating gate (what a read-only reviewer runs): template gate, tidy diff, gofmt -l, lint at the exact pin, vet, tests
+## verify: Credential-free, non-mutating gate (what a read-only reviewer runs): template gate, tidy diff, third-party notices, gofmt -l, lint at the exact pin, vet, tests
 verify:
 	@echo "==> verify: template gate"
 	@$(MAKE) --no-print-directory verify-template
 	@echo "==> verify: go.mod is tidy"
 	$(GO) mod tidy -diff
+	@echo "==> verify: third-party notices are current"
+	node scripts/third-party-notices.mjs --check firn
 	@echo "==> verify: gofmt"
 	@unformatted="$$($(GOFMT) -l $(GOFILES))"; \
 	if [ -n "$$unformatted" ]; then echo "$$unformatted"; echo "gofmt: files need formatting (run make fmt)"; exit 1; fi
@@ -139,9 +146,10 @@ ci:
 gui-build:
 	cd gui && $(GO) build $(LDFLAGS) -o ../build/firn-gui ./cmd/firn-gui
 
-## gui-check: gui/ gate: tidy diff, gofmt, lint, vet, tests (needs Pango and Cairo installed)
+## gui-check: gui/ gate: tidy diff, third-party notices, gofmt, lint, vet, tests (needs Pango and Cairo installed)
 gui-check:
 	cd gui && $(GO) mod tidy -diff
+	node scripts/third-party-notices.mjs --check firn-gui
 	@unformatted="$$($(GOFMT) -l gui)"; \
 	if [ -n "$$unformatted" ]; then echo "$$unformatted"; echo "gofmt: files need formatting (run make fmt)"; exit 1; fi
 	@$(MAKE) --no-print-directory lint-version-check

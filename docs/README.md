@@ -42,6 +42,7 @@ Docs are split by the question they answer:
 - [0020 — Pin the preflight-selected digest for unsigned registry installs (Proposed)](adr/0020-pin-preflight-digest-for-unsigned-registry-installs.md)
 - [0021 — Ship a graphical installer as a separate executable in its own Go module (Accepted)](adr/0021-graphical-installer-separate-executable.md)
 - [0022 — Draw the graphical installer with frostui, in the Frostyard look (Accepted)](adr/0022-draw-the-graphical-installer-with-frostui.md)
+- [0023 — Ship license texts and third-party notices in the packages (Accepted)](adr/0023-ship-license-texts-and-third-party-notices-in-packages.md)
 
 ### Design
 

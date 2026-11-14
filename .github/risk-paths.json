@@ -48,6 +48,11 @@
       "why": "release-and-publication: pins the release workflow"
     },
     {
+      "glob": "cmd/firn-cli/release_packaging_contract_test.go",
+      "level": "L1",
+      "why": "release-and-publication: pins the license and notice files of the packages and archives"
+    },
+    {
       "glob": "cmd/**",
       "level": "L1",
       "why": "installation-and-update: the CLI and the typed disk confirmation"
@@ -81,6 +86,11 @@
       "glob": "scripts/check-corrections.mjs",
       "level": "L2",
       "why": "quality-gates: the corrections validation gate"
+    },
+    {
+      "glob": "scripts/third-party-notices.mjs",
+      "level": "L2",
+      "why": "quality-gates: the third-party notices generator and freshness check"
     },
     {
       "glob": "scripts/lib/**",
