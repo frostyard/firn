@@ -22,13 +22,19 @@ make build
 
 | Target | Scope |
 | --- | --- |
-| `make verify` | Non-mutating, credential-free gate: template checks, module tidy diff, formatting check, pinned lint, vet and tests. |
+| `make verify` | Non-mutating, credential-free gate: template checks, module tidy diff, third-party notices check, formatting check, pinned lint, vet and tests. |
 | `make check` | Formatting, lint, tests and the template gate; formatting can update source files. |
 | `make ci` | Verify plus coverage, the race detector and cross-architecture CLI builds. With `BASE=<ref>`, also checks the corrections records against the base (no record removed or renamed). |
 
 ```sh
 make verify
 make ci
+```
+
+The packages and archives ship `THIRD_PARTY_NOTICES` and `gui/THIRD_PARTY_NOTICES`, the license and notice texts of the Go modules compiled into each binary. After a Go dependency change, regenerate them and commit the result; never hand-edit them:
+
+```sh
+make notices
 ```
 
 The root targets do not enter the nested GUI module. Root/KVM end-to-end harnesses are separate from these checks and require their documented isolated environments. Read the repository's [AGENTS.md](https://github.com/frostyard/firn/blob/main/AGENTS.md) before using them.
@@ -43,7 +49,7 @@ make gui-check
 make gui-demo
 ```
 
-`gui-build` writes `build/firn-gui`. `gui-check` runs tidy diff, formatting checks, vet and tests within `gui/`. `gui-demo` runs simulated disks and progress without root and writes nothing to disk. The root linter does not lint the nested module.
+`gui-build` writes `build/firn-gui`. `gui-check` runs tidy diff, the `gui/THIRD_PARTY_NOTICES` check, formatting checks, vet and tests within `gui/`. `gui-demo` runs simulated disks and progress without root and writes nothing to disk. The root linter does not lint the nested module.
 
 For a GUI page change, render snapshots from `gui/` and inspect both appearances:
 

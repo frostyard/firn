@@ -50,10 +50,11 @@ removed. -->
   the frostyard house gate (ADR-0011; exemplar: frostyard/updex). CI
   runs `make ci`, which adds coverage, the race detector, and cross-arch
   builds to `make verify`, the credential-free, non-mutating gate a
-  read-only reviewer runs instead (tidy diff, `gofmt -l`, the pinned
-  golangci-lint, `go vet`, `go test`); `make lint` fails naming `mise
-  install` when golangci-lint is absent (core ADR-0043). Run `mise install`
-  once to provision the pinned golangci-lint (and Go) from
+  read-only reviewer runs instead (tidy diff, the `THIRD_PARTY_NOTICES`
+  check, `gofmt -l`, the pinned golangci-lint, `go vet`, `go test`);
+  `make lint` fails naming `mise install` when golangci-lint is absent
+  (core ADR-0043). Run `mise install` once to provision the pinned
+  golangci-lint (and Go) from
   [`mise.toml`](mise.toml)/[`mise.lock`](mise.lock) before any target.
 - `make verify` (so also `make check` and `make ci`) runs the template gate
   first: `node scripts/check-template.mjs` (agent symlinks, every doc under
@@ -80,11 +81,12 @@ removed. -->
 - The graphical installer is the nested Go module `gui/`
   (`github.com/frostyard/firn/gui`, Go 1.27.4; mygo needs 1.27.3 or
   later; ADR-0021). Root targets never enter it: changes under `gui/` also
-  run `make gui-check` (tidy diff, gofmt, the pinned golangci-lint, vet,
-  tests), which CI's `gui` job runs with Go from `gui/go.mod`. Install
-  Pango and Cairo first: without them mygo's text engine falls back to a
-  stub that draws no text and the tests pass without real layout. Its
-  field validation calls `recipe.Validate` on an assembled recipe
+  run `make gui-check` (tidy diff, the `gui/THIRD_PARTY_NOTICES` check,
+  gofmt, the pinned golangci-lint, vet, tests), which CI's `gui` job runs
+  with Go from `gui/go.mod`. Install Pango and Cairo first: without them
+  mygo's text engine falls back to a stub that draws no text and the
+  tests pass without real layout. Its field validation calls
+  `recipe.Validate` on an assembled recipe
   (`gui/internal/installer/validate.go`) — never copy
   schema patterns into it. Its look is frostui's Frostyard theme
   (ADR-0022): build pages from the kit's components, colors, text styles
@@ -113,7 +115,13 @@ removed. -->
   there before the tag that ships it. Every archive and nfpm entry names
   its build `ids`. Never add a repogen publish step or a direct snosi
   dispatch; `cmd/firn-cli/release_workflow_contract_test.go` pins the workflow
-  (with `go.yaml.in/yaml/v3`, test-only, sanctioned by ADR-0017).
+  (with `go.yaml.in/yaml/v3`, test-only, sanctioned by ADR-0017). Both
+  packages and archives ship `LICENSE`, `NOTICE` and the module notices
+  (`THIRD_PARTY_NOTICES`, `gui/THIRD_PARTY_NOTICES`), which
+  `scripts/third-party-notices.mjs` generates: run `make notices` after a Go
+  dependency change, and never hand-edit them;
+  `cmd/firn-cli/release_packaging_contract_test.go` pins the package
+  contents (ADR-0023).
 - Pipeline and domain packages (`internal/*` except the TUI) use only the
   Go stdlib plus shelling out to host tools; the sanctioned exceptions are
   the TOML decoder (ADR-0005), in the TUI layer only, the Charm stack

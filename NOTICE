@@ -29,3 +29,7 @@ Project Authors, under the SIL Open Font License, Version 1.1
 under the ISC license, with those Lucide derived from Feather also under
 the MIT license. frostui's NOTICE, fonts/OFL.txt and icons/LICENSE hold
 the full texts. Rationale: docs/adr/0022-draw-the-graphical-installer-with-frostui.md
+
+THIRD_PARTY_NOTICES holds the license and notice texts of the Go
+modules compiled into firn, and gui/THIRD_PARTY_NOTICES those compiled
+into firn-gui. Rationale: docs/adr/0023-ship-license-texts-and-third-party-notices-in-packages.md

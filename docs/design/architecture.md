@@ -540,6 +540,17 @@ uses the same engine preflight as headless installation.
   `frostyard-firn-gui` for its graphical boot entry (snosi
   [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/0022-installer-graphical-and-console-boot-entries.md)). The nightly
   `dev` snapshot builds both packages but is never published to APT.
+  Every archive and package carries firn's `LICENSE` and `NOTICE` and the
+  license and notice texts of the Go modules compiled into its binary
+  ([ADR-0023](../adr/0023-ship-license-texts-and-third-party-notices-in-packages.md)):
+  the deb at `/usr/share/doc/<package>/` (the GPL text as `copyright`, with
+  `NOTICE` and `THIRD_PARTY_NOTICES`), the rpm (as `%license`) and the apk
+  at `/usr/share/licenses/<package>/` (`LICENSE`, `NOTICE`,
+  `THIRD_PARTY_NOTICES`). `scripts/third-party-notices.mjs` generates the
+  committed `THIRD_PARTY_NOTICES` and `gui/THIRD_PARTY_NOTICES` from
+  `go list -deps`; `make verify` and `make gui-check` fail when one is
+  stale, and `cmd/firn-cli/release_packaging_contract_test.go` pins the
+  package contents.
 
 ## References
 
@@ -558,6 +569,7 @@ uses the same engine preflight as headless installation.
 - Contracts: [specs/recipe-schema.md](../specs/recipe-schema.md),
   [specs/progress-protocol.md](../specs/progress-protocol.md),
   [specs/core-flatpaks-label.md](../specs/core-flatpaks-label.md)
-- Release and distribution: [ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md)
+- Release and distribution: [ADR-0017](../adr/0017-publish-debian-packages-through-apt-publisher.md),
+  [ADR-0023](../adr/0023-ship-license-texts-and-third-party-notices-in-packages.md)
 - Built in: [roadmap — Phases 1–7](../plans/roadmap.md); the graphical
   installer in [Phase 11](../plans/roadmap.md#phase-11-graphical-installer-medium-in-progress)

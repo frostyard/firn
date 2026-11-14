@@ -55,6 +55,7 @@
         "Makefile",
         "scripts/check-template.mjs",
         "scripts/check-corrections.mjs",
+        "scripts/third-party-notices.mjs",
         "scripts/lib/**",
         "test/*.test.mjs",
         "mise.toml",
