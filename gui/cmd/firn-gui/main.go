@@ -47,6 +47,7 @@ func main() {
 	uefi := fs.String("uefi", "auto", "override UEFI detection (auto|on|off)")
 	appearance := fs.String("appearance", "", "light or dark; empty follows the desktop")
 	noElevate := fs.Bool("no-elevate", false, "fail instead of re-running through pkexec when not root")
+	kiosk := fs.Bool("kiosk", false, "installer media: Close and Ctrl+Q do nothing; the end screen offers restart, power off or the console installer")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	var sessionEnv envFlags
 	fs.Var(&sessionEnv, "session-env", "a display variable forwarded through pkexec (set by firn-gui itself)")
@@ -94,6 +95,7 @@ func main() {
 		UEFI:       *uefi,
 		Appearance: *appearance,
 		Version:    version,
+		Kiosk:      *kiosk,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "firn-gui: %v\n", err)

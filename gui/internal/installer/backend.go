@@ -33,6 +33,8 @@ type backend interface {
 	Install(ctx context.Context, l *recipe.Loaded, emit progress.Emitter) error
 	// Reboot restarts the machine after a successful install.
 	Reboot() error
+	// PowerOff turns the machine off, from the installer medium's end screen.
+	PowerOff() error
 }
 
 // machineInfo is what the wizard knows about the install machine.
@@ -157,6 +159,10 @@ func (b *realBackend) Install(ctx context.Context, l *recipe.Loaded, emit progre
 
 func (b *realBackend) Reboot() error {
 	return exec.Command("systemctl", "reboot").Run()
+}
+
+func (b *realBackend) PowerOff() error {
+	return exec.Command("systemctl", "poweroff").Run()
 }
 
 // firstLine returns s's first line with non-printable runes replaced, so

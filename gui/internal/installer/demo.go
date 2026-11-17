@@ -158,3 +158,5 @@ func (b *demoBackend) Install(ctx context.Context, l *recipe.Loaded, emit progre
 }
 
 func (b *demoBackend) Reboot() error { return nil }
+
+func (b *demoBackend) PowerOff() error { return nil }

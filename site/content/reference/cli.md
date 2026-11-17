@@ -65,6 +65,7 @@ Open the [graphical installer](../guides/graphical-installer.md). It accepts fla
 | `--tpm auto\|on\|off` | Override TPM detection; default `auto`. |
 | `--uefi auto\|on\|off` | Override UEFI detection; default `auto`. |
 | `--appearance light\|dark` | Force appearance; empty follows the desktop. |
+| `--kiosk` | Installer media mode: Close and Ctrl+Q do nothing; the end screen offers restart, power off or the console installer. |
 | `--no-elevate` | Fail instead of re-running through `pkexec` when not root. |
 | `--version` | Print version information and exit. |
 | `--session-env KEY=VALUE` | Repeatable display/locale forwarding flag set by `firn-gui` itself during elevation, not a general environment override. |

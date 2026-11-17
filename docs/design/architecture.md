@@ -374,6 +374,29 @@ pipeline in-process.
   the first signal is refused and a second quits. An `OnBeforeQuit`
   listener does the same for any other quit, and `app.shutdown` cancels
   and waits for a pipeline still running when the event loop ends.
+- **Kiosk.** `--kiosk` (`installer.Options.Kiosk`, `app.kiosk`) is for the
+  installer ISO, where snosi's `firn-gui.service` runs `firn-gui` full
+  screen in cage as root and gives tty1 to the console (TUI) installer
+  when `firn-gui` exits 0. Without it, a Close or Ctrl+Q would drop the
+  user to the TUI with no explanation. In kiosk mode Ctrl+Q does nothing,
+  and a window close request or any other quit (`app.closeAllowed`,
+  `app.beforeQuitPrevented`) is refused without a dialog. Two exits stay:
+  "Use the console installer" (`app.useConsole`, which sets `app.leaving`
+  and closes the window, so `Run` returns nil and the process exits 0 for
+  the service to start the TUI) and the quit a signal forces
+  (`app.forceQuit`). The end screen has no Close: it offers "Use the
+  console installer", "Power off" (`backend.PowerOff`, `systemctl
+  poweroff`) and "Restart", with "Back to review" after a failure. Before
+  the install, the console installer is a button on the Welcome page and
+  in the rail, and a confirmation first when answers would be lost
+  (mid-wizard; nothing is on disk yet). Restart, power off and the console
+  installer follow the recovery-key rule: `app.exitHeld` refuses them while
+  an install runs or a recovery key awaits acknowledgement, as it now
+  refuses `app.reboot` outside kiosk mode too. Signals keep their rules:
+  a signal during an install cancels it and quits once the pipeline has
+  unwound, and over an unacknowledged key the first is refused and a second
+  quits. Outside kiosk mode nothing changes. snosi's `firn-gui-session`
+  passes `--kiosk` once a firn release ships it.
 - **Privilege.** `firn-gui` takes flags only (a stray argument is an
   error, so no flag after it is silently ignored) and needs root. Started
   unprivileged, it
@@ -388,8 +411,13 @@ pipeline in-process.
   continues or opens the install confirmation, Alt+1…8 jumps to a reached
   step whose predecessors are complete, Ctrl+R/F5 rescans disks, F1 or
   Ctrl+/ lists the shortcuts, Ctrl+Shift+L switches appearance, Ctrl+Q
-  quits (asking first mid-wizard, refused mid-install). Cards are radio
-  groups, so the arrow keys choose images, disks and encryption modes.
+  quits (asking first mid-wizard, refused mid-install). In kiosk mode
+  Ctrl+Q is unbound and the list does not show it; Ctrl+Shift+T uses the
+  console installer, and on the outcome screen Ctrl+Shift+R restarts and
+  Ctrl+Shift+P powers off (`app.kioskShortcuts`; mygo matches the
+  modifiers exactly, so Ctrl+Shift+R is not the storage page's Ctrl+R).
+  Cards are radio groups, so the arrow keys choose images, disks and
+  encryption modes.
 - <a id="gui-look"></a>**Look.** Each frame, `app.applyTheme` sets
   `frostui.FrostyardTheme` for the appearance (`--appearance`,
   Ctrl+Shift+L, else the desktop's) with the desktop's high contrast and
@@ -456,6 +484,7 @@ autodetects. `--uefi` is `install`-only: `firn validate` accepts
 firn-gui                      # needs root; re-runs itself through pkexec when started without it
 firn-gui --demo               # unprivileged: simulated disks and install, nothing written
 firn-gui --appearance dark    # light or dark; default follows the desktop
+firn-gui --kiosk              # installer media: no Close or Ctrl+Q; end screen offers restart, power off or the console installer
 ```
 
 `firn-gui` takes only flags: a positional argument is refused before any
@@ -466,6 +495,7 @@ window opens.
 | `--demo` | simulate the machine and the install; nothing is written to disk |
 | `--secure-boot`, `--tpm`, `--uefi` | each `auto\|on\|off`: the same detection overrides as `firn install` |
 | `--appearance` | `light` or `dark`; empty follows the desktop |
+| `--kiosk` | installer media: Close and Ctrl+Q do nothing; the end screen offers restart, power off or the console installer |
 | `--no-elevate` | fail instead of re-running through pkexec when not root |
 | `--version` | print the version and exit |
 | `--session-env` | a display variable forwarded through pkexec; set by `firn-gui` itself when it re-runs |

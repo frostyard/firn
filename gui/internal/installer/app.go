@@ -36,6 +36,9 @@ type Options struct {
 	Appearance string
 	// Version is firn's version, for the progress protocol's start event.
 	Version string
+	// Kiosk is installer media mode: Close and Ctrl+Q do nothing, and the
+	// end screen offers restart, power off or the console installer.
+	Kiosk bool
 }
 
 // recipeRoot owns real sessions: under /run, so no recipe or plaintext
@@ -123,12 +126,19 @@ type app struct {
 	// recovery key.
 	forceQuit bool
 	signals   int
+	// kiosk is installer media mode (Options.Kiosk): the window closes only
+	// when leaving is set or a signal forces it.
+	kiosk bool
+	// leaving is set just before the app's own "Use the console installer"
+	// quits, the one kiosk exit that closes the window.
+	leaving bool
 
 	themeMode   int // 0 follows the desktop, 1 light, 2 dark
 	showHelp    bool
 	confirmOpen bool
 	confirmText string
 	askQuit     bool
+	askConsole  bool
 	askCancel   bool
 	closeDenied bool
 	keySaved    bool
@@ -183,12 +193,11 @@ func (a *app) openWindow() *mygo.Window {
 			win.Invalidate()
 		}
 	})
-	// Any other quit cancels a running install and waits for its cleanups.
+	// Any other quit cancels a running install and waits for its cleanups;
+	// in kiosk mode it does nothing.
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
-		if a.installing() {
+		if a.beforeQuitPrevented() {
 			e.PreventDefault()
-			a.quitWhenDone = true
-			a.cancel()
 			win.Invalidate()
 		}
 	})
@@ -250,15 +259,40 @@ func (a *app) shutdown() {
 
 func (a *app) keyPending() bool { return a.inst.recoveryKey != "" }
 
-// closeAllowed decides a request to close the window: refused, with an
-// explanation, while an install runs or a recovery key waits to be
-// acknowledged, unless a signal forces the quit.
+// closeAllowed decides a request to close the window. In kiosk mode it is
+// refused without a word, unless the app is leaving for the console installer
+// or a signal forces the quit. Otherwise it is refused, with an explanation,
+// while an install runs or a recovery key waits to be acknowledged, unless a
+// signal forces the quit.
 func (a *app) closeAllowed() bool {
+	if a.kioskHolds() {
+		return false
+	}
 	if a.installing() || (a.keyPending() && !a.forceQuit) {
 		a.closeDenied = true
 		return false
 	}
 	return true
+}
+
+// kioskHolds reports whether kiosk mode refuses a close or quit request: it
+// always does, but for the app's own exit to the console installer and the
+// quit a signal forces.
+func (a *app) kioskHolds() bool { return a.kiosk && !a.leaving && !a.forceQuit }
+
+// beforeQuitPrevented decides a quit of the whole application. Kiosk mode
+// refuses it without a word. Otherwise a running install is canceled, and
+// the quit waits until its cleanups have unwound.
+func (a *app) beforeQuitPrevented() bool {
+	if a.kioskHolds() {
+		return true
+	}
+	if a.installing() {
+		a.quitWhenDone = true
+		a.cancel()
+		return true
+	}
+	return false
 }
 
 func newApp(o Options) (*app, error) {
@@ -276,6 +310,7 @@ func newApp(o Options) (*app, error) {
 		post:    func(fn func()) { fn() },
 		quit:    func() {},
 		quitApp: mygo.App.Quit,
+		kiosk:   o.Kiosk,
 	}
 	if warn != nil {
 		a.notices = append(a.notices, warn.Error())
@@ -700,7 +735,21 @@ func (a *app) openSession() error {
 	return nil
 }
 
+// exitHeld refuses a restart, a power off or an exit while an install runs or
+// a recovery key waits to be acknowledged (progress protocol, recovery-key
+// disclosure), and shows why.
+func (a *app) exitHeld() bool {
+	if a.installing() || a.keyPending() {
+		a.closeDenied = true
+		return true
+	}
+	return false
+}
+
 func (a *app) reboot() {
+	if a.exitHeld() {
+		return
+	}
 	if a.machine.demo {
 		a.status = "Demo mode: this is where the computer would restart."
 		return
@@ -708,6 +757,43 @@ func (a *app) reboot() {
 	if err := a.be.Reboot(); err != nil {
 		a.status = "Could not restart: " + err.Error()
 	}
+}
+
+// powerOff turns the computer off, as reboot restarts it.
+func (a *app) powerOff() {
+	if a.exitHeld() {
+		return
+	}
+	if a.machine.demo {
+		a.status = "Demo mode: this is where the computer would power off."
+		return
+	}
+	if err := a.be.PowerOff(); err != nil {
+		a.status = "Could not power off: " + err.Error()
+	}
+}
+
+// useConsole leaves for the console installer, kiosk mode's way out:
+// firn-gui exits 0 and the installer medium's firn-gui.service starts the
+// TUI on the console. Mid-wizard it asks first, as the answers would be lost.
+func (a *app) useConsole() {
+	switch {
+	case !a.kiosk:
+	case a.exitHeld():
+	case a.page == pageWelcome || a.inst.phase != phaseIdle:
+		a.leaveForConsole()
+	default:
+		a.askConsole = true
+	}
+}
+
+// leaveForConsole closes the window, which the kiosk lets through.
+func (a *app) leaveForConsole() {
+	if a.exitHeld() {
+		return
+	}
+	a.leaving = true
+	a.quit()
 }
 
 func (a *app) requestQuit() {
@@ -821,6 +907,11 @@ func (a *app) sidebar(c *ui.Context) {
 			}
 			if frostui.IconButton(c, themeIcon, themeTip).Clicked() {
 				a.toggleTheme()
+			}
+			if a.kiosk && a.inst.phase == phaseIdle {
+				if frostui.IconButton(c, iconTerminal, "Use the console installer (Ctrl+Shift+T)").Clicked() {
+					a.useConsole()
+				}
 			}
 			ui.Spacer(c)
 			v := a.machine.version
@@ -970,8 +1061,11 @@ func (a *app) shortcuts(c *ui.Context) {
 	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyL) {
 		a.toggleTheme()
 	}
-	if c.Shortcut(ui.Ctrl, ui.KeyQ) {
+	if !a.kiosk && c.Shortcut(ui.Ctrl, ui.KeyQ) {
 		a.requestQuit()
+	}
+	if a.kiosk {
+		a.kioskShortcuts(c)
 	}
 	if a.page == pageInstall {
 		return
@@ -993,7 +1087,50 @@ func (a *app) shortcuts(c *ui.Context) {
 	}
 }
 
-// shortcutList is every shortcut, for the help overlay.
+// kioskShortcuts binds the shortcuts of kiosk mode. The console installer is
+// open to every page; restarting and powering off only to an outcome screen.
+func (a *app) kioskShortcuts(c *ui.Context) {
+	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyT) {
+		a.useConsole()
+	}
+	if !a.outcomeShown() {
+		return
+	}
+	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyR) {
+		a.reboot()
+	}
+	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyP) {
+		a.powerOff()
+	}
+}
+
+// outcomeShown reports whether the install page shows how the install ended.
+func (a *app) outcomeShown() bool {
+	return a.page == pageInstall && a.inst.phase != phaseIdle && a.inst.phase != phaseRunning
+}
+
+// helpShortcuts lists every shortcut, for the help overlay. Kiosk mode has no
+// Ctrl+Q, and adds its own.
+func helpShortcuts(kiosk bool) []frostui.ShortcutEntry {
+	if !kiosk {
+		return shortcutList
+	}
+	var out []frostui.ShortcutEntry
+	for _, e := range shortcutList {
+		if e.Title != quitTitle {
+			out = append(out, e)
+		}
+	}
+	return append(out,
+		frostui.ShortcutEntry{Group: "Window", Title: "Use the console installer", Keys: []string{"Ctrl", "Shift", "T"}},
+		frostui.ShortcutEntry{Group: "Window", Title: "Restart (when the install has ended)", Keys: []string{"Ctrl", "Shift", "R"}},
+		frostui.ShortcutEntry{Group: "Window", Title: "Power off (when the install has ended)", Keys: []string{"Ctrl", "Shift", "P"}},
+	)
+}
+
+const quitTitle = "Quit the installer"
+
+// shortcutList is every shortcut outside kiosk mode.
 var shortcutList = []frostui.ShortcutEntry{
 	{Group: "Steps", Title: "Continue to the next step", Keys: []string{"Alt", "→"}},
 	{Group: "Steps", Title: "Continue, or install from the review", Keys: []string{"Ctrl", "Enter"}},
@@ -1006,7 +1143,7 @@ var shortcutList = []frostui.ShortcutEntry{
 	{Group: "Window", Title: "Switch between light and dark", Keys: []string{"Ctrl", "Shift", "L"}},
 	{Group: "Window", Title: "Show this list (also Ctrl+/)", Keys: []string{"F1"}},
 	{Group: "Window", Title: "Close a dialog, this one included", Keys: []string{"Esc"}},
-	{Group: "Window", Title: "Quit the installer", Keys: []string{"Ctrl", "Q"}},
+	{Group: "Window", Title: quitTitle, Keys: []string{"Ctrl", "Q"}},
 }
 
 func (a *app) dialogs(c *ui.Context) {
@@ -1021,7 +1158,7 @@ func (a *app) dialogs(c *ui.Context) {
 					a.showHelp = false
 				}
 			})
-			frostui.ShortcutsBody(shortcutList)(c)
+			frostui.ShortcutsBody(helpShortcuts(a.kiosk))(c)
 		})
 	})
 
@@ -1032,12 +1169,20 @@ func (a *app) dialogs(c *ui.Context) {
 	case 1:
 		a.quit()
 	}
+	switch ui.AlertDialog(c, &a.askConsole, "Use the console installer?", "Nothing has been written to disk. Your answers will be lost.", "Keep going", "Use the console installer") {
+	case 1:
+		a.leaveForConsole()
+	}
 	switch ui.AlertDialog(c, &a.askCancel, "Stop the installation?", "The disk has already been changed and will not boot until you install again.", "Keep installing", "Stop") {
 	case 1:
 		a.cancel()
 	}
 	if a.keyPending() && !a.installing() {
-		ui.AlertDialog(c, &a.closeDenied, "Save the recovery key first", "It is shown only once. Confirm you have stored it, then close the installer.", "OK")
+		then := "close the installer"
+		if a.kiosk {
+			then = "restart, power off or use the console installer"
+		}
+		ui.AlertDialog(c, &a.closeDenied, "Save the recovery key first", "It is shown only once. Confirm you have stored it, then "+then+".", "OK")
 	} else {
 		ui.AlertDialog(c, &a.closeDenied, "Installation in progress", "Wait for the installation to finish, or stop it first.", "OK")
 	}

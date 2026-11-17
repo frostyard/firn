@@ -3,6 +3,8 @@ package installer
 import (
 	"os"
 	"testing"
+
+	"github.com/frostyard/firn/internal/progress"
 )
 
 // TestSnapshots renders every page, in both appearances, into the directory
@@ -63,6 +65,21 @@ func TestSnapshots(t *testing.T) {
 		}
 		snapshot(t, a, dir, "09b-done", dark, nil)
 		snapshotSized(t, a, dir, "09b-done-full", dark, 1300, nil)
+
+		// Installer media: the end screens without Close, and the help list.
+		a.kiosk = true
+		snapshot(t, a, dir, "09d-kiosk-done", dark, nil)
+		a.inst.phase, a.inst.errCode, a.inst.errMessage = phaseFailed, progress.CodeStepFailed, "bootc install failed: exit status 1"
+		snapshot(t, a, dir, "09e-kiosk-failed", dark, nil)
+		a.inst = newInstallState() // idle again: the pages before the install
+		a.page = pageImage
+		snapshot(t, a, dir, "02b-kiosk-image", dark, nil)
+		a.page = pageWelcome
+		snapshot(t, a, dir, "01b-kiosk-welcome", dark, nil)
+		a.showHelp = true
+		snapshot(t, a, dir, "10b-kiosk-shortcuts", dark, nil)
+		a.showHelp = false
+		a.page, a.kiosk = pageInstall, false
 
 		a.inst = newInstallState()
 		a.inst.phase = phaseRunning

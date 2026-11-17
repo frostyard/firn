@@ -228,6 +228,10 @@ func (a *app) installFooter(c *ui.Context) {
 		}
 	case phaseDone:
 		ui.Spacer(c)
+		if a.kiosk {
+			a.kioskFooter(c)
+			return
+		}
 		if ghostButton(c, "Close").Clicked() {
 			a.quit()
 		}
@@ -236,12 +240,36 @@ func (a *app) installFooter(c *ui.Context) {
 		}
 	case phaseFailed:
 		ui.Spacer(c)
+		if a.kiosk {
+			a.kioskFooter(c)
+			return
+		}
 		if ghostButton(c, "Close").Clicked() {
 			a.quit()
 		}
 		if frostui.LabeledButton(c, iconArrowLeft, "Back to review", true).Clicked() {
 			a.retry()
 		}
+	}
+}
+
+// kioskFooter is the end screen's actions on installer media, where Close
+// does nothing: the console installer, power off and restart, with a way
+// back to the review after a failure. Restart is the primary action after a
+// success, "Back to review" after a failure.
+func (a *app) kioskFooter(c *ui.Context) {
+	failed := a.inst.phase == phaseFailed
+	if ghostButton(c, "Use the console installer").Tooltip("Use the console installer (Ctrl+Shift+T)").Clicked() {
+		a.useConsole()
+	}
+	if failed && frostui.LabeledButton(c, iconArrowLeft, "Back to review", true).Clicked() {
+		a.retry()
+	}
+	if frostui.LabeledButton(c, iconPower, "Power off", false).Tooltip("Power off (Ctrl+Shift+P)").Clicked() {
+		a.powerOff()
+	}
+	if frostui.LabeledButton(c, iconRefresh, "Restart", !failed).Tooltip("Restart (Ctrl+Shift+R)").Clicked() {
+		a.reboot()
 	}
 }
 
