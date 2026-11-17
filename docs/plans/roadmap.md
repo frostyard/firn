@@ -447,9 +447,11 @@ kiosk (snosi [ADR-0022](https://github.com/frostyard/snosi/blob/main/docs/adr/00
    installer's own icons ahead of the desktop's
    ([design: look](../design/architecture.md#gui-look)). The README shows
    it in both appearances.
-9. **Kiosk polish (firn).** Found while building step 7, none blocking: a
-   `--kiosk` mode for `firn-gui` (no Close or Ctrl+Q; after the install,
-   offer the console installer or power off); ✅ a lock so two frontends
+9. **Kiosk polish (firn).** Found while building step 7, none blocking: ✅ a
+   `--kiosk` mode for `firn-gui` (no Close or Ctrl+Q; the end screen offers
+   restart, power off or the console installer; shipped in
+   [#163](https://github.com/frostyard/firn/pull/163); passing `--kiosk`
+   from snosi's `firn-gui-session` follows a firn release); ✅ a lock so two frontends
    cannot install at once (the graphical and serial installers share
    `/run/firn/target` and the `firn-root` mapper name; shipped in firn
    v0.11.0, [#125](https://github.com/frostyard/firn/pull/125):

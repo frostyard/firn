@@ -47,6 +47,7 @@ const (
 	iconEyeOff     = "view-conceal"
 	iconPencil     = "document-edit"
 	iconClose      = "window-close"
+	iconTerminal   = "utilities-terminal"
 )
 
 func svg(body string) []byte {
@@ -98,6 +99,7 @@ var firnIcons = map[string][]byte{
 	iconEyeOff:   svg(`<path d="M9.9 5.7A9.6 9.6 0 0 1 12 5.5C18 5.5 21.5 12 21.5 12a17 17 0 0 1-2.6 3.5M6.6 6.6C3.9 8.3 2.5 12 2.5 12S6 18.5 12 18.5a9.4 9.4 0 0 0 5.4-1.6"/><line x1="3" y1="3" x2="21" y2="21"/>`),
 	iconPencil:   svg(`<path d="M15.5 4.5l4 4L8 20H4v-4z"/><line x1="13" y1="7" x2="17" y2="11"/>`),
 	iconClose:    svg(`<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`),
+	iconTerminal: svg(`<rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="7,9.5 10.5,12.5 7,15.5"/><line x1="12.5" y1="16" x2="17" y2="16"/>`),
 }
 
 // logo is snosi's mark, for the brand tile and the welcome page's hero.

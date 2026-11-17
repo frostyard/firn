@@ -80,6 +80,9 @@ func (a *app) welcomePage(c *ui.Context) {
 					frostui.Shortcut(c, "Enter")
 				})
 				ui.Spacer(c)
+				if a.kiosk && ghostButton(c, "Use the console installer").Tooltip("Use the console installer (Ctrl+Shift+T)").Clicked() {
+					a.useConsole()
+				}
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					frostui.Shortcut(c, "F1")
 					frostui.Caption(c, "keyboard shortcuts")
