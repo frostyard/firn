@@ -41,7 +41,7 @@ jobs:
       # go line); Node runs the template gate, which needs Node 22 or
       # later.
       - name: Install pinned tools
-        uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           install: true
           install_args: golangci-lint node
@@ -85,7 +85,7 @@ jobs:
       # runs, from mise.toml and mise.lock (core ADR-0043). Node runs the
       # third-party notices check of gui/THIRD_PARTY_NOTICES (ADR-0023).
       - name: Install pinned tools
-        uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           install: true
           install_args: golangci-lint node
