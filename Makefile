@@ -1,4 +1,4 @@
-.PHONY: all build clean fmt lint lint-version-check verify verify-template ci test install help site site-serve notices
+.PHONY: all build clean fmt lint lint-version-check vuln verify verify-template ci test install help site site-serve notices
 
 # Build variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -50,6 +50,16 @@ lint:
 		golangci-lint run; \
 	else \
 		echo "golangci-lint $(GOLANGCI_LINT_VERSION) not installed; provision every pinned tool with:"; \
+		echo "mise install"; \
+		exit 1; \
+	fi
+
+## vuln: Scan the root and gui/ modules for vulnerabilities (requires network access)
+vuln:
+	@if command -v govulncheck >/dev/null 2>&1; then \
+		govulncheck ./... && (cd gui && govulncheck ./...); \
+	else \
+		echo "govulncheck not installed; provision every pinned tool with:"; \
 		echo "mise install"; \
 		exit 1; \
 	fi
@@ -136,7 +146,7 @@ ci:
 # ---------------------------------------------------------------------------
 # The graphical installer is a nested Go module (gui/, ADR-0021) on its own
 # Go pin (1.27.4; mygo needs 1.27.3 or later), the same as the root module
-# now. The root targets above never enter it; changes under gui/ also run
+# now. Only `make vuln` above scans both modules; changes under gui/ also run
 # `make gui-check`, which lints it with the pinned golangci-lint and the root
 # .golangci.yml.
 

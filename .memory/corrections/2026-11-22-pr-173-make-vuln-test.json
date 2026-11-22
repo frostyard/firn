@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-22",
+  "scope": "make-vuln",
+  "correction": "A make target that runs a check over several modules needs an offline test with a fake tool on PATH: it records where the tool ran and makes each module's run fail, so a target that drops a module or loses an exit status fails the gate.",
+  "evidence": "frostyard/firn#173, cross-review of head 12ec891, finding 1",
+  "promoted_to": "test/make-vuln.test.mjs"
+}

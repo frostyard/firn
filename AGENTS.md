@@ -56,6 +56,10 @@ removed. -->
   (core ADR-0043). Run `mise install` once to provision the pinned
   golangci-lint (and Go) from
   [`mise.toml`](mise.toml)/[`mise.lock`](mise.lock) before any target.
+- `make vuln` scans both the root and `gui/` modules with the govulncheck
+  pinned in `mise.toml`/`mise.lock`; the CI `Security Scan` job runs it too.
+  It requires network access, so it stays outside `verify`, `check` and `ci`.
+  A missing govulncheck fails with a `mise install` hint.
 - `make verify` (so also `make check` and `make ci`) runs the template gate
   first: `node scripts/check-template.mjs` (agent symlinks, every doc under
   `docs/` indexed in `docs/README.md`, `.github/risk-paths.json`,
@@ -80,7 +84,8 @@ removed. -->
   ADR-0018, ADR-0081).
 - The graphical installer is the nested Go module `gui/`
   (`github.com/frostyard/firn/gui`, Go 1.27.4; mygo needs 1.27.3 or
-  later; ADR-0021). Root targets never enter it: changes under `gui/` also
+  later; ADR-0021). Root verification targets never enter it (`make vuln`
+  scans both modules): changes under `gui/` also
   run `make gui-check` (tidy diff, the `gui/THIRD_PARTY_NOTICES` check,
   gofmt, the pinned golangci-lint, vet, tests), which CI's `gui` job runs
   with Go from `gui/go.mod`. Install Pango and Cairo first: without them

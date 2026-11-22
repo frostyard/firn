@@ -1,6 +1,8 @@
 # 0013 — btrfs /var on A/B requires a filesystem-agnostic image mount
 
-- **Status:** Accepted
+- **Status:** Superseded by [0016](0016-bootc-only-recipe-contract.md):
+  Firn is bootc-only, and the A/B path and its `/var` image mount are
+  removed (#101)
 - **Date:** 2026-08-12
 
 ## Context
