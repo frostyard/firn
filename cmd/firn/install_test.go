@@ -113,6 +113,53 @@ func TestInstallWiresRegistryProbe(t *testing.T) {
 	}
 }
 
+func TestInstallTypedConfirmation(t *testing.T) {
+	beforeV1End(t)
+	path := commandRecipeFile(t, "bootc")
+	for _, tc := range []struct {
+		name       string
+		flags      []string
+		wantCalled bool
+	}{
+		{name: "missing"},
+		{name: "empty", flags: []string{"--confirm", ""}},
+		{name: "prefix", flags: []string{"--confirm", "/dev/vd"}},
+		{name: "longer", flags: []string{"--confirm", "/dev/vda1"}},
+		{name: "trailing slash", flags: []string{"--confirm", "/dev/vda/"}},
+		{name: "case", flags: []string{"--confirm", "/dev/VDA"}},
+		{name: "leading space", flags: []string{"--confirm", " /dev/vda"}},
+		{name: "other disk", flags: []string{"--confirm", "/dev/sda"}},
+		{name: "exact", flags: []string{"--confirm", "/dev/vda"}, wantCalled: true},
+		{name: "dry run without confirmation", flags: []string{"--dry-run"}, wantCalled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := assembleInstall
+			t.Cleanup(func() { assembleInstall = old })
+			called := false
+			assembleInstall = func(*recipe.Loaded) *pipeline.Pipeline {
+				called = true
+				return &pipeline.Pipeline{Steps: []pipeline.Step{{Name: "fake", Preflight: true, Run: func(_ context.Context, _ *pipeline.Env) error { return nil }}}}
+			}
+			args := []string{"install", "--secure-boot=off", "--tpm=off", "--uefi=on"}
+			args = append(args, tc.flags...)
+			args = append(args, path)
+			err := runFirnTest(t, args...)
+			if tc.wantCalled {
+				// The real pipeline may fail to acquire its machine-wide lock
+				// without privileges; this test checks the earlier confirmation gate.
+				if err != nil && strings.Contains(err.Error(), "requires --confirm") {
+					t.Errorf("install confirmation unexpectedly refused: %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "requires --confirm /dev/vda") {
+				t.Errorf("install error = %v, want typed confirmation refusal", err)
+			}
+			if called != tc.wantCalled {
+				t.Errorf("assembleInstall called = %v, want %v", called, tc.wantCalled)
+			}
+		})
+	}
+}
+
 func mustLoadRecipe(t *testing.T, path string) *recipe.Loaded {
 	t.Helper()
 	l, err := recipe.Load(path)

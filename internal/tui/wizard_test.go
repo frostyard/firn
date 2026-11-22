@@ -1297,3 +1297,48 @@ func focusedValue(m *wizardPageModel) string {
 	v, _ := f.GetValue().(string)
 	return v
 }
+
+func TestValidateTypedDisk(t *testing.T) {
+	for _, tc := range []struct {
+		name, disk, typed string
+		wantError         bool
+	}{
+		{name: "exact", disk: "/dev/nvme0n1", typed: "/dev/nvme0n1"},
+		{name: "empty", disk: "/dev/nvme0n1", wantError: true},
+		{name: "prefix", disk: "/dev/nvme0n1", typed: "/dev/nvme0n", wantError: true},
+		{name: "partition", disk: "/dev/nvme0n1", typed: "/dev/nvme0n1p1", wantError: true},
+		{name: "trailing space", disk: "/dev/nvme0n1", typed: "/dev/nvme0n1 ", wantError: true},
+		{name: "case", disk: "/dev/nvme0n1", typed: "/dev/NVME0N1", wantError: true},
+		{name: "other disk", disk: "/dev/nvme0n1", typed: "/dev/sda", wantError: true},
+		{name: "empty disk accepts empty"},
+		{name: "empty disk refuses nonempty", typed: "x", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateTypedDisk(tc.disk)(tc.typed)
+			if tc.wantError {
+				if err == nil || !strings.Contains(err.Error(), "type "+tc.disk+" exactly") {
+					t.Fatalf("validation error = %v, want exact disk refusal", err)
+				}
+			} else if err != nil {
+				t.Fatalf("exact disk rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestConfirmFormRefusesAWrongDisk(t *testing.T) {
+	w := &wizard{}
+	w.c.disk = "/dev/vda"
+	m := newPageModel(w, w.confirmForm())
+	pumpKeys(t, m, seq(typeKeys("/dev/sda"), one(keyEnter))...)
+	if m.form.State != huh.StateNormal || focusedValue(m) != "/dev/sda" {
+		t.Fatalf("wrong disk was not refused: state=%v focus=%q", m.form.State, focusedValue(m))
+	}
+	if !strings.Contains(m.View(), "type /dev/vda exactly") {
+		t.Fatal("typed confirmation error not shown")
+	}
+	pumpKeys(t, m, seq(one(tea.KeyMsg{Type: tea.KeyCtrlU}), typeKeys("/dev/vda"), one(keyEnter))...)
+	if m.form.State != huh.StateCompleted {
+		t.Fatalf("exact disk did not complete form: state=%v; view:\n%s", m.form.State, m.View())
+	}
+}

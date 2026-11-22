@@ -554,13 +554,18 @@ func (w *wizard) confirmForm() *huh.Form {
 				w.c.entry.Name, w.c.disk)).
 			Placeholder(w.c.disk).
 			Value(&typed).
-			Validate(func(s string) error {
-				if s != w.c.disk {
-					return fmt.Errorf("type %s exactly to confirm (esc aborts)", w.c.disk)
-				}
-				return nil
-			}),
+			Validate(validateTypedDisk(w.c.disk)),
 	))
+}
+
+// validateTypedDisk requires the exact disk path before allowing confirmation.
+func validateTypedDisk(disk string) func(string) error {
+	return func(s string) error {
+		if s != disk {
+			return fmt.Errorf("type %s exactly to confirm (esc aborts)", disk)
+		}
+		return nil
+	}
 }
 
 // formatDiskOption renders one disk picker option with the hardware identity
