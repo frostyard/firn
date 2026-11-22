@@ -123,12 +123,14 @@ jobs:
           go-version-file: go.mod
 
       # Install the locked govulncheck from mise.toml and mise.lock
-      # (core ADR-0043), the same tool that local `make vuln` runs.
+      # (core ADR-0043), the same tool that local `make vuln` runs. mise's
+      # go backend builds it with mise's own Go (go.mod's version, from
+      # mise.lock), so `go` is installed with it.
       - name: Install pinned govulncheck
         uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           install: true
-          install_args: go:golang.org/x/vuln/cmd/govulncheck
+          install_args: go go:golang.org/x/vuln/cmd/govulncheck
           cache: true
 
       - name: Run govulncheck
