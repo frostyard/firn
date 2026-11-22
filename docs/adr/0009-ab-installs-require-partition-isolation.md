@@ -1,6 +1,8 @@
 # 0009 — A/B installs run only against an isolated partition namespace
 
-- **Status:** Accepted
+- **Status:** Superseded by [0016](0016-bootc-only-recipe-contract.md):
+  Firn is bootc-only, and the A/B path, `internal/abimg/` and
+  `test/e2e-ab.sh` are removed (#101)
 - **Date:** 2026-08-11
 
 ## Context

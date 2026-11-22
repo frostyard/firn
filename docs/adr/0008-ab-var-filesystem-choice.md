@@ -1,9 +1,11 @@
 # 0008 — /var filesystem choice for A/B installs
 
-- **Status:** Accepted (zero-image-change rationale superseded by
-  [0013](0013-btrfs-var-requires-filesystem-agnostic-image-mount.md) —
-  the image *did* hardcode ext4 for `/var`; the decision to offer
-  `var_filesystem`/`var_subvolumes` stands)
+- **Status:** Superseded by [0016](0016-bootc-only-recipe-contract.md):
+  Firn is bootc-only, the A/B path is removed (#101), and recipe version 2
+  rejects `var_filesystem`/`var_subvolumes`. Earlier, its zero-image-change
+  rationale was superseded by
+  [0013](0013-btrfs-var-requires-filesystem-agnostic-image-mount.md) — the
+  image *did* hardcode ext4 for `/var`
 - **Date:** 2026-08-11
 
 ## Context

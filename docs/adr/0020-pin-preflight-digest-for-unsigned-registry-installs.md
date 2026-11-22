@@ -1,7 +1,7 @@
 # 0020 — Pin the preflight-selected digest for unsigned registry installs
 
-- **Status:** Proposed
-- **Date:** 2026-10-22
+- **Status:** Accepted
+- **Date:** 2026-10-22 (accepted 2026-11-22; implemented in #115)
 
 ## Context
 
